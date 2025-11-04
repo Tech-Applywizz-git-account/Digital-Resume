@@ -497,7 +497,7 @@ export default function Password() {
                       }}
                       className="flex-1 bg-white text-[#01796F] border border-[#01796F] px-4 py-2 sm:px-8 sm:py-3 rounded-lg font-semibold hover:bg-[#01796F]/5 transition-all text-sm sm:text-base"
                     >
-                      Back to Login
+                      Back to reset password
                     </button>
                   )}
                 </div>
