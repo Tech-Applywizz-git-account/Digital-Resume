@@ -144,10 +144,10 @@ export default function Landing() {
         onClick={() => navigate("/")}
       >
         {/* Cyan gradient from STEP #1 */}
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-cyan-500 to-cyan-400 flex items-center justify-center shadow-md">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] flex items-center justify-center shadow-md">
           <Video className="h-5 w-5 text-white" />
         </div>
-        <span className="text-xl font-bold bg-gradient-to-r from-cyan-500 to-cyan-400 bg-clip-text text-transparent">
+        <span className="text-xl font-bold bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] bg-clip-text text-transparent">
           Career Cast
         </span>
       </div>
@@ -162,7 +162,7 @@ export default function Landing() {
           >
             {item}
             {/* Underline gradient */}
-            <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-500 to-cyan-400 group-hover:w-full transition-all duration-300" />
+            <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] group-hover:w-full transition-all duration-300" />
           </a>
         ))}
       </nav>
@@ -179,7 +179,7 @@ export default function Landing() {
 
         {/* Primary Button with gradient */}
         <Button
-          className="bg-gradient-to-r from-cyan-500 to-cyan-400 text-white font-semibold hover:shadow-lg hover:scale-105 transition-all px-5 py-2"
+          className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-semibold hover:shadow-lg hover:scale-105 transition-all px-5 py-2"
           onClick={() =>
             navigate(isAuthenticated ? "/dashboard" : "/auth")
           }
@@ -202,7 +202,7 @@ export default function Landing() {
         transition={{ duration: 0.8 }}
       >
         {/* Gradient line using STEP #1 colors */}
-        {/* <div className="w-1 h-24 bg-gradient-to-b from-cyan-500 to-cyan-400 mb-6 rounded-full" /> */}
+        {/* <div className="w-1 h-24 bg-gradient-to-b from-[#0B4F6C] to-[#159A9C] mb-6 rounded-full" /> */}
 
        
 
@@ -235,7 +235,7 @@ export default function Landing() {
         {/* Updated Button gradient */}
         <Button
           size="lg"
-          className="bg-gradient-to-r from-cyan-500 to-cyan-400 text-white hover:shadow-xl hover:scale-105 transition-all text-lg px-8"
+          className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white hover:shadow-xl hover:scale-105 transition-all text-lg px-8"
           onClick={() => navigate('/auth')}
         >
           Sign up for free
@@ -306,7 +306,7 @@ export default function Landing() {
               </div>
               <Button 
                 size="lg"
-                className="bg-gradient-to-r from-lime-400 to-lime-500 text-black hover:shadow-[0_0_30px_rgba(132,204,22,0.5)] transition-all font-semibold"
+                className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-black hover:shadow-[0_0_30px_rgba(132,204,22,0.5)] transition-all font-semibold"
               >
                 <Plus className="mr-2 h-5 w-5" />
                 New Career Cast
@@ -315,9 +315,11 @@ export default function Landing() {
 <div
   className="mt-8 aspect-video rounded-xl border border-white/10 bg-cover bg-center bg-no-repeat shadow-lg"
   style={{
-    backgroundImage: "url('/images/hero-bg.jpg')",
+    backgroundImage: "url('/images/image.png')",
+    backgroundSize: "100%", // Scales the image to 50% of its original size
   }}
 />
+
           </motion.div>
         </div>
       </section>
@@ -420,7 +422,7 @@ export default function Landing() {
             </Card>
 
             <div>
-              <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400 text-white font-bold mb-4">
+              <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
                 STEP #1
               </div>
               <h2 className="text-4xl font-black mb-6 text-slate-900">Create your Career Cast account for free</h2>
@@ -449,7 +451,7 @@ export default function Landing() {
             className="grid lg:grid-cols-2 gap-12 items-center"
           >
             <div>
-              <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400 text-white font-bold mb-4">
+              <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
                 STEP #2
               </div>
               <h2 className="text-4xl font-black mb-6 text-slate-900">Upload your resume to the platform</h2>
@@ -467,12 +469,12 @@ export default function Landing() {
 
             <Card className="backdrop-blur-xl bg-white border-slate-200">
               <CardContent className="p-12 text-center">
-                <Upload className="h-16 w-16 text-cyan-500 mx-auto mb-4" />
+                <Upload className="h-16 w-16 from-[#0B4F6C] to-[#159A9C] mx-auto mb-4" />
                 <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 mb-4">
                   <p className="text-slate-600">Drag & drop your resume here</p>
                   <p className="text-slate-400 text-sm mt-2">PDF or DOCX</p>
                 </div>
-                <Button className="bg-gradient-to-r from-cyan-500 to-cyan-400 text-white w-full hover:shadow-lg">
+                <Button className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white w-full hover:shadow-lg">
                   Next Step
                 </Button>
               </CardContent>
@@ -503,7 +505,7 @@ export default function Landing() {
             </Card>
 
             <div>
-              <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400 text-white font-bold mb-4">
+              <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
                 STEP #3
               </div>
               <h2 className="text-4xl font-black mb-6 text-slate-900">Record or attach a video pitch</h2>
@@ -532,7 +534,7 @@ export default function Landing() {
             className="grid lg:grid-cols-2 gap-12 items-center"
           >
             <div>
-              <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400 text-white font-bold mb-4">
+              <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
                 STEP #4
               </div>
               <h2 className="text-4xl font-black mb-6 text-slate-900">Share your Career Cast with recruiters</h2>
@@ -558,7 +560,7 @@ export default function Landing() {
                       <p className="text-cyan-700 text-sm font-semibold">🎥 View My Career Cast</p>
                     </div>
                   </div>
-                  <Button className="bg-gradient-to-r from-cyan-500 to-cyan-400 text-white w-full hover:shadow-lg">
+                  <Button className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white w-full hover:shadow-lg">
                     <Share2 className="mr-2 h-4 w-4" />
                     Send Career Cast
                   </Button>
@@ -742,7 +744,7 @@ export default function Landing() {
           <div className="grid md:grid-cols-3 gap-12 mb-12">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-cyan-500 to-cyan-400 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] flex items-center justify-center">
                   <Video className="h-5 w-5 text-white" />
                 </div>
                 <span className="text-xl font-bold text-slate-900">Career Cast</span>
