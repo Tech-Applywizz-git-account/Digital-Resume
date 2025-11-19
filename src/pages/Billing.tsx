@@ -186,7 +186,7 @@ export default function Billing() {
     {
       key: 'premium',
       name: 'Premium',
-      price: '$9',
+      price: '$12.99',
       period: 'month',
       features: [
         'Unlimited CareerCasts',
@@ -262,7 +262,7 @@ export default function Billing() {
             ...(accessToken ? { 'X-User-Token': accessToken } : {}),
           },
           body: JSON.stringify({
-            amount: 9.0,
+            amount: 12.99,
             currency: 'USD',
             user_id: user.id,
             metadata: { plan: 'premium_monthly', source: 'hosted-fields' },
@@ -440,7 +440,7 @@ export default function Billing() {
                                     disabled={!user || !FUNCTIONS_URL || !SUPABASE_ANON_KEY}
                                     createOrder={async () => {
   if (!user) throw new Error('Not signed in');
-  const amountToCharge = 9.0; // Fixed amount for premium plan
+  const amountToCharge = 12.99; // Fixed amount for premium plan
   const { data: { session } = {} as any } = await supabase.auth.getSession();
   const accessToken = session?.access_token || '';
 
@@ -546,7 +546,7 @@ onApprove={async (data, actions) => {
                                     }}
                                     createOrder={async () => {
   if (!user) throw new Error('Not signed in');
-  const amountToCharge = 9.0; // Fixed price for premium plan
+  const amountToCharge = 12.99; // Fixed price for premium plan
   const { data: { session } = {} as any } = await supabase.auth.getSession();
   const accessToken = session?.access_token || '';
 
