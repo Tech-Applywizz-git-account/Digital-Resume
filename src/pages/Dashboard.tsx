@@ -461,7 +461,7 @@ export default function Dashboard() {
                   }}
                   className="w-full bg-[#01796F] text-white py-3 rounded-lg font-semibold hover:bg-[#016761] transition-colors"
                 >
-                  Upgrade Now - $9.99
+                  Upgrade Now - $12.99
                 </button>
               </div>
             </div>
