@@ -1,6 +1,6 @@
-# CareerCast - Video Resume Platform
+# careercast - Video Resume Platform
 
-CareerCast is a platform that helps job seekers create professional video resumes to stand out in their job search.
+careercast is a platform that helps job seekers create professional video resumes to stand out in their job search.
 
 ## Features
 
@@ -8,7 +8,7 @@ CareerCast is a platform that helps job seekers create professional video resume
 - Video recording with teleprompter assistance
 - Resume upload and parsing
 - Email verification with OTP
-- CareerCast creation workflow
+- careercast creation workflow
 
 ## Available Scripts
 

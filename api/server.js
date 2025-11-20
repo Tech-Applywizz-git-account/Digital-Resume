@@ -82,7 +82,7 @@ async function getAccessToken() {
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
-    service: 'CareerCast Email Service',
+    service: 'careercast Email Service',
     timestamp: new Date().toISOString()
   });
 });
@@ -102,7 +102,7 @@ export default app;
 // Start server for local development
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
-    console.log(`🚀 CareerCast Server running on port ${PORT}`);
+    console.log(`🚀 careercast Server running on port ${PORT}`);
     console.log(`📧 Email service ready`);
     console.log(`🌐 Health check: http://localhost:${PORT}/api/health`);
   });

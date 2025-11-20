@@ -149,12 +149,17 @@ export default function Auth() {
             <Card className="p-8 step-card border border-slate-200 rounded-2xl shadow-sm bg-white">
               <div className="text-center mb-8">
                 <div className="flex items-center justify-center gap-2 mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-600 to-blue-800 flex items-center justify-center shadow-md">
-                    <Video className="h-6 w-6 text-white" />
-                  </div>
-                  <h1 className="text-3xl font-bold text-slate-900">
-                    CareerCast
-                  </h1>
+                  <div >
+          <img 
+            src="/images/networknote_final_logo_1 (2).jpg" 
+            alt="Network Note Logo" 
+            className="h-8 w-8 rounded-lg"
+          />
+        </div>
+        <span className="text-xl font-bold text-[#000000] font-noto
+">
+          NetworkNote
+        </span>
                 </div>
                 <p className="text-slate-600 text-lg">
                   Join thousands of professionals getting their dream jobs

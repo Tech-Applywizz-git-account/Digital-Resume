@@ -5,7 +5,7 @@
 // import { Download, Play, ArrowLeft, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
 // import { useAuthContext } from '../contexts/AuthContext';
 
-// interface CareerCast {
+// interface careercast {
 //   id: string;
 //   jobTitle: string;
 //   resumeFileName?: string;
@@ -18,7 +18,7 @@
 //   const navigate = useNavigate();
 //   const { castId } = useParams<{ castId: string }>();
 //   const { user, logout } = useAuthContext();
-//   const [careerCast, setCareerCast] = useState<CareerCast | null>(null);
+//   const [careercast, setcareercast] = useState<careercast | null>(null);
 //   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
 //   const [resumeContent, setResumeContent] = useState<string>('');```
 import React, { useEffect, useState } from "react";
@@ -75,7 +75,7 @@ const FinalResult: React.FC = () => {
     const uploadedResumeUrl = localStorage.getItem("uploadedResumeUrl");
     const fileName = localStorage.getItem("resumeFileName");
     const recordedVideoUrl = localStorage.getItem("recordedVideoUrl");
-    const jobTitle = localStorage.getItem("careerCast_jobTitle");
+    const jobTitle = localStorage.getItem("careercast_jobTitle");
     const currentJobRequestId = localStorage.getItem("current_job_request_id");
 
     console.log("Loading local data with:", { uploadedResumeUrl, recordedVideoUrl, currentJobRequestId });
@@ -418,7 +418,7 @@ const FinalResult: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-600">Loading your CareerCast...</p>
+        <p className="text-gray-600">Loading your careercast...</p>
       </div>
     );
   }
@@ -469,24 +469,24 @@ const FinalResult: React.FC = () => {
                 Download Enhanced Resume
               </Button>
               
-              {/* Copy CareerCast Link Button */}
+              {/* Copy careercast Link Button */}
               <Button
                 variant="outline"
                 onClick={() => {
-                  // Generate the actual shareable link for this CareerCast
+                  // Generate the actual shareable link for this careercast
                   const baseUrl = window.location.origin;
                   // Use castId if available (for shared links), otherwise use the current job request ID
                   const currentCastId = castId || localStorage.getItem("current_job_request_id");
                   
                   if (!currentCastId) {
-                    showToast('Unable to generate shareable link. No CareerCast ID found.', 'error');
+                    showToast('Unable to generate shareable link. No careercast ID found.', 'error');
                     return;
                   }
                   
                   const shareableLink = `${baseUrl}/final-result/${currentCastId}`;
                   
                   navigator.clipboard.writeText(shareableLink).then(() => {
-                    showToast('CareerCast link copied to clipboard!', 'success');
+                    showToast('careercast link copied to clipboard!', 'success');
                   }).catch(err => {
                     console.error('Failed to copy link: ', err);
                     showToast('Failed to copy link. Please try again.', 'error');
@@ -494,7 +494,7 @@ const FinalResult: React.FC = () => {
                 }}
                 className="flex items-center gap-2 border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700"
               >
-                Copy CareerCast Link
+                Copy careercast Link
               </Button>
             </div>
           )}
@@ -534,12 +534,12 @@ const FinalResult: React.FC = () => {
                 <div className="bg-white/20 rounded-full p-2">
                   <Play className="h-5 w-5" />
                 </div>
-                <h3 className="font-bold text-lg">Shared CareerCast Profile</h3>
+                <h3 className="font-bold text-lg">Shared careercast Profile</h3>
               </div>
               <p className="mt-2 text-blue-100">
                 {user 
                   ? "You're viewing a shared profile. You can play the video introduction above." 
-                  : "You're viewing a shared CareerCast profile. Log in to access the full video introduction."}
+                  : "You're viewing a shared careercast profile. Log in to access the full video introduction."}
               </p>
             </div>
           )} */}

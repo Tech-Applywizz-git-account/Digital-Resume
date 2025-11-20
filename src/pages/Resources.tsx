@@ -69,34 +69,78 @@ export default function Resources() {
       color: 'from-green-500 to-green-600',
       link: 'https://example.com/resume-templates',
       detailedContent: `
-        <h3 class="text-xl font-bold text-gray-900 mb-4">Professional Resume Templates</h3>
-        <p class="text-gray-600 mb-4">Our professionally designed templates help you create a standout resume that gets noticed by employers:</p>
+        <h3 class="text-xl font-bold text-gray-900 mb-4">✅ Resume Templates</h3>
+        <p class="text-gray-600 mb-4">
+          Our templates highlight your skills, achievements, and experience with clear structure, measurable bullet points, and global hiring standards. Built for clarity, impact, and ATS compatibility across all industries.
+        </p>
         
-        <h4 class="font-bold text-gray-900 mb-2">Template Features</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Clean, modern designs that pass ATS systems</li>
-          <li>Industry-specific formatting options</li>
-          <li>Easy to customize with your information</li>
-          <li>Multiple layout choices (chronological, functional, hybrid)</li>
+        <h4 class="font-bold text-gray-900 mb-2">⭐ Template Features</h4>
+        <p class="text-gray-600 mb-2">Professional header (Name, Title, Location, Contact, LinkedIn)</p>
+        <p class="text-gray-600 mb-2">Sharp 2–4 line summary</p>
+        <p class="text-gray-600 mb-2">Defined Areas of Expertise / Core Skills</p>
+        <p class="text-gray-600 mb-2">Action-driven bullet points (Action Verb + Task + Metric)</p>
+        <p class="text-gray-600 mb-4">Sections include: Professional Experience, Education, Skills, Projects (for students), Certifications & Courses, Achievements & Languages</p>
+        
+        <p class="text-gray-600 mb-2">Additional benefits:</p>
+        <ul class="list-disc pl-5 space-y-1 text-gray-600 mb-4">
+          <li>Clean, ATS-safe formatting</li>
+          <li>Layouts for graduates, experienced roles, promotions & specialist profiles</li>
         </ul>
         
-        <h4 class="font-bold text-gray-900 mb-2">Popular Industries</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Technology and IT</li>
-          <li>Healthcare and Medical</li>
-          <li>Finance and Accounting</li>
-          <li>Marketing and Communications</li>
-          <li>Engineering and Construction</li>
-          <li>Education and Academia</li>
-        </ul>
+        <h4 class="font-bold text-gray-900 mb-2">💼 Popular Industries</h4>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+          <div class="text-gray-600">IT & Software</div>
+          <div class="text-gray-600">Data & Analytics</div>
+          <div class="text-gray-600">Sales & Marketing</div>
+          <div class="text-gray-600">Finance & Accounting</div>
+          <div class="text-gray-600">HR & Operations</div>
+          <div class="text-gray-600">Customer Support</div>
+          <div class="text-gray-600">Project & Product Management</div>
+          <div class="text-gray-600">Engineering & Manufacturing</div>
+          <div class="text-gray-600">Retail & Hospitality</div>
+          <div class="text-gray-600">Consulting</div>
+          <div class="text-gray-600">Digital Marketing & Automation</div>
+          <div class="text-gray-600">All Graduate Fields</div>
+        </div>
         
-        <h4 class="font-bold text-gray-900 mb-2">Customization Tips</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Tailor content for each job application</li>
-          <li>Use industry-specific keywords</li>
-          <li>Quantify achievements with numbers</li>
-          <li>Keep it concise (1-2 pages max)</li>
-        </ul>
+        <h4 class="font-bold text-gray-900 mb-2">📝 Customization Tips</h4>
+        <ol class="list-decimal pl-5 space-y-3 text-gray-600 mb-4">
+          <li>
+            <strong>Strong Summary:</strong><br/>
+            2–4 lines about who you are, what you offer, and key achievements.
+          </li>
+          <li>
+            <strong>Tailor Skills:</strong><br/>
+            Add 6–10 relevant hard + soft skills.
+          </li>
+          <li>
+            <strong>Power Bullet Points:</strong><br/>
+            Use strong verbs + clear tasks + measurable results.
+          </li>
+          <li>
+            <strong>Add Projects (Graduates):</strong><br/>
+            Show tools used, problem solved, and outcomes.
+          </li>
+          <li>
+            <strong>Keep It Clean:</strong><br/>
+            Avoid long paragraphs, icons, or fancy designs.
+          </li>
+          <li>
+            <strong>Add Certifications:</strong><br/>
+            Include recent, job-relevant courses.
+          </li>
+          <li>
+            <strong>Highlight Education:</strong><br/>
+            Mention degree, year, modules, and achievements.
+          </li>
+        </ol>
+        
+        <div class="mt-6">
+          <h4 class="font-bold text-gray-900 mb-2">Free Resources:</h4>
+          <ul class="list-disc pl-5 space-y-2 text-gray-600">
+            <li><a href="https://docs.google.com/document/d/e/2PACX-1vSQOVUQcmxoJoj7wjhC4sjzrbEMzctS9HvxVae4unMqAvlD-pa0lkIxQUVUpO97yIcvI7YVRPq1zVOv/pub" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">Resume Templates</a></li>
+          </ul>
+        </div>
       `
     },
     {
@@ -106,40 +150,59 @@ export default function Resources() {
       color: 'from-yellow-500 to-yellow-600',
       link: 'https://example.com/interview-tips',
       detailedContent: `
-        <h3 class="text-xl font-bold text-gray-900 mb-4">Mastering Job Interviews</h3>
-        <p class="text-gray-600 mb-4">Ace your next interview with these proven strategies and techniques:</p>
-        
-        <h4 class="font-bold text-gray-900 mb-2">Preparation Strategies</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Research the company culture and values</li>
-          <li>Practice common interview questions</li>
-          <li>Prepare specific examples using the STAR method</li>
-          <li>Plan thoughtful questions for the interviewer</li>
-        </ul>
-        
-        <h4 class="font-bold text-gray-900 mb-2">During the Interview</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Arrive 10-15 minutes early</li>
-          <li>Maintain confident body language</li>
-          <li>Listen actively and answer concisely</li>
-          <li>Ask insightful questions about the role</li>
-        </ul>
-        
-        <h4 class="font-bold text-gray-900 mb-2">Handling Difficult Questions</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Address weaknesses positively</li>
-          <li>Explain employment gaps honestly</li>
-          <li>Discuss salary expectations strategically</li>
-          <li>Handle behavioral questions with specific examples</li>
-        </ul>
-        
-        <h4 class="font-bold text-gray-900 mb-2">Follow-Up Best Practices</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Send a thank-you email within 24 hours</li>
-          <li>Reiterate your interest in the position</li>
-          <li>Address any concerns raised during the interview</li>
-          <li>Be patient but proactive in follow-ups</li>
-        </ul>
+        <h3 class="text-xl font-bold text-gray-900 mb-4">HOW TO ACE YOUR NEXT INTERVIEW</h3>
+        <ol class="list-decimal pl-5 space-y-3 text-gray-600">
+          <li>
+            <strong>Research the Company Thoroughly</strong><br/>
+            Learn about their mission, values, culture, products, leadership team, and recent news.<br/><br/>
+            This helps you give sharper answers and show genuine interest.
+          </li>
+          <li>
+            <strong>Study the Job Description in Detail</strong><br/>
+            Note the required skills, responsibilities, and keywords.<br/><br/>
+            Match your experience to what they're looking for and prepare examples.
+          </li>
+          <li>
+            <strong>Practice Answers to Common Interview Questions</strong><br/>
+            Questions like "Tell me about yourself," "Strengths/weaknesses," and "Why should we hire you?" always come up.<br/><br/>
+            Practice short, confident, job-focused answers.
+          </li>
+          <li>
+            <strong>Use the STAR Method for Behavioural Questions</strong><br/>
+            Explain your experience using:<br/>
+            S – Situation<br/>
+            T – Task<br/>
+            A – Action<br/>
+            R – Result<br/><br/>
+            This helps you give structured, impressive answers.
+          </li>
+          <li>
+            <strong>Dress Professionally</strong><br/>
+            Wear formal or business casual based on the company's dress code.<br/><br/>
+            Clean, neat, and professional always works.
+          </li>
+          <li>
+            <strong>Prepare Your Own Questions in Advance</strong><br/>
+            Questions about growth, team structure, expectations, and culture show that you're serious about the role.
+          </li>
+          <li>
+            <strong>Carry All Essential Documents</strong><br/>
+            Copies of your resume, certificates, ID, work samples, and a notebook/pen.<br/><br/>
+            Being prepared makes you look organised.
+          </li>
+          <li>
+            <strong>Follow Up After the Interview</strong><br/>
+            Send a thank-you email within 24 hours, appreciating their time and reaffirming your interest in the role.<br/><br/>
+            If there's no update within a week after the job closing date, send one more polite follow-up.
+          </li>
+        </ol>
+        <div class="mt-6">
+          <h4 class="font-bold text-gray-900 mb-2">Free Resources:</h4>
+          <ul class="list-disc pl-5 space-y-2 text-gray-600">
+            <li><a href="https://how-to-ace-your-next-int-o8c6xx4.gamma.site/" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">How to Ace Your Next Interview Guide</a></li>
+            <li><a href="https://how-to-end-an-interview--v86rwn5.gamma.site/" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">How to End an Interview Successfully</a></li>
+          </ul>
+        </div>
       `
     },
     {
@@ -192,40 +255,111 @@ export default function Resources() {
       color: 'from-red-500 to-red-600',
       link: 'https://example.com/skill-building',
       detailedContent: `
-        <h3 class="text-xl font-bold text-gray-900 mb-4">Professional Skill Enhancement</h3>
-        <p class="text-gray-600 mb-4">Boost your career prospects with these essential skill-building resources:</p>
+        <h3 class="text-xl font-bold text-gray-900 mb-4">SKILL BUILDING – LEVEL UP YOUR CAREER</h3>
+        <p class="text-gray-600 mb-4">Upskilling is no longer optional — it's what makes you stand out.</p>
+        <p class="text-gray-600 mb-4">Whether you're applying abroad or switching careers, learning the right skills can boost your confidence, improve your resume, and increase your chances of getting interview calls.</p>
+        <p class="text-gray-600 mb-4">Here's how to build strong, job-ready skills using top free courses and certifications:</p>
         
-        <h4 class="font-bold text-gray-900 mb-2">Technical Skills</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Programming languages (Python, JavaScript, Java)</li>
-          <li>Data analysis and visualization tools</li>
-          <li>Cloud platforms (AWS, Azure, Google Cloud)</li>
-          <li>Digital marketing and SEO strategies</li>
-        </ul>
+        <ol class="list-decimal pl-5 space-y-4 text-gray-600">
+          <li>
+            <strong>Start With Essential Tech Skills</strong><br/>
+            Even if you're from a non-tech background, knowing the basics of Python, SQL, or Java makes you more employable.<br/><br/>
+            Free certified courses are available from Microsoft, IBM, Infosys, Cisco, and AWS.<br/>
+            Great starting points:<br/>
+            Python for Beginners – Microsoft<br/>
+            SQL for Data Science – IBM SkillsBuild<br/>
+            Java Programming – Infosys Springboard<br/>
+            These certifications add real value to your resume.
+          </li>
+          <li>
+            <strong>Strengthen Your Data & Analytics Knowledge</strong><br/>
+            Data is used in every industry today — marketing, finance, HR, operations, software… everything.<br/><br/>
+            Learning analytics helps you take better decisions and impress interviewers.<br/>
+            Recommended courses:<br/>
+            Introduction to Data Science – Cisco<br/>
+            Get Started with Microsoft Data Analytics – Microsoft<br/>
+            Data Science Foundations – IBM<br/>
+            These are beginner-friendly and industry-recognized.
+          </li>
+          <li>
+            <strong>Learn Artificial Intelligence & Machine Learning Basics</strong><br/>
+            AI isn't the future — it's happening right now.<br/><br/>
+            Understanding AI & ML fundamentals gives you an advantage, regardless of your role.<br/>
+            Top free courses:<br/>
+            AI Fundamentals – Microsoft<br/>
+            Fundamentals of Machine Learning – NVIDIA<br/>
+            AI Essentials – LinkedIn + Microsoft Learning Path<br/>
+            These help you speak confidently during interviews and understand modern workplace tools.
+          </li>
+          <li>
+            <strong>Master Generative AI — The Skill Every Recruiter Looks For</strong><br/>
+            Generative AI skills are in high demand across marketing, content, coding, design, customer service, and operations.<br/>
+            Useful free programs:<br/>
+            Introduction to Generative AI – Google Cloud Skills Boost<br/>
+            Career Essentials in Generative AI – Microsoft + LinkedIn<br/>
+            NVIDIA Generative AI Training<br/>
+            Learning GenAI boosts productivity and shows employers you can work smart.
+          </li>
+          <li>
+            <strong>Build Practical AI Skills (Prompt Engineering, RAG, Agents, Fine-Tuning)</strong><br/>
+            Microsoft recently launched 18 high-quality free AI courses — better than most paid programs.<br/><br/>
+            If you want to stand out, learn prompt engineering, text generation apps, AI agents, and RAG (Retrieval Augmented Generation).<br/>
+            Must-learn topics:<br/>
+            Intro to Generative AI<br/>
+            Prompt Engineering + Advanced Prompts<br/>
+            Building Chat/Text/Search AI Apps<br/>
+            Securing AI Apps<br/>
+            RAG, Open Source Models<br/>
+            AI Agents & LLM Fine-Tuning<br/>
+            These skills are becoming mandatory for modern job roles.
+          </li>
+          <li>
+            <strong>Improve Digital & Business Skills</strong><br/>
+            Technical skills are important — but employers also look for digital awareness and business understanding.<br/>
+            Helpful courses:<br/>
+            Digital Marketing Essentials – Infosys Springboard<br/>
+            AWS Cloud Practitioner Essentials – AWS<br/>
+            Business Analytics Basics – Cisco<br/>
+            These help you perform better in real work situations.
+          </li>
+          <li>
+            <strong>Apply Your Learning Through Projects</strong><br/>
+            Courses alone are not enough.<br/><br/>
+            Choose at least one small project after each course:<br/>
+            Build a resume analyzer with AI<br/>
+            Create a simple SQL dashboard<br/>
+            Make an image generation app<br/>
+            Analyse a dataset and present insights<br/>
+            Projects show employers that you can apply what you've learned.
+          </li>
+          <li>
+            <strong>Keep Your Certifications Updated on LinkedIn</strong><br/>
+            After completing a course, add the certificate to your LinkedIn profile and resume.<br/><br/>
+            This increases profile visibility and helps recruiters trust your skills.
+          </li>
+          <li>
+            <strong>Build a Habit of Learning</strong><br/>
+            Spend 30–45 minutes a day learning something new.<br/><br/>
+            Small progress daily leads to major transformation within 2–3 months.
+          </li>
+          <li>
+            <strong>Choose Skills Aligned With Your Career Goals</strong><br/>
+            Before you start learning everything, ask yourself:<br/>
+            What job am I targeting?<br/>
+            What skills do recruiters expect?<br/>
+            Which skill will help me grow the fastest?<br/>
+            Focus on skills that support your job role, not random learning.
+          </li>
+        </ol>
         
-        <h4 class="font-bold text-gray-900 mb-2">Soft Skills</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Leadership and management capabilities</li>
-          <li>Communication and presentation skills</li>
-          <li>Problem-solving and critical thinking</li>
-          <li>Time management and organization</li>
-        </ul>
-        
-        <h4 class="font-bold text-gray-900 mb-2">Certification Paths</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Project Management (PMP, Agile, Scrum)</li>
-          <li>Data Science and Analytics</li>
-          <li>Cybersecurity and IT Security</li>
-          <li>Digital Marketing and Social Media</li>
-        </ul>
-        
-        <h4 class="font-bold text-gray-900 mb-2">Learning Platforms</h4>
-        <ul class="list-disc list-inside text-gray-600 mb-4">
-          <li>Coursera and edX for university courses</li>
-          <li>LinkedIn Learning for professional development</li>
-          <li>Udemy and Skillshare for practical skills</li>
-          <li>Industry-specific training programs</li>
-        </ul>
+        <div class="mt-6">
+          <h4 class="font-bold text-gray-900 mb-2">Free Resources:</h4>
+          <ul class="list-disc pl-5 space-y-2 text-gray-600">
+            <li><a href="https://free-generative-ai-cours-ir6segl.gamma.site/" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">Free Generative AI Course Collection</a></li>
+            <li><a href="https://18-free-courses-t2s6eq1.gamma.site/" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">18 Free Courses Collection</a></li>
+            <li><a href="https://free-certified-courses-b-mt6crpl.gamma.site/" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">Free Certified Courses Bundle</a></li>
+          </ul>
+        </div>
       `
     }
   ];
@@ -259,7 +393,7 @@ export default function Resources() {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">Careercast</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
 
@@ -276,7 +410,8 @@ export default function Resources() {
               {resources.map((resource, index) => (
                 <div
                   key={index}
-                  className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-all group"
+                  className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-all group cursor-pointer"
+                  onClick={() => setSelectedResource(index)}
                 >
                   <div className={`w-12 h-12 bg-gradient-to-br ${resource.color} rounded-lg flex items-center justify-center mb-4`}>
                     <resource.icon className="w-6 h-6 text-white" />
@@ -287,22 +422,6 @@ export default function Resources() {
                   <p className="text-gray-600 text-sm sm:text-base">
                     {resource.description}
                   </p>
-                  <div className="mt-4">
-                    <a 
-                      href={resource.link} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-[#01796F] hover:underline text-sm font-medium flex items-center gap-1"
-                    >
-                      Free Links <ExternalLink className="w-4 h-4" />
-                    </a>
-                  </div>
-                  <button 
-                    onClick={() => setSelectedResource(index)}
-                    className="mt-3 w-full py-2 text-center text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-                  >
-                    View Details
-                  </button>
                 </div>
               ))}
             </div>

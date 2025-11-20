@@ -68,17 +68,17 @@
 //     // 📩 Send email through Microsoft Graph API
 //     const messageBody = {
 //       message: {
-//         subject: "Your One-Time Password (OTP) – CareerCast",
+//         subject: "Your One-Time Password (OTP) – careercast",
 //         body: {
 //           contentType: "HTML",
 //           content: `
 //             <div style="font-family: Arial; line-height: 1.5;">
-//               <h2 style="color: #0078d4;">CareerCast OTP Verification</h2>
+//               <h2 style="color: #0078d4;">careercast OTP Verification</h2>
 //               <p>Hi,</p>
 //               <p>Your OTP for verification is:</p>
 //               <h1 style="letter-spacing: 2px;">${otp}</h1>
 //               <p>This OTP is valid for 10 minutes.</p>
-//               <p>Best regards,<br/>CareerCast Team</p>
+//               <p>Best regards,<br/>careercast Team</p>
 //             </div>
 //           `,
 //         },
@@ -186,16 +186,16 @@
 
 //   const messageBody = {
 //     message: {
-//       subject: "Your One-Time Password (OTP) – CareerCast",
+//       subject: "Your One-Time Password (OTP) – careercast",
 //       body: {
 //         contentType: "HTML",
 //         content: `
 //           <div style="font-family: Arial; line-height:1.6;">
-//             <h2 style="color:#0078D4;margin:0 0 8px;">CareerCast OTP Verification</h2>
+//             <h2 style="color:#0078D4;margin:0 0 8px;">careercast OTP Verification</h2>
 //             <p>Your OTP for verification is:</p>
 //             <h1 style="letter-spacing:2px;margin:8px 0 12px;">${otp}</h1>
 //             <p>This OTP is valid for <strong>10 minutes</strong>.</p>
-//             <p style="margin-top:16px;">Best regards,<br/>CareerCast Team</p>
+//             <p style="margin-top:16px;">Best regards,<br/>careercast Team</p>
 //           </div>
 //         `,
 //       },
@@ -432,16 +432,16 @@
 //           },
 //           body: JSON.stringify({
 //             message: {
-//               subject: "Your One-Time Password (OTP) – CareerCast",
+//               subject: "Your One-Time Password (OTP) – careercast",
 //               body: {
 //                 contentType: "HTML",
 //                 content: `
 //                   <div style="font-family:Arial;line-height:1.6;">
-//                     <h2 style="color:#0078D4;">CareerCast OTP Verification</h2>
+//                     <h2 style="color:#0078D4;">careercast OTP Verification</h2>
 //                     <p>Your OTP for verification is:</p>
 //                     <h1>${generatedOtp}</h1>
 //                     <p>This OTP is valid for 10 minutes.</p>
-//                     <p>Best regards,<br/>CareerCast Team</p>
+//                     <p>Best regards,<br/>careercast Team</p>
 //                   </div>
 //                 `,
 //               },
@@ -564,17 +564,17 @@
 //     // 📩 Send email through Microsoft Graph API
 //     const messageBody = {
 //       message: {
-//         subject: "Your One-Time Password (OTP) – CareerCast",
+//         subject: "Your One-Time Password (OTP) – careercast",
 //         body: {
 //           contentType: "HTML",
 //           content: `
 //             <div style="font-family: Arial; line-height: 1.5;">
-//               <h2 style="color: #0078d4;">CareerCast OTP Verification</h2>
+//               <h2 style="color: #0078d4;">careercast OTP Verification</h2>
 //               <p>Hi,</p>
 //               <p>Your OTP for verification is:</p>
 //               <h1 style="letter-spacing: 2px;">${otp}</h1>
 //               <p>This OTP is valid for 10 minutes.</p>
-//               <p>Best regards,<br/>CareerCast Team</p>
+//               <p>Best regards,<br/>careercast Team</p>
 //             </div>
 //           `,
 //         },
@@ -682,16 +682,16 @@
 
 // //   const messageBody = {
 // //     message: {
-// //       subject: "Your One-Time Password (OTP) – CareerCast",
+// //       subject: "Your One-Time Password (OTP) – careercast",
 // //       body: {
 // //         contentType: "HTML",
 // //         content: `
 // //           <div style="font-family: Arial; line-height:1.6;">
-// //             <h2 style="color:#0078D4;margin:0 0 8px;">CareerCast OTP Verification</h2>
+// //             <h2 style="color:#0078D4;margin:0 0 8px;">careercast OTP Verification</h2>
 // //             <p>Your OTP for verification is:</p>
 // //             <h1 style="letter-spacing:2px;margin:8px 0 12px;">${otp}</h1>
 // //             <p>This OTP is valid for <strong>10 minutes</strong>.</p>
-// //             <p style="margin-top:16px;">Best regards,<br/>CareerCast Team</p>
+// //             <p style="margin-top:16px;">Best regards,<br/>careercast Team</p>
 // //           </div>
 // //         `,
 // //       },
@@ -917,16 +917,16 @@ export default async function handler(req, res) {
           },
           body: JSON.stringify({
             message: {
-              subject: "Your One-Time Password (OTP) – CareerCast",
+              subject: "Your One-Time Password (OTP) – careercast",
               body: {
                 contentType: "HTML",
                 content: `
                   <div style="font-family:Arial;line-height:1.6;">
-                    <h2 style="color:#0078D4;">CareerCast OTP Verification</h2>
+                    <h2 style="color:#0078D4;">careercast OTP Verification</h2>
                     <p>Your OTP for verification is:</p>
                     <h1>${generatedOtp}</h1>
                     <p>This OTP is valid for 10 minutes.</p>
-                    <p>Best regards,<br/>CareerCast Team</p>
+                    <p>Best regards,<br/>careercast Team</p>
                   </div>
                 `,
               },

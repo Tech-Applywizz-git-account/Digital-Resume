@@ -162,7 +162,7 @@ export default function Profile() {
             >
               <Menu className="h-6 w-6" />
             </button>
-            <div className="font-bold text-xl text-[#0B4F6C]">Careercast</div>
+            <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
             <div className="w-10"></div> {/* Spacer for alignment */}
           </div>
 
@@ -206,7 +206,7 @@ export default function Profile() {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">Careercast</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
 

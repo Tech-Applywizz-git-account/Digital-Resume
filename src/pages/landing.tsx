@@ -79,7 +79,7 @@ export default function Landing() {
       role: "Software Engineer",
       company: "Meta",
       avatar: "👩‍💻",
-      quote: "Career Cast helped me stand out from 200+ applicants. I got 3 interview requests within a week!",
+      quote: "Network Note helped me stand out from 200+ applicants. I got 3 interview requests within a week!",
       rating: 5
     },
     {
@@ -95,14 +95,14 @@ export default function Landing() {
       role: "UX Designer",
       company: "Adobe",
       avatar: "👩‍🎨",
-      quote: "I was skeptical at first, but Career Cast completely transformed my job search. Highly recommend!",
+      quote: "I was skeptical at first, but Network Note completely transformed my job search. Highly recommend!",
       rating: 5
     }
   ];
 
   const faqs = [
     {
-      q: "How do I create my first Career Cast?",
+      q: "How do I create my first Network Note?",
       a: "Simply sign up for free, upload your resume, record a 60-90 second video pitch, and share it with recruiters. Our platform guides you through each step."
     },
     {
@@ -118,7 +118,7 @@ export default function Landing() {
       a: "Your data is encrypted and stored securely. We never share your information without your explicit permission."
     },
     {
-      q: "Is Career Cast really free?",
+      q: "Is Network Note really free?",
       a: "Yes! Our basic plan is completely free. Premium features are available for advanced users."
     },
     {
@@ -144,11 +144,16 @@ export default function Landing() {
         onClick={() => navigate("/")}
       >
         {/* Cyan gradient from STEP #1 */}
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] flex items-center justify-center shadow-md">
-          <Video className="h-5 w-5 text-white" />
+        <div >
+          <img 
+            src="/images/networknote_final_logo_1 (2).jpg" 
+            alt="Network Note Logo" 
+            className="h-8 w-8 rounded-lg"
+          />
         </div>
-        <span className="text-xl font-bold bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] bg-clip-text text-transparent">
-          Career Cast
+        <span className="text-xl font-bold text-[#000000] font-noto
+">
+          NetworkNote
         </span>
       </div>
 
@@ -210,7 +215,7 @@ export default function Landing() {
 <h1 className="text-5xl lg:text-7xl font-black tracking-tight mb-6 leading-tight text-gray-900">
   <TypeAnimation
     sequence={[
-      "YOUR CAREER, CAST.", // text to type
+      "YOUR NETWORK NOTE.", // text to type
       1000,                 // pause at end (1s)
     ]}
     speed={0.2 as any}            // ⏳ slower typing speed (higher = slower)
@@ -223,7 +228,7 @@ export default function Landing() {
 
 
         <p className="text-lg text-muted-foreground mb-6 leading-relaxed max-w-xl">
-          Career Cast helps you stand out and land interviews by creating personalized video resumes that build instant connections with recruiters.
+          Network Note helps you stand out and land interviews by creating personalized video resumes that build instant connections with recruiters.
         </p>
 
         {/* <div className="flex items-center gap-2 mb-8">
@@ -303,14 +308,14 @@ export default function Landing() {
             <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
               <div className="flex-1">
                 <h2 className="text-3xl font-bold mb-4">Your Dashboard</h2>
-                <p className="text-slate-600">Manage all your Career Casts in one place</p>
+                <p className="text-slate-600">Manage all your Network Notes in one place</p>
               </div>
               <Button 
                 size="lg"
                 className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-black hover:shadow-[0_0_30px_rgba(132,204,22,0.5)] transition-all font-semibold"
               >
                 <Plus className="mr-2 h-5 w-5" />
-                New Career Cast
+                New Network Note
               </Button>
             </div>
 <div
@@ -335,7 +340,7 @@ export default function Landing() {
             className="text-center mb-12"
           >
             <h3 className="text-2xl font-bold mb-2">
-              Over 200 candidates have landed interviews globally through Career Cast
+              Over 200 candidates have landed interviews globally through Network Note
             </h3>
           </motion.div>
           <div className="relative overflow-hidden">
@@ -367,7 +372,7 @@ export default function Landing() {
                 GET HIRED FASTER WITH A PERSONALIZED VIDEO RESUME
               </h2>
               <p className="text-slate-300 text-lg">
-                Recruiters skim hundreds of resumes daily — Career Cast helps put your story front and center.
+                Recruiters skim hundreds of resumes daily — Network Note helps put your story front and center.
               </p>
             </motion.div>
 
@@ -426,7 +431,7 @@ export default function Landing() {
               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
                 STEP #1
               </div>
-              <h2 className="text-4xl font-black mb-6 text-slate-900">Create your Career Cast account for free</h2>
+              <h2 className="text-4xl font-black mb-6 text-slate-900">Create your Network Note account for free</h2>
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="h-6 w-6 text-lime-500 flex-shrink-0 mt-1" />
@@ -463,7 +468,7 @@ export default function Landing() {
                 </div>
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="h-6 w-6 text-lime-500 flex-shrink-0 mt-1" />
-                  <p className="text-slate-700">Build the foundation for your Career Cast</p>
+                  <p className="text-slate-700">Build the foundation for your Network Note</p>
                 </div>
               </div>
             </div>
@@ -538,15 +543,15 @@ export default function Landing() {
               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
                 STEP #4
               </div>
-              <h2 className="text-4xl font-black mb-6 text-slate-900">Share your Career Cast with recruiters</h2>
+              <h2 className="text-4xl font-black mb-6 text-slate-900">Share your Network Note with recruiters</h2>
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="h-6 w-6 text-lime-500 flex-shrink-0 mt-1" />
-                  <p className="text-slate-700">Make sure your Career Cast looks great</p>
+                  <p className="text-slate-700">Make sure your Network Note looks great</p>
                 </div>
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="h-6 w-6 text-lime-500 flex-shrink-0 mt-1" />
-                  <p className="text-slate-700">Send your Career Cast to recruiters</p>
+                  <p className="text-slate-700">Send your Network Note to recruiters</p>
                 </div>
               </div>
             </div>
@@ -556,14 +561,14 @@ export default function Landing() {
                 <div className="space-y-4">
                   <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
                     <p className="text-sm text-slate-500 mb-2">To: recruiter@company.com</p>
-                    <p className="text-slate-700 mb-3">Hi, I'd love to share my Career Cast with you...</p>
+                    <p className="text-slate-700 mb-3">Hi, I'd love to share my Network Note with you...</p>
                     <div className="p-3 rounded-lg bg-gradient-to-r from-cyan-50 to-cyan-100 border border-cyan-300">
-                      <p className="text-cyan-700 text-sm font-semibold">🎥 View My Career Cast</p>
+                      <p className="text-cyan-700 text-sm font-semibold">🎥 View My Network Note</p>
                     </div>
                   </div>
                   <Button className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white w-full hover:shadow-lg">
                     <Share2 className="mr-2 h-4 w-4" />
-                    Send Career Cast
+                    Send Network Note
                   </Button>
                 </div>
               </CardContent>
@@ -653,7 +658,7 @@ export default function Landing() {
             className="text-center mb-16"
           >
             <h2 className="text-4xl lg:text-5xl font-black mb-4 text-slate-900">
-              HOW CAREER CAST HELPED JOB SEEKERS GET HIRED
+              HOW NETWORK NOTE HELPED JOB SEEKERS GET HIRED
             </h2>
           </motion.div>
 
@@ -745,10 +750,17 @@ export default function Landing() {
           <div className="grid md:grid-cols-3 gap-12 mb-12">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] flex items-center justify-center">
-                  <Video className="h-5 w-5 text-white" />
-                </div>
-                <span className="text-xl font-bold text-slate-900">Career Cast</span>
+                <div >
+          <img 
+            src="/images/networknote_final_logo_1 (2).jpg" 
+            alt="Network Note Logo" 
+            className="h-8 w-8 rounded-lg"
+          />
+        </div>
+        <span className="text-xl font-bold text-[#000000] font-noto
+">
+          NetworkNote
+        </span>
               </div>
               <p className="text-slate-600">Your Career, Better.</p>
             </div>
@@ -791,7 +803,7 @@ export default function Landing() {
           </div>
 
           <div className="pt-8 border-t border-slate-200 text-center text-slate-600 text-sm">
-            <p>© 2025 Career Cast | All Rights Reserved</p>
+            <p>© 2025 Network Note | All Rights Reserved</p>
           </div>
         </div>
       </footer>

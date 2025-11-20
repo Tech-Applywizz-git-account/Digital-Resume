@@ -119,8 +119,8 @@ Format as plain text (no Markdown).
       rewrite ? setIsRewriting(true) : setIsGenerating(true);
       setError(null);
 
-      const jobTitle = localStorage.getItem("careerCast_jobTitle") || "";
-      const jobDescription = localStorage.getItem("careerCast_jobDescription") || "";
+      const jobTitle = localStorage.getItem("careercast_jobTitle") || "";
+      const jobDescription = localStorage.getItem("careercast_jobDescription") || "";
       const resumeText = localStorage.getItem("resumeFullText") || "Resume text not found.";
 
       if (!jobTitle || !jobDescription) {
@@ -144,7 +144,7 @@ Format as plain text (no Markdown).
   // -------- INITIALIZE ON MOUNT ---------------
   useEffect(() => {
     const saved = localStorage.getItem("teleprompterText");
-    const jobTitle = localStorage.getItem("careerCast_jobTitle");
+    const jobTitle = localStorage.getItem("careercast_jobTitle");
     if (saved && jobTitle) setTeleprompterText(saved);
     else if (jobTitle) generateIntroduction();
     else {
@@ -173,12 +173,12 @@ Format as plain text (no Markdown).
       showToast("Generate a valid introduction before finishing.", "warning");
       return;
     }
-    showToast("CareerCast completed! Redirecting to dashboard.", "success");
+    showToast("careercast completed! Redirecting to dashboard.", "success");
     navigate("/dashboard");
   };
 
   // -------------- UI ---------------------------
-  const jobTitle = localStorage.getItem("careerCast_jobTitle") || "Your Position";
+  const jobTitle = localStorage.getItem("careercast_jobTitle") || "Your Position";
   const resumeFileName = localStorage.getItem("resumeFileName") || "No resume uploaded";
 
   return (
@@ -210,7 +210,7 @@ Format as plain text (no Markdown).
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">Careercast</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
 
@@ -247,7 +247,7 @@ Format as plain text (no Markdown).
                 </div>
 
                 <CardTitle className="text-xl sm:text-2xl font-bold text-center">
-                  Record Your CareerCast Video
+                  Record Your careercast Video
                 </CardTitle>
                 <div className="text-center text-gray-600 mt-2 text-sm sm:text-base">
                   Job Title: <span className="font-semibold">{jobTitle}</span>
@@ -378,7 +378,7 @@ Format as plain text (no Markdown).
                     disabled={isGenerating || !teleprompterText}
                     className="text-sm sm:text-base"
                   >
-                    Finish & Save CareerCast
+                    Finish & Save careercast
                   </Button>
                 </div>
               </CardContent>

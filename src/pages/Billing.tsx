@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar';
 import { CreditCard, Check, Menu } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../integrations/supabase/client';
+import { showToast } from '../components/ui/toast';
 import {
   PayPalScriptProvider,
   PayPalButtons,
@@ -49,6 +50,10 @@ export default function Billing() {
   const [hfEligible, setHfEligible] = useState<boolean | null>(null);
 
   const [profilePlan, setProfilePlan] = useState<ProfilePlan | null>(null);
+  
+  // Success state for payment
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [successTransaction, setSuccessTransaction] = useState<PaymentDetail | null>(null);
 
   const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL as string | undefined;
   const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID as string | undefined;
@@ -65,9 +70,19 @@ export default function Billing() {
         .select('plan_tier, plan_status, plan_started_at, plan_renews_at')
         .eq('id', user.id)
         .single();
-      if (!error) setProfilePlan(data as ProfilePlan);
+      if (!error) {
+        setProfilePlan(data as ProfilePlan);
+        // If user has an active premium plan, find the most recent completed payment
+        // to display in the success card
+        if (data?.plan_tier === 'premium' && data?.plan_status === 'active' && !paymentSuccess) {
+          const recentPayment = paymentHistory.find(p => p.status === 'completed');
+          if (recentPayment) {
+            setSuccessTransaction(recentPayment);
+          }
+        }
+      }
     })();
-  }, [user, refreshPaymentsFlag]);
+  }, [user, refreshPaymentsFlag, paymentHistory, paymentSuccess]);
 
   const isPremiumActive =
     profilePlan?.plan_tier === 'premium' &&
@@ -180,16 +195,16 @@ export default function Billing() {
       name: 'Free',
       price: '$0',
       period: 'forever',
-      features: ['3 CareerCasts per month', 'Basic video recording', 'Standard resume upload', 'Community support'],
+      features: ['3 careercasts per month', 'Basic video recording', 'Standard resume upload', 'Community support'],
       current: !isPremiumActive,
     },
     {
       key: 'premium',
       name: 'Premium',
-      price: '$12.99',
+      price: '$0.1', //12.99 to 0.1 or 0.1 to 12.99
       period: 'month',
       features: [
-        'Unlimited CareerCasts',
+        'Unlimited careercasts',
         'HD video recording',
         'Advanced analytics',
         'Priority support',
@@ -244,7 +259,7 @@ export default function Billing() {
         if (!SUPABASE_ANON_KEY) throw new Error('Missing anon key');
         const isEligible = (window as any)?.paypal?.HostedFields?.isEligible?.() ?? false;
         if (!isEligible) {
-          alert('Card fields not eligible for this buyer.');
+          showToast('Card fields not eligible for this buyer.', 'error');
           return;
         }
 
@@ -262,7 +277,7 @@ export default function Billing() {
             ...(accessToken ? { 'X-User-Token': accessToken } : {}),
           },
           body: JSON.stringify({
-            amount: 12.99,
+            amount: 0.1,  //12.99 to 0.1 or 0.1 to 12.99
             currency: 'USD',
             user_id: user.id,
             metadata: { plan: 'premium_monthly', source: 'hosted-fields' },
@@ -317,15 +332,20 @@ export default function Billing() {
         const capJson = await capRes.json();
         if (!capRes.ok || !capJson.ok) {
           console.error('Capture error:', capJson);
-          alert(`Payment capture failed.${capJson?.debug_id ? ` Debug ID: ${capJson.debug_id}` : ''}`);
+          showToast(`Payment capture failed.${capJson?.debug_id ? ` Debug ID: ${capJson.debug_id}` : ''}`, 'error');
           return;
         }
 
-        alert('Card payment successful! 🎉');
+        // Set success transaction details
+        if (capJson?.payment) {
+          setSuccessTransaction(capJson.payment);
+        }
+        
+        showToast('Card payment successful! 🎉', 'success');
         onApproved();
       } catch (e: any) {
         console.error(e);
-        alert(e?.message || 'Card payment failed.');
+        showToast(e?.message || 'Card payment failed.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -359,6 +379,25 @@ export default function Billing() {
   // Refresh after success
   const onPaymentSuccess = () => {
     setRefreshPaymentsFlag((n) => n + 1);
+    // Set payment success state
+    setPaymentSuccess(true);
+    // Find the most recent completed payment and set it as the success transaction
+    const recentPayment = paymentHistory.find(p => p.status === 'completed');
+    if (recentPayment) {
+      setSuccessTransaction(recentPayment);
+    }
+  };
+  
+  // Check if we should show the success card based on active premium plan
+  const shouldShowSuccessCard = paymentSuccess || isPremiumActive;
+
+  // Close success card
+  const closeSuccessCard = () => {
+    // Only close if it was opened due to a recent payment, not due to active plan
+    if (paymentSuccess) {
+      setPaymentSuccess(false);
+      setSuccessTransaction(null);
+    }
   };
 
   return (
@@ -376,9 +415,12 @@ export default function Billing() {
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-md text-gray-700 hover:bg-gray-100 focus:outline-none">
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">Careercast</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10" />
         </div>
+
+        {/* Toast Container */}
+        <div id="toast-container" className="fixed top-4 right-4 z-50"></div>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-gray-50">
           <div className="max-w-6xl mx-auto">
@@ -386,6 +428,98 @@ export default function Billing() {
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Billing & Payment</h1>
               <p className="text-gray-600 text-sm sm:text-base">Manage your subscription, payment methods, and billing history</p>
             </div>
+
+            {/* Payment Success Card */}
+            {shouldShowSuccessCard && successTransaction && (
+              <div className="mb-8 bg-white rounded-xl shadow-lg border border-green-200 overflow-hidden">
+                <div className="bg-green-600 px-6 py-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-bold text-white">
+                      {paymentSuccess ? "Payment Successful" : "Active Premium Plan"}
+                    </h2>
+                    <Check className="h-8 w-8 text-white" />
+                  </div>
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Transaction Details</h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Transaction ID:</span>
+                          <span className="font-mono text-gray-900">{successTransaction.transaction_id ?? successTransaction.paypal_order_id ?? successTransaction.id}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Date:</span>
+                          <span className="text-gray-900">{new Date(successTransaction.finished_at || successTransaction.created_at).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Amount:</span>
+                          <span className="text-gray-900 font-semibold">{renderAmount(successTransaction)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Payment Method:</span>
+                          <span className="text-gray-900">{renderMethod(successTransaction.payment_mode)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Status:</span>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            {successTransaction.status}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Subscription Details</h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Plan:</span>
+                          <span className="font-semibold text-gray-900">Premium</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Billing Cycle:</span>
+                          <span className="text-gray-900">Monthly</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Next Billing Date:</span>
+                          <span className="text-gray-900">
+                            {profilePlan?.plan_renews_at 
+                              ? new Date(profilePlan.plan_renews_at).toLocaleDateString()
+                              : 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Features:</span>
+                          <span className="text-gray-900">Unlimited careercasts</span>
+                        </div>
+                        {profilePlan?.plan_renews_at && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Plan Status:</span>
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Active
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6 pt-6 border-t border-gray-200 flex flex-col sm:flex-row justify-end gap-3">
+                    <button
+                      onClick={closeSuccessCard}
+                      className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#01796F]"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#01796F] hover:bg-[#0B4F6C] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#01796F]"
+                    >
+                      Print Receipt
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {!PAYPAL_CLIENT_ID ? (
               <div className="mb-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -440,7 +574,7 @@ export default function Billing() {
                                     disabled={!user || !FUNCTIONS_URL || !SUPABASE_ANON_KEY}
                                     createOrder={async () => {
   if (!user) throw new Error('Not signed in');
-  const amountToCharge = 12.99; // Fixed amount for premium plan
+  const amountToCharge = 0.1;  //12.99 to 0.1 or 0.1 to 12.99 // Fixed amount for premium plan
   const { data: { session } = {} as any } = await supabase.auth.getSession();
   const accessToken = session?.access_token || '';
 
@@ -495,8 +629,9 @@ onApprove={async (data, actions) => {
       const paymentId = (window as any).__paymentId; // stored earlier in createOrder flow
 
       // POST captureResult to your server for DB update
+      let updatedPaymentData = null;
       if (paymentId) {
-        await fetch(`${FUNCTIONS_URL}/capture-order`, {
+        const response = await fetch(`${FUNCTIONS_URL}/capture-order`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -510,7 +645,9 @@ onApprove={async (data, actions) => {
             payer_email: payerEmail,
             payer_name: `${captureResult?.payer?.name?.given_name ?? ''} ${captureResult?.payer?.name?.surname ?? ''}`.trim() || null,
           }),
-        }).catch((e) => console.error('send capture to server failed', e));
+        });
+        
+        updatedPaymentData = await response.json();
       } else {
         console.warn('No paymentId stored; server update skipped.');
       }
@@ -518,8 +655,12 @@ onApprove={async (data, actions) => {
       // update UI after short delay so PayPal UI can finish
       setTimeout(() => {
         onPaymentSuccess();
-        // use toast instead of alert if available
-        alert('Payment successful! 🎉');
+        // Set the success transaction details
+        if (updatedPaymentData?.payment) {
+          setSuccessTransaction(updatedPaymentData.payment);
+        }
+        // use toast instead of alert
+        showToast('Payment successful! 🎉', 'success');
       }, 300);
 
       return captureResult;
@@ -546,7 +687,7 @@ onApprove={async (data, actions) => {
                                     }}
                                     createOrder={async () => {
   if (!user) throw new Error('Not signed in');
-  const amountToCharge = 12.99; // Fixed price for premium plan
+  const amountToCharge = 0.1; // Fixed price for premium plan
   const { data: { session } = {} as any } = await supabase.auth.getSession();
   const accessToken = session?.access_token || '';
 

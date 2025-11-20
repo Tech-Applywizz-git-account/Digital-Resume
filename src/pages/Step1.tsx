@@ -25,8 +25,8 @@ const Step1: React.FC = () => {
 
   useEffect(() => {
     // Load from localStorage
-    const savedTitle = localStorage.getItem('careerCast_jobTitle');
-    const savedDescription = localStorage.getItem('careerCast_jobDescription');
+    const savedTitle = localStorage.getItem('careercast_jobTitle');
+    const savedDescription = localStorage.getItem('careercast_jobDescription');
     
     if (savedTitle) setJobTitle(savedTitle);
     if (savedDescription) setJobDescription(savedDescription);
@@ -67,8 +67,8 @@ const handleSubmit = async (e: React.FormEvent) => {
   }
 
   // ✅ store job info + id locally for next steps
-  localStorage.setItem('careerCast_jobTitle', jobTitle);
-  localStorage.setItem('careerCast_jobDescription', jobDescription);
+  localStorage.setItem('careercast_jobTitle', jobTitle);
+  localStorage.setItem('careercast_jobDescription', jobDescription);
   localStorage.setItem('current_job_request_id', data.id);
 
   showToast('Job details saved!', 'success');
@@ -105,7 +105,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">Careercast</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
 

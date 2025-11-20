@@ -32,8 +32,18 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
   return (
     <div className="w-72 bg-gradient-to-b from-[#0B4F6C] to-[#159A9C] text-white shadow-xl h-screen sticky top-0 p-6 flex flex-col">
       <div className="mb-8">
-        <div className="font-bold text-3xl text-white mb-2">Careercast</div>
-        <div className="h-1 w-16 bg-white/30 rounded"></div>
+        {/* <div >
+          <img 
+            src="/images/networknote_final_logo_1 (2).jpg" 
+            alt="Network Note Logo" 
+            className="h-8 w-8 rounded-lg"
+          />
+        </div> */}
+        <span className="text-xl font-bold text-[white] font-noto pl-10
+">
+          NetworkNote
+        </span>
+        {/* <div className="h-1 w-16 bg-white/30 rounded"></div> */}
       </div>
 
       <div className="bg-white/10 rounded-lg p-4 mb-6 backdrop-blur-sm">

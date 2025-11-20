@@ -21,7 +21,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [careerCasts, setCareerCasts] = useState<any[]>([]);
+  const [careercasts, setcareercasts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showPricingPopup, setShowPricingPopup] = useState(false);
@@ -89,13 +89,13 @@ export default function Dashboard() {
     }
   };
 
-  // 🟢 Fetch user’s CareerCasts
+  // 🟢 Fetch user’s careercasts
   useEffect(() => {
     if (!user) return;
-    fetchCareerCasts();
+    fetchcareercasts();
   }, [user]);
 
-  const fetchCareerCasts = async () => {
+  const fetchcareercasts = async () => {
     if (!user) return;
     try {
       setLoading(true);
@@ -113,17 +113,17 @@ export default function Dashboard() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCareerCasts(data || []);
+      setcareercasts(data || []);
     } catch (error) {
-      console.error('Error fetching career casts:', error);
+      console.error('Error fetching Network Notes:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  // 🟢 Handle new CareerCast click
+  // 🟢 Handle new careercast click
   const handleNewCast = () => {
-    const completedRecordings = careerCasts.filter(
+    const completedRecordings = careercasts.filter(
       (cast) => cast.status === 'recorded'
     ).length;
 
@@ -203,7 +203,7 @@ export default function Dashboard() {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">Careercast</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">Network Note</div>
           <div className="w-10"></div>
         </div>
 
@@ -213,7 +213,7 @@ export default function Dashboard() {
             {/* Header */}
             <div className="border-b border-gray-200 bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] px-4 py-4 sm:px-8 sm:py-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-white">Your CareerCasts</h2>
+                <h2 className="text-xl sm:text-2xl font-bold text-white">Your Network Notes</h2>
                 <p className="text-white/80 text-xs sm:text-sm mt-1">
                   Track progress and manage your recordings
                 </p>
@@ -233,7 +233,7 @@ export default function Dashboard() {
                   className="bg-white text-[#0B4F6C] px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold hover:bg-white/90 transition-all shadow-md flex items-center justify-center gap-2 text-sm sm:text-base w-full sm:w-auto"
                 >
                   <Plus className="w-4 h-4" />
-                  New CareerCast
+                  New Network Note
                 </button>
               </div>
             </div>
@@ -242,14 +242,14 @@ export default function Dashboard() {
             {loading ? (
               <div className="flex flex-col items-center justify-center py-16 px-4">
                 <Loader2 className="animate-spin text-[#01796F] h-8 w-8 mb-4" />
-                <p className="text-gray-600 text-center">Loading your CareerCasts...</p>
+                <p className="text-gray-600 text-center">Loading your Network Notes...</p>
               </div>
-            ) : careerCasts.length === 0 ? (
+            ) : careercasts.length === 0 ? (
               <div className="text-center py-16 px-4">
                 <div className="bg-[#01796F]/10 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
                   <Video className="h-10 w-10 text-[#01796F]" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">No CareerCasts Yet</h3>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">No Network Notes Yet</h3>
                 <p className="text-gray-600 mb-6 text-sm max-w-md mx-auto">
                   Create your first professional video resume and make your profile shine.
                 </p>
@@ -257,7 +257,7 @@ export default function Dashboard() {
                   onClick={handleNewCast}
                   className="bg-[#01796F] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#016761] transition-colors shadow-md flex items-center justify-center mx-auto gap-2"
                 >
-                  <Plus className="w-5 h-5" /> Create CareerCast
+                  <Plus className="w-5 h-5" /> Create Network Note
                 </button>
               </div>
             ) : (
@@ -274,7 +274,7 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {careerCasts.map((cast) => {
+                    {careercasts.map((cast) => {
                       const video = cast.recordings?.[0]?.storage_path || null;
                       const both = cast.resume_path && video;
                       return (
@@ -429,7 +429,7 @@ export default function Dashboard() {
               <div className="p-5 sm:p-6">
                 <div className="text-center mb-4">
                   <Video className="mx-auto w-10 h-10 text-[#01796F]" />
-                  <h4 className="font-bold text-lg mt-2">Unlock Unlimited CareerCasts</h4>
+                  <h4 className="font-bold text-lg mt-2">Unlock Unlimited Network Notes</h4>
                   <p className="text-gray-600 text-sm mt-1">
                     You've reached your 3 free recordings. Upgrade now for 30 days of unlimited access.
                   </p>
@@ -438,7 +438,7 @@ export default function Dashboard() {
                   <ul className="text-sm text-gray-700 space-y-2">
                     <li className="flex items-center gap-2">
                       <CheckCircle className="w-4 h-4 text-[#01796F]" />
-                      <span>Unlimited CareerCasts</span>
+                      <span>Unlimited Network Notes</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle className="w-4 h-4 text-[#01796F]" />
