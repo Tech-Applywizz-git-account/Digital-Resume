@@ -922,7 +922,7 @@ export default async function handler(req, res) {
                 contentType: "HTML",
                 content: `
                   <div style="font-family:Arial;line-height:1.6;">
-                    <h2 style="color:#0078D4;">careercast OTP Verification</h2>
+                    <h2 style="color:#0078D4;">NetworkNote OTP Verification</h2>
                     <p>Your OTP for verification is:</p>
                     <h1>${generatedOtp}</h1>
                     <p>This OTP is valid for 10 minutes.</p>
