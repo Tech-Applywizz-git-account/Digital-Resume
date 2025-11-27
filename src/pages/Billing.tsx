@@ -7354,7 +7354,7 @@ export default function Billing() {
       price: "$0",
       period: "forever",
       features: [
-        "3 careercasts per month",
+        "3 NetworkNote per month",
         "Basic video recording",
         "Standard resume upload",
         "Community support",
