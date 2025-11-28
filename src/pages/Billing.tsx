@@ -6976,7 +6976,7 @@ import { showToast } from "../components/ui/toast";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
 // ───────────────── CONFIG ─────────────────
-const PREMIUM_PRICE = 0.10;
+const PREMIUM_PRICE = 9.99;
 const FREE_LIMIT = 3;
 const USAGE_TABLE_NAME = "careercasts";
 
@@ -7142,10 +7142,10 @@ export default function Billing() {
     !mode
       ? "PayPal"
       : mode === "paypal"
-      ? "Wallet (PayPal)"
-      : mode === "card"
-      ? "Card"
-      : mode;
+        ? "Wallet (PayPal)"
+        : mode === "card"
+          ? "Card"
+          : mode;
 
   const renderDate = (p: PaymentDetail) =>
     new Date(p.finished_at || p.created_at).toLocaleDateString();
@@ -7273,9 +7273,8 @@ export default function Billing() {
         null;
 
       const payerName =
-        `${captureResult?.payer?.name?.given_name || ""} ${
-          captureResult?.payer?.name?.surname || ""
-        }`.trim() || null;
+        `${captureResult?.payer?.name?.given_name || ""} ${captureResult?.payer?.name?.surname || ""
+          }`.trim() || null;
 
       const capture =
         captureResult?.purchase_units?.[0]?.payments?.captures?.[0] ?? null;
@@ -7324,8 +7323,7 @@ export default function Billing() {
       if (insertErr) {
         console.error("payment_details insert error:", insertErr);
         showToast(
-          `Payment captured, but we couldn't store it: ${
-            insertErr.message || "DB error"
+          `Payment captured, but we couldn't store it: ${insertErr.message || "DB error"
           }`,
           "error"
         );
@@ -7389,9 +7387,8 @@ export default function Billing() {
 
       {/* Sidebar */}
       <div
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 transform ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 transform ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
       >
         <Sidebar userEmail={user?.email || ""} onLogout={handleLogout} />
       </div>
@@ -7472,7 +7469,7 @@ export default function Billing() {
                             <span className="text-slate-900">
                               {new Date(
                                 effectiveTransaction.finished_at ||
-                                  effectiveTransaction.created_at
+                                effectiveTransaction.created_at
                               ).toLocaleString()}
                             </span>
                           </div>
@@ -7580,9 +7577,8 @@ export default function Billing() {
                       return (
                         <div
                           key={plan.key}
-                          className={`bg-white rounded-lg sm:rounded-xl shadow-sm border-2 ${
-                            isCurrent ? "border-cyan-600" : "border-slate-200"
-                          } overflow-hidden hover:shadow-lg transition-all duration-300`}
+                          className={`bg-white rounded-lg sm:rounded-xl shadow-sm border-2 ${isCurrent ? "border-cyan-600" : "border-slate-200"
+                            } overflow-hidden hover:shadow-lg transition-all duration-300`}
                         >
                           {isCurrent && (
                             <div className="bg-cyan-600 text-white text-center py-2 text-xs sm:text-sm font-semibold">
@@ -7753,13 +7749,12 @@ export default function Billing() {
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap">
                               <span
-                                className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                  p.status === "completed"
-                                    ? "bg-emerald-100 text-emerald-800"
-                                    : p.status === "pending"
+                                className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === "completed"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : p.status === "pending"
                                     ? "bg-yellow-100 text-yellow-800"
                                     : "bg-red-100 text-red-800"
-                                }`}
+                                  }`}
                               >
                                 {p.status}
                               </span>

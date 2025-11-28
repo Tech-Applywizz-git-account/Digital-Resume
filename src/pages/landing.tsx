@@ -242,7 +242,7 @@
 //         {/* Gradient line using STEP #1 colors */}
 //         {/* <div className="w-1 h-24 bg-gradient-to-b from-[#0B4F6C] to-[#159A9C] mb-6 rounded-full" /> */}
 
-       
+
 
 // <h1 className="text-5xl lg:text-7xl font-black tracking-tight mb-6 leading-tight text-gray-900">
 //   <TypeAnimation
@@ -1080,7 +1080,7 @@
 
 //             <div className="p-6 sm:p-8">
 //               <h2 className="text-2xl font-bold mb-4">Network Note - Terms & Conditions</h2>
-              
+
 //               <div className="text-gray-600 space-y-4">
 //                 <p className="font-medium">By proceeding, I agree that:</p>
 
@@ -4474,7 +4474,7 @@
 //       const target = id ? document.getElementById(id) : null;
 
 //       e.preventDefault();
-      
+
 //       if (target) {
 //           target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 //       } else {
@@ -5492,7 +5492,7 @@ export default function Landing() {
 
   const handleBuyNow = (plan: "US" | "UK") => {
     const isUK = plan === "UK";
-    const amount = isUK ? 0.1 : 0.1;
+    const amount = isUK ? 12.99 : 12.99;
     const currency = isUK ? "GBP" : "USD";
     navigate("/signup", {
       state: { plan, amount, currency },
@@ -5631,8 +5631,8 @@ export default function Landing() {
               <div className="relative h-[420px] overflow-visible">
                 {/* RENDER LOGIC: only render the matching region card, unless userCountry === "OTHER" (unknown) -> show both */}
                 {/* US Card: show if detected US OR if unknown (OTHER) and you want to show both; here we show only when US or OTHER */}
-                { (userCountry === "US" || userCountry === "OTHER") && (
-                  <motion.div className="absolute inset-0" animate={ activePlanIndex === 0 ? { scale: 1, x: 0, y: 0, opacity: 1, zIndex: 20 } : { scale: 0.92, x: -110, y: 24, opacity: 0.75, zIndex: 10 } } transition={{ duration: 0.45, ease: "easeInOut" }}>
+                {(userCountry === "US" || userCountry === "OTHER") && (
+                  <motion.div className="absolute inset-0" animate={activePlanIndex === 0 ? { scale: 1, x: 0, y: 0, opacity: 1, zIndex: 20 } : { scale: 0.92, x: -110, y: 24, opacity: 0.75, zIndex: 10 }} transition={{ duration: 0.45, ease: "easeInOut" }}>
                     <div className={cardClass}>
                       <div className={glow} />
                       <div className="relative bg-slate-900 rounded-2xl p-8 text-white overflow-hidden shadow-xl">
@@ -5647,7 +5647,7 @@ export default function Landing() {
                             <span className="text-slate-300 ml-2"> / lifetime</span>
                           </div>
                           <ul className="space-y-3 mb-8 text-sm">
-                            {["Access 150+ verified companies","Company names, domains & career links","Weekly list updates included","Lifetime login, no expiry"].map((text, idx) => (
+                            {["Access 150+ verified companies", "Company names, domains & career links", "Weekly list updates included", "Lifetime login, no expiry"].map((text, idx) => (
                               <li key={idx} className="flex items-center gap-3">
                                 <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center"><span className="text-white text-xs">✓</span></div>
                                 <span>{text}</span>
@@ -5662,8 +5662,8 @@ export default function Landing() {
                 )}
 
                 {/* UK Card: show if detected GB OR if unknown (OTHER) -> show both */}
-                { (userCountry === "GB" || userCountry === "OTHER") && (
-                  <motion.div className="absolute inset-0" animate={ activePlanIndex === 1 ? { scale: 1, x: 0, y: 0, opacity: 1, zIndex: 20 } : { scale: 0.92, x: 110, y: 24, opacity: 0.75, zIndex: 10 } } transition={{ duration: 0.45, ease: "easeInOut" }}>
+                {(userCountry === "GB" || userCountry === "OTHER") && (
+                  <motion.div className="absolute inset-0" animate={activePlanIndex === 1 ? { scale: 1, x: 0, y: 0, opacity: 1, zIndex: 20 } : { scale: 0.92, x: 110, y: 24, opacity: 0.75, zIndex: 10 }} transition={{ duration: 0.45, ease: "easeInOut" }}>
                     <div className={cardClass}>
                       <div className={glow} />
                       <div className="relative bg-slate-900 rounded-2xl p-8 text-white overflow-hidden shadow-xl">
@@ -5678,7 +5678,7 @@ export default function Landing() {
                             <span className="text-slate-300 ml-2"> / lifetime</span>
                           </div>
                           <ul className="space-y-3 mb-8 text-sm">
-                            {["Access 150+ verified companies","Company names, domains & career links","Weekly list updates included","Lifetime login, no expiry"].map((text, idx) => (
+                            {["Access 150+ verified companies", "Company names, domains & career links", "Weekly list updates included", "Lifetime login, no expiry"].map((text, idx) => (
                               <li key={idx} className="flex items-center gap-3">
                                 <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center"><span className="text-white text-xs">✓</span></div>
                                 <span>{text}</span>
@@ -5760,12 +5760,12 @@ export default function Landing() {
 
             <div>
               <h4 className="font-semibold mb-4 text-slate-900 text-sm">Quick Links</h4>
-              <div className="space-y-2 text-sm">{["Solutions","Pricing","Privacy","Terms","Careers"].map((link) => <a key={link} href="#" className="block text-slate-600 hover:text-slate-900 transition-colors">{link}</a>)}</div>
+              <div className="space-y-2 text-sm">{["Solutions", "Pricing", "Privacy", "Terms", "Careers"].map((link) => <a key={link} href="#" className="block text-slate-600 hover:text-slate-900 transition-colors">{link}</a>)}</div>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4 text-slate-900 text-sm">Connect</h4>
-              <div className="flex gap-3">{[{ icon: Linkedin, href: "#" },{ icon: Youtube, href: "#" },{ icon: Twitter, href: "#" },{ icon: Instagram, href: "#" }].map((social, i) => <motion.a key={i} href={social.href} whileHover={{ scale: 1.1, boxShadow: "0 0 18px rgba(148,163,184,0.6)" }} className="w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center hover:border-cyan-400 transition-all"><social.icon className="h-4 w-4 text-slate-600" /></motion.a>)}</div>
+              <div className="flex gap-3">{[{ icon: Linkedin, href: "#" }, { icon: Youtube, href: "#" }, { icon: Twitter, href: "#" }, { icon: Instagram, href: "#" }].map((social, i) => <motion.a key={i} href={social.href} whileHover={{ scale: 1.1, boxShadow: "0 0 18px rgba(148,163,184,0.6)" }} className="w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center hover:border-cyan-400 transition-all"><social.icon className="h-4 w-4 text-slate-600" /></motion.a>)}</div>
             </div>
           </div>
           <div className="pt-6 border-t border-slate-200 text-center text-slate-500 text-xs"><p>© {new Date().getFullYear()} Network Note | All Rights Reserved</p></div>
