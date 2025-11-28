@@ -51,6 +51,38 @@
  * 2. Copy and paste the content into the SQL Editor and run it.
  *    (This prevents "double charging" of credits if the frontend submits twice)
  */
+
+-- =====================================================
+-- STEP 1.4: Fix Duplicates & Recalculate Credits (RUN THIS NOW)
+-- =====================================================
+
+/**
+ * If you are seeing "Double Credits" (e.g. 6 instead of 3), run this script immediately.
+ * 1. Open `supabase-functions/migrations/fix_duplicate_payments_and_credits.sql`
+ * 2. Copy and paste the content into the SQL Editor and run it.
+ *    (This cleans up duplicates and resets everyone's credits to the correct amount)
+ */
+
+-- =====================================================
+-- STEP 1.5: Debug Constraints (If issues persist)
+-- =====================================================
+
+/**
+ * Run this to check if the unique constraint exists and see recent payments.
+ * 1. Open `supabase-functions/migrations/debug_constraints.sql`
+ * 2. Copy and paste the content into the SQL Editor and run it.
+ */
+
+-- =====================================================
+-- STEP 1.6: Strict Credit Enforcement (FINAL FIX)
+-- =====================================================
+
+/**
+ * Run this to permanently fix the "Double/Triple Credits" issue.
+ * It adds a `credits_granted` flag to payments so they can NEVER trigger twice.
+ * 1. Open `supabase-functions/migrations/strict_credit_enforcement.sql`
+ * 2. Copy and paste the content into the SQL Editor and run it.
+ */
  * 3. Click on "SQL Editor" in the left sidebar
  * 4. Click "New Query"
  * 5. Copy and paste the ENTIRE contents of `add_credits_system.sql`
