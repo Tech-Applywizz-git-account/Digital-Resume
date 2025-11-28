@@ -66,7 +66,7 @@ const Step1: React.FC = () => {
               email: user.email,
               plan_tier: 'free',
               plan_status: 'active',
-              credits_remaining: 0,
+              credits_remaining: 3, // Initial 3 credits for new users
             },
           ]);
       }
@@ -139,7 +139,7 @@ const Step1: React.FC = () => {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">Network Note</div>
           <div className="w-10"></div>
         </div>
 
