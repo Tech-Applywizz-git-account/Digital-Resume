@@ -27,70 +27,78 @@ const Step1: React.FC = () => {
     // Load from localStorage
     const savedTitle = localStorage.getItem('careercast_jobTitle');
     const savedDescription = localStorage.getItem('careercast_jobDescription');
-    
+
     if (savedTitle) setJobTitle(savedTitle);
     if (savedDescription) setJobDescription(savedDescription);
   }, []);
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  if (!jobTitle.trim() || !jobDescription.trim()) {
-    showToast('Please fill in all required fields.', 'warning');
-    return;
-  }
+    if (!jobTitle.trim() || !jobDescription.trim()) {
+      showToast('Please fill in all required fields.', 'warning');
+      return;
+    }
 
-  // Directly use the user from the context
-  if (!user) {
-    showToast('Please sign in again.', 'warning');
-    return;
-  }
+    // Directly use the user from the context
+    if (!user) {
+      showToast('Please sign in again.', 'warning');
+      return;
+    }
 
-  // ✅ insert new job request
-  const { data, error } = await supabase
-    .from('job_requests')
-    .insert([
-      {
-        user_id: user.id,
-        job_title: jobTitle,
-        job_description: jobDescription,
-        status: 'draft',
-      },
-    ])
-    .select('id')
-    .single();
+    setSubmitting(true);
 
-  if (error) {
-    console.error('❌ Error creating job request:', error.message);
-    showToast('Failed to save job details.', 'error');
-    return;
-  }
+    try {
+      // ✅ insert new job request with email field
+      const { data, error } = await supabase
+        .from('job_requests')
+        .insert([
+          {
+            user_id: user.id,
+            email: user.email, // Add email to satisfy foreign key constraint
+            job_title: jobTitle,
+            job_description: jobDescription,
+            status: 'draft',
+          },
+        ])
+        .select('id')
+        .single();
 
-  // ✅ store job info + id locally for next steps
-  localStorage.setItem('careercast_jobTitle', jobTitle);
-  localStorage.setItem('careercast_jobDescription', jobDescription);
-  localStorage.setItem('current_job_request_id', data.id);
+      if (error) {
+        console.error('❌ Error creating job request:', error.message, error);
+        showToast('Failed to save job details. Please try again.', 'error');
+        return;
+      }
 
-  showToast('Job details saved!', 'success');
-  navigate('/step2');
-};
+      // ✅ store job info + id locally for next steps
+      localStorage.setItem('careercast_jobTitle', jobTitle);
+      localStorage.setItem('careercast_jobDescription', jobDescription);
+      localStorage.setItem('current_job_request_id', data.id);
 
+      showToast('Job details saved!', 'success');
+      navigate('/step2');
+    } catch (err: any) {
+      console.error('❌ Unexpected error:', err);
+      showToast('An error occurred. Please try again.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white flex">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         ></div>
       )}
 
       {/* Sidebar */}
-      <div 
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 transform ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
+      <div
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
       >
         <Sidebar userEmail={user?.email || ''} onLogout={handleLogout} />
       </div>
@@ -117,7 +125,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                 <div className="flex justify-between items-center mb-6 relative px-4 sm:px-8">
                   {/* Connecting Line - Full gray */}
                   <div className="absolute top-4 left-12 sm:left-16 right-12 sm:right-16 h-0.5 bg-gray-300 -z-10"></div>
-                  
+
                   {/* Step 1 - Active */}
                   <div className="flex flex-col items-center relative z-10">
                     <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-semibold">
@@ -126,7 +134,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                     <span className="text-xs mt-1 text-blue-600 font-medium hidden sm:block">Job Details</span>
                     <span className="text-xs mt-1 text-blue-600 font-medium sm:hidden">Step 1</span>
                   </div>
-                  
+
                   {/* Step 2 - Inactive */}
                   <div className="flex flex-col items-center relative z-10">
                     <div className="w-8 h-8 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-semibold">
@@ -135,7 +143,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                     <span className="text-xs mt-1 text-gray-500 hidden sm:block">Upload Resume</span>
                     <span className="text-xs mt-1 text-gray-500 sm:hidden">Step 2</span>
                   </div>
-                  
+
                   {/* Step 3 - Inactive */}
                   <div className="flex flex-col items-center relative z-10">
                     <div className="w-8 h-8 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-semibold">
