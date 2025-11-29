@@ -5326,6 +5326,8 @@ import {
   Minus,
   ChevronLeft,
   ChevronRight,
+  Menu,
+  X,
 } from "lucide-react";
 
 // --- START: Mocked/Local Dependencies to resolve import errors ---
@@ -5375,6 +5377,7 @@ export default function Landing() {
   const [userCountry, setUserCountry] = useState<"US" | "GB" | "OTHER">("OTHER");
   const [activePlanIndex, setActivePlanIndex] = useState(0);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const companies = [
     "Amazon",
@@ -5421,7 +5424,7 @@ export default function Landing() {
   const faqs = [
     {
       q: "How do I create my first Network Note?",
-      a: "Simply sign up for free, upload your resume, record a 60-90 second video pitch, and share it with recruiters. Our platform guides you through each step.",
+      a: "Simply get the credits by paying 12.99$ initially, upload your resume, record a 60-90 second video pitch, and share it with recruiters. Our platform guides you through each step.",
     },
     {
       q: "Can I re-record my video?",
@@ -5526,13 +5529,55 @@ export default function Landing() {
             </nav>
 
             <div className="flex items-center gap-2">
-              <Button variant="outline" className="hidden sm:inline-flex border-slate-200 text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 rounded-xl px-4 py-2 text-sm" onClick={() => navigate("/auth")}>Login</Button>
+              <Button variant="outline" className="hidden md:inline-flex border-slate-200 text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 rounded-xl px-4 py-2 text-sm" onClick={() => navigate("/auth")}>Login</Button>
               <Button className="bg-slate-900 text-white rounded-xl px-4 sm:px-5 py-2 text-sm font-semibold hover:bg-slate-800 hover:shadow-lg active:scale-[0.98] transition-all flex items-center" onClick={() => navigate(isAuthenticated ? "/dashboard" : "/signup")}>
                 {isAuthenticated ? "Dashboard" : "Get Started"}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
+
+              {/* Hamburger Menu Button - Only visible on mobile/tablet */}
+              <button
+                className="md:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label="Toggle menu"
+              >
+                {mobileMenuOpen ? <X className="h-6 w-6 text-slate-900" /> : <Menu className="h-6 w-6 text-slate-900" />}
+              </button>
             </div>
           </div>
+
+          {/* Mobile Menu Dropdown */}
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="md:hidden mt-4 pb-4 border-t border-slate-200 pt-4"
+            >
+              <nav className="flex flex-col gap-3 items-center">
+                {["Solutions", "Resources", "Company", "Pricing"].map((item) => (
+                  <a
+                    key={item}
+                    href={`#${item.toLowerCase()}`}
+                    className="text-slate-700 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-colors font-medium text-center"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    {item}
+                  </a>
+                ))}
+                <Button
+                  className="bg-slate-900 text-white rounded-xl px-4 py-2 text-sm font-semibold hover:bg-slate-800 hover:shadow-lg active:scale-[0.98] transition-all w-full justify-center max-w-xs"
+                  onClick={() => {
+                    navigate("/auth");
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  Login
+                </Button>
+              </nav>
+            </motion.div>
+          )}
         </div>
       </motion.header>
 
@@ -5549,7 +5594,7 @@ export default function Landing() {
               </p>
 
               <Button size="lg" className="bg-slate-900 text-white rounded-xl hover:bg-slate-800 hover:shadow-xl active:scale-[0.98] transition-all text-base px-7 flex items-center" onClick={() => navigate("/signup")}>
-                Sign up for free
+                Get Started
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </motion.div>

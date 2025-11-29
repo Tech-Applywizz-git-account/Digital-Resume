@@ -218,8 +218,22 @@ export default function Billing() {
   };
 
   // ───────────────── Premium State ─────────────────
-  // We define "Premium Active" as having credits > 0
-  const isPremiumActive = credits > 0;
+  // Check if user has made any $9.99 premium purchases (not the initial $12.99)
+  const hasPremiumPurchase = paymentHistory.some(
+    (p) => p.status === "completed" && Number(p.amount) === PREMIUM_PRICE
+  );
+
+  // Calculate base credits (from initial $12.99 payment, not from $9.99 premium purchases)
+  const premiumPaymentsCount = paymentHistory.filter(
+    (p) => p.status === "completed" && Number(p.amount) === PREMIUM_PRICE
+  ).length;
+  const totalPremiumCredits = premiumPaymentsCount * CREDITS_PER_PURCHASE;
+  const baseCredits = Math.max(0, credits - totalPremiumCredits);
+
+  // Premium is active only if:
+  // 1. User has credits remaining AND
+  // 2. User has made at least one $9.99 premium purchase
+  const isPremiumActive = credits > 0 && hasPremiumPurchase;
 
   const latestCompleted = paymentHistory.find((p) => p.status === "completed");
   const nextBillingDate = latestCompleted?.metadata?.plan_renews_at
@@ -654,9 +668,9 @@ export default function Billing() {
                               </h3>
 
                               {plan.key === "free" && (
-                                <div className={`text-xs sm:text-sm px-3 py-1 rounded-full font-semibold ${credits > 0 ? "bg-orange-100 text-orange-800" : "bg-red-100 text-red-800"
+                                <div className={`text-xs sm:text-sm px-3 py-1 rounded-full font-semibold ${baseCredits > 0 ? "bg-orange-100 text-orange-800" : "bg-red-100 text-red-800"
                                   }`}>
-                                  {credits > 0 ? `${credits} Credits` : "No Credits"}
+                                  {baseCredits > 0 ? `${baseCredits} Credits` : "No Credits"}
                                 </div>
                               )}
 
