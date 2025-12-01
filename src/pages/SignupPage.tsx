@@ -1830,7 +1830,16 @@ const SignupPage: React.FC = () => {
       {/* Top back button */}
       <div className="mx-auto w-full max-w-5xl px-4 pt-6">
         <button
-          onClick={() => navigate("/")}
+          onClick={() => {
+            if (step === "payment") {
+              setStep("form");
+              if (typeof window !== "undefined") {
+                localStorage.removeItem(STORAGE_KEY);
+              }
+            } else {
+              navigate("/");
+            }
+          }}
           className="group inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
         >
           <svg
@@ -1844,7 +1853,7 @@ const SignupPage: React.FC = () => {
               clipRule="evenodd"
             />
           </svg>
-          Back to home
+          {step === "payment" ? "Back to details" : "Back to home"}
         </button>
       </div>
 
