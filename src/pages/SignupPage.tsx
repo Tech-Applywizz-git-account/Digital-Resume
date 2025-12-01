@@ -1460,7 +1460,7 @@ const SignupPage: React.FC = () => {
   };
 
   const [plan, setPlan] = useState<"US" | "UK">(state.plan ?? "US");
-  const [amount, setAmount] = useState<number>(state.amount ?? 0.10); // Changed from 12.99 to 0.10
+  const [amount, setAmount] = useState<number>(state.amount ?? 12.99); // Changed from 12.99 to 0.10
   const [currency, setCurrency] = useState<string>(state.currency ?? "USD");
 
   const [step, setStep] = useState<Step>("form");
@@ -1773,7 +1773,7 @@ const SignupPage: React.FC = () => {
                 email,
                 full_name: fullName,
                 password, // firstName@123
-                login_url: "http://localhost:5173/auth", // or your live URL
+                login_url: "https://www.networknote.online/auth", // or your live URL
                 transaction_id: params.captureId || params.orderId,
                 amount,
                 currency,

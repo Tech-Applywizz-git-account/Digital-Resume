@@ -5495,7 +5495,7 @@ export default function Landing() {
 
   const handleBuyNow = (plan: "US" | "UK") => {
     const isUK = plan === "UK";
-    const amount = isUK ? 0.10 : 0.10;
+    const amount = isUK ? 12.99 : 12.99;
     const currency = isUK ? "GBP" : "USD";
     navigate("/signup", {
       state: { plan, amount, currency },

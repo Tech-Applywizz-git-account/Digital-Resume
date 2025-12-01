@@ -8,7 +8,7 @@ import { showToast } from "../components/ui/toast";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
 // ───────────────── CONFIG ─────────────────
-const PREMIUM_PRICE = 0.10; // Changed from 12.99 to 0.10
+const PREMIUM_PRICE = 9.99; // Changed from 12.99 to 0.10
 const CREDITS_PER_PURCHASE = 3;
 const USAGE_TABLE_NAME = "job_requests"; // Changed from careercasts to match our schema
 
