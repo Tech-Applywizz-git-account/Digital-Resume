@@ -596,13 +596,13 @@ export default function Auth() {
             <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
               <div className="text-center mb-6">
                 <div className="flex items-center justify-center gap-3 mb-3">
-                  <div className="h-10 w-10 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center">
+                  {/* <div className="h-10 w-10 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center">
                     <img
                       src="/images/networknote_final_logo_1 (2).jpg"
                       alt="Digital Resume Logo"
                       className="h-full w-full object-cover"
                     />
-                  </div>
+                  </div> */}
 
                   <div>
                     <span className="text-xl font-bold text-slate-900 font-noto">
@@ -626,8 +626,8 @@ export default function Auth() {
               <div className="flex border border-slate-200 rounded-xl p-1 mb-6 bg-slate-50">
                 <button
                   className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === "login"
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "text-slate-600 bg-transparent hover:bg-white"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-600 bg-transparent hover:bg-white"
                     }`}
                   onClick={() => {
                     setActiveTab("login");
