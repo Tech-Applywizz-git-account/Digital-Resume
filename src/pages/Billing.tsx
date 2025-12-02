@@ -283,7 +283,7 @@ export default function Billing() {
             value: PREMIUM_PRICE.toFixed(2),
             currency_code: activeCurrency,
           },
-          description: `CareerCast Premium – ${CREDITS_PER_PURCHASE} Credits`,
+          description: `Digital Resume Premium – ${CREDITS_PER_PURCHASE} Credits`,
         },
       ],
       application_context: {
@@ -420,18 +420,18 @@ export default function Billing() {
 
   // ───────────────── Plans ─────────────────
   const plans = [
-    {
-      key: "free",
-      name: "Base Plan",
-      price: "$12.99",
-      period: "forever",
-      features: [
-        "3 CareerCast Credits",
-        "Basic video recording",
-        "Standard resume upload",
-      ],
-      current: !isPremiumActive,
-    },
+    // {
+    //   key: "free",
+    //   name: "Base Plan",
+    //   price: "$12.99",
+    //   period: "forever",
+    //   features: [
+    //     "3 Digital Resume Credits",
+    //     "Basic video recording",
+    //     "Standard resume upload",
+    //   ],
+    //   current: !isPremiumActive,
+    // },
     {
       key: "premium",
       name: "Premium Top-Up",
@@ -503,7 +503,7 @@ export default function Billing() {
               <div className="mb-8 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Credits Remaining</h2>
-                  <p className="text-slate-600">Use credits to create new CareerCasts</p>
+                  <p className="text-slate-600">Use credits to create new Digital Resumes</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Zap className={`h-6 w-6 ${credits > 0 ? 'text-emerald-500' : 'text-red-500'}`} />

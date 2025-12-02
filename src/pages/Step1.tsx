@@ -9,6 +9,7 @@ import { useAuth } from "../contexts/AuthContext";
 import Sidebar from '../components/Sidebar';
 import { Menu } from 'lucide-react';
 import { showToast } from "../components/ui/toast";
+import { getUserInfo } from '../utils/crmHelpers';
 
 const Step1: React.FC = () => {
   const navigate = useNavigate();
@@ -30,7 +31,21 @@ const Step1: React.FC = () => {
 
     if (savedTitle) setJobTitle(savedTitle);
     if (savedDescription) setJobDescription(savedDescription);
-  }, []);
+
+    // DEBUG: Check CRM status
+    const checkCRM = async () => {
+      if (user) {
+        const userInfo = await getUserInfo(user.id);
+        console.log("🔍 Step 1 CRM Check:", userInfo);
+        if (userInfo.isCRMUser) {
+          showToast(`CRM User Detected: ${userInfo.email}`, 'success');
+        } else {
+          // showToast('Regular User Detected', 'info');
+        }
+      }
+    };
+    checkCRM();
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,61 +63,97 @@ const Step1: React.FC = () => {
     setSubmitting(true);
 
     try {
-      // ✅ First, ensure the user's profile exists
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('id, email')
-        .eq('id', user.id)
-        .maybeSingle();
+      // Check if CRM user
+      const userInfo = await getUserInfo(user.id);
 
-      // If profile doesn't exist, create it
-      if (!profileData) {
-        console.log('Creating profile for user:', user.email);
-        await supabase
+      if (userInfo.isCRMUser && userInfo.email) {
+        // CRM user - save to crm_job_requests
+        const { data, error } = await supabase
+          .from('crm_job_requests')
+          .insert([{
+            email: userInfo.email,
+            user_id: user.id,
+            job_title: jobTitle,
+            job_description: jobDescription,
+            application_status: 'draft',
+          }])
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('❌ Error creating CRM job request:', error.message, error);
+          showToast('Failed to save job details. Please try again.', 'error');
+          return;
+        }
+
+        // Store job info + id locally for next steps
+        localStorage.setItem('careercast_jobTitle', jobTitle);
+        localStorage.setItem('careercast_jobDescription', jobDescription);
+        localStorage.setItem('current_job_request_id', data.id);
+        localStorage.setItem('is_crm_user', 'true');
+        localStorage.setItem('crm_user_email', userInfo.email);
+
+        showToast('Job details saved!', 'success');
+        navigate('/step2');
+      } else {
+        // Regular user - existing logic
+        // ✅ First, ensure the user's profile exists
+        const { data: profileData } = await supabase
           .from('profiles')
-          .insert([
-            {
-              id: user.id,
-              email: user.email,
-              plan_tier: 'free',
-              plan_status: 'active',
-              credits_remaining: 3, // Initial 3 credits for new users
-            },
-          ]);
+          .select('id, email')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        // If profile doesn't exist, create it
+        if (!profileData) {
+          console.log('Creating profile for user:', user.email);
+          await supabase
+            .from('profiles')
+            .insert([
+              {
+                id: user.id,
+                email: user.email,
+                plan_tier: 'free',
+                plan_status: 'active',
+                credits_remaining: 3, // Initial 3 credits for new users
+              },
+            ]);
+        }
+
+        // ✅ Insert new job request
+        const jobRequestData: any = {
+          user_id: user.id,
+          job_title: jobTitle,
+          job_description: jobDescription,
+          status: 'draft',
+        };
+
+        // Add email only if it exists
+        if (user.email) {
+          jobRequestData.email = user.email;
+        }
+
+        const { data, error } = await supabase
+          .from('job_requests')
+          .insert([jobRequestData])
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('❌ Error creating job request:', error.message, error);
+          showToast('Failed to save job details. Please try again.', 'error');
+          return;
+        }
+
+        // ✅ Store job info + id locally for next steps
+        localStorage.setItem('careercast_jobTitle', jobTitle);
+        localStorage.setItem('careercast_jobDescription', jobDescription);
+        localStorage.setItem('current_job_request_id', data.id);
+        localStorage.setItem('is_crm_user', 'false');
+
+        showToast('Job details saved!', 'success');
+        navigate('/step2');
       }
-
-      // ✅ Insert new job request
-      const jobRequestData: any = {
-        user_id: user.id,
-        job_title: jobTitle,
-        job_description: jobDescription,
-        status: 'draft',
-      };
-
-      // Add email only if it exists
-      if (user.email) {
-        jobRequestData.email = user.email;
-      }
-
-      const { data, error } = await supabase
-        .from('job_requests')
-        .insert([jobRequestData])
-        .select('id')
-        .single();
-
-      if (error) {
-        console.error('❌ Error creating job request:', error.message, error);
-        showToast('Failed to save job details. Please try again.', 'error');
-        return;
-      }
-
-      // ✅ Store job info + id locally for next steps
-      localStorage.setItem('careercast_jobTitle', jobTitle);
-      localStorage.setItem('careercast_jobDescription', jobDescription);
-      localStorage.setItem('current_job_request_id', data.id);
-
-      showToast('Job details saved!', 'success');
-      navigate('/step2');
     } catch (err: any) {
       console.error('❌ Unexpected error:', err);
       showToast('An error occurred. Please try again.', 'error');
@@ -139,7 +190,7 @@ const Step1: React.FC = () => {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">Network Note</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">Digital Resume</div>
           <div className="w-10"></div>
         </div>
 

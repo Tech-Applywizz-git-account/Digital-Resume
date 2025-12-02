@@ -82,33 +82,33 @@
 
 //   const handleSubmit = async (e: React.FormEvent) => {
 //     e.preventDefault();
-    
+
 //     if (showForgotPassword) {
 //       // Handle forgot password flow
 //       if (!otpVerified) {
 //         setError('Please verify OTP first');
 //         return;
 //       }
-      
+
 //       if (formData.newPassword !== formData.confirmPassword) {
 //         setError('New passwords do not match');
 //         return;
 //       }
-      
+
 //       if (formData.newPassword.length < 8) {
 //         setError('Password must be at least 8 characters');
 //         return;
 //       }
-      
+
 //       try {
 //         setLoading(true);
 //         setError('');
-        
+
 //         // Update password in Supabase
 //         const { error } = await supabase.auth.updateUser({
 //           password: formData.newPassword
 //         });
-        
+
 //         if (error) throw error;
 
 //         alert("🎉Password updated successfully...")
@@ -134,23 +134,23 @@
 //         setError('Please fill in all password fields');
 //         return;
 //       }
-      
+
 //       if (formData.newPassword !== formData.confirmPassword) {
 //         setError('New passwords do not match');
 //         return;
 //       }
-      
+
 //       try {
 //         setLoading(true);
 //         setError('');
-        
+
 //         // Update password in Supabase
 //         const { data, error } = await supabase.auth.updateUser({
 //           password: formData.newPassword
 //         });
-        
+
 //         if (error) throw error;
-        
+
 //         setSuccess('Password updated successfully');
 //         // Reset form
 //         setFormData({
@@ -221,7 +221,7 @@
 //                 {error}
 //               </div>
 //             )}
-            
+
 //             {success && (
 //               <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm sm:text-base">
 //                 {success}
@@ -255,7 +255,7 @@
 //                         />
 //                       </div>
 //                     </div>
-                    
+
 //                     {!otpSent ? (
 //                       <div className="mb-4 sm:mb-6">
 //                         <button
@@ -292,7 +292,7 @@
 //                             </button>
 //                           </div>
 //                         </div>
-                        
+
 //                         <div className="mb-4 sm:mb-6 text-sm text-gray-600">
 //                           Didn't receive the OTP? Check your spam folder or{' '}
 //                           <button
@@ -473,7 +473,7 @@
 //                   >
 //                     {loading ? 'Saving...' : showForgotPassword && otpVerified ? 'Update Password' : showForgotPassword ? 'Continue' : 'Save Changes'}
 //                   </button>
-                  
+
 //                   {!showForgotPassword && (
 //                     <button
 //                       type="button"
@@ -483,7 +483,7 @@
 //                       Forgot Password?
 //                     </button>
 //                   )}
-                  
+
 //                   {showForgotPassword && (
 //                     <button
 //                       type="button"
@@ -697,7 +697,7 @@ export default function Password() {
 
           <div className="flex items-center gap-2">
             <img src="/images/networknote_final_logo_1 (2).jpg" alt="NetworkNote" className="h-8 w-8 rounded-lg" />
-            <span className="text-base font-semibold text-[#0B4F6C]">NetworkNote</span>
+            <span className="text-base font-semibold text-[#0B4F6C]">Digital Resume</span>
           </div>
 
           <div className="w-10" />

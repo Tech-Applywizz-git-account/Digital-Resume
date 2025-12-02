@@ -173,7 +173,7 @@ Format as plain text (no Markdown).
       showToast("Generate a valid introduction before finishing.", "warning");
       return;
     }
-    showToast("Network Note completed! Redirecting to dashboard.", "success");
+    showToast("Digital Resume completed! Redirecting to dashboard.", "success");
     navigate("/dashboard");
   };
 
@@ -209,7 +209,7 @@ Format as plain text (no Markdown).
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">Network Note</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">Digital Resume</div>
           <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
 
@@ -246,7 +246,7 @@ Format as plain text (no Markdown).
                 </div>
 
                 <CardTitle className="text-xl sm:text-2xl font-bold text-center">
-                  Record Your Network Note Video
+                  Record Your Digital Resume Video
                 </CardTitle>
                 <div className="text-center text-gray-600 mt-2 text-sm sm:text-base">
                   Job Title: <span className="font-semibold">{jobTitle}</span>
@@ -377,7 +377,7 @@ Format as plain text (no Markdown).
                     disabled={isGenerating || !teleprompterText}
                     className="text-sm sm:text-base"
                   >
-                    Finish & Save Network Note
+                    Finish & Save Digital Resume
                   </Button>
                 </div>
               </CardContent>

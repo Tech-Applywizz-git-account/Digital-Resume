@@ -5511,11 +5511,11 @@ export default function Landing() {
         <div className="w-full px-8 lg:px-16 py-3.5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate("/")}>
-              <div className="h-8 w-8 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
+              {/* <div className="h-8 w-8 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
                 <img src="/images/networknote_final_logo_1 (2).jpg" alt="NetworkNote logo" className="h-full w-full object-cover" />
-              </div>
+              </div> */}
               <div className="flex flex-col">
-                <span className="text-base font-semibold text-slate-900">NetworkNote</span>
+                <span className="text-2xl font-semibold text-slate-900" style={{ fontFamily: 'Aerospace' }}>Digital Resume</span>
               </div>
             </div>
 
@@ -5586,7 +5586,7 @@ export default function Landing() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <motion.div initial={{ opacity: 0, x: -50 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.8 }}>
               <h1 className="text-6xl lg:text-6xl font-black tracking-tight mb-5 leading-tight text-slate-900">
-                <TypeAnimation sequence={["YOUR NETWORK NOTE.", 1000]} speed={0.2 as any} repeat={0} cursor={true} className="text-slate-900" />
+                <TypeAnimation sequence={["YOUR DIGITAL RESUME.", 1000]} speed={0.2 as any} repeat={0} cursor={true} className="text-slate-900" />
               </h1>
 
               <p className="text-base sm:text-xl text-slate-600 mb-6 leading-relaxed max-w-xl">
@@ -5797,8 +5797,8 @@ export default function Landing() {
           <div className="grid md:grid-cols-3 gap-10 mb-10">
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <div className="h-8 w-8 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center"><img src="/images/networknote_final_logo_1 (2).jpg" alt="NetworkNote logo" className="h-full w-full object-cover" /></div>
-                <span className="text-lg font-semibold text-slate-900">NetworkNote</span>
+                {/* <div className="h-8 w-8 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center"><img src="/images/networknote_final_logo_1 (2).jpg" alt="NetworkNote logo" className="h-full w-full object-cover" /></div> */}
+                <span className="text-2xl font-semibold text-slate-900" style={{ fontFamily: 'Aerospace' }}>Digital Resume</span>
               </div>
               <p className="text-slate-600 text-sm">Your Career, Better.</p>
             </div>

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
+import { getUserInfo } from '../utils/crmHelpers';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -31,6 +32,10 @@ export default function Dashboard() {
   // New: Premium plan tracking
   const [isPremiumActive, setIsPremiumActive] = useState(false);
   const [credits, setCredits] = useState<number>(0);
+
+  // CRM user tracking
+  const [isCRM, setIsCRM] = useState(false);
+  const [crmEmail, setCRMEmail] = useState<string | null>(null);
 
   const handleLogout = () => navigate('/');
 
@@ -92,21 +97,55 @@ export default function Dashboard() {
     if (!user) return;
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('job_requests')
-        .select(`
-          id,
-          job_title,
-          resume_path,
-          status,
-          created_at,
-          recordings (storage_path)
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setcareercasts(data || []);
+      // Check if CRM user
+      const userInfo = await getUserInfo(user.id);
+      setIsCRM(userInfo.isCRMUser);
+      setCRMEmail(userInfo.email);
+
+      if (userInfo.isCRMUser && userInfo.email) {
+        // Fetch from CRM tables
+        const { data, error } = await supabase
+          .from('crm_job_requests')
+          .select(`
+            id,
+            job_title,
+            resume_url,
+            application_status,
+            created_at
+          `)
+          .eq('email', userInfo.email)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Transform CRM data to match expected format
+        const transformedData = (data || []).map(item => ({
+          ...item,
+          resume_path: item.resume_url,
+          status: item.application_status || 'draft',
+          recordings: [] // We'll fetch recordings separately if needed
+        }));
+
+        setcareercasts(transformedData);
+      } else {
+        // Fetch from regular tables
+        const { data, error } = await supabase
+          .from('job_requests')
+          .select(`
+            id,
+            job_title,
+            resume_path,
+            status,
+            created_at,
+            recordings (storage_path)
+          `)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setcareercasts(data || []);
+      }
     } catch (error) {
       console.error('Error fetching Network Notes:', error);
     } finally {
@@ -210,7 +249,7 @@ export default function Dashboard() {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">Network Note</div>
+          <div className="font-bold text-xl text-[#0B4F6C]">Digital Resume</div>
           <div className="w-10"></div>
         </div>
 
@@ -220,7 +259,7 @@ export default function Dashboard() {
             {/* Header */}
             <div className="border-b border-gray-200 bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] px-4 py-4 sm:px-8 sm:py-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-white">Your Network Notes</h2>
+                <h2 className="text-xl sm:text-2xl font-bold text-white">Your Digital Resume</h2>
                 <p className="text-white/80 text-xs sm:text-sm mt-1">
                   Track progress and manage your recordings
                 </p>
@@ -240,7 +279,7 @@ export default function Dashboard() {
                   className="bg-white text-[#0B4F6C] px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold hover:bg-white/90 transition-all shadow-md flex items-center justify-center gap-2 text-sm sm:text-base w-full sm:w-auto"
                 >
                   <Plus className="w-4 h-4" />
-                  New Network Note
+                  New Digital Resume
                 </button>
               </div>
             </div>
@@ -249,14 +288,14 @@ export default function Dashboard() {
             {loading ? (
               <div className="flex flex-col items-center justify-center py-16 px-4">
                 <Loader2 className="animate-spin text-[#01796F] h-8 w-8 mb-4" />
-                <p className="text-gray-600 text-center">Loading your Network Notes...</p>
+                <p className="text-gray-600 text-center">Loading your Digital Resume...</p>
               </div>
             ) : careercasts.length === 0 ? (
               <div className="text-center py-16 px-4">
                 <div className="bg-[#01796F]/10 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
                   <Video className="h-10 w-10 text-[#01796F]" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">No Network Notes Yet</h3>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">No Digital Resume Yet</h3>
                 <p className="text-gray-600 mb-6 text-sm max-w-md mx-auto">
                   Create your first professional video resume and make your profile shine.
                 </p>
@@ -264,7 +303,7 @@ export default function Dashboard() {
                   onClick={handleNewCast}
                   className="bg-[#01796F] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#016761] transition-colors shadow-md flex items-center justify-center mx-auto gap-2"
                 >
-                  <Plus className="w-5 h-5" /> Create Network Note
+                  <Plus className="w-5 h-5" /> Create Digital Resume
                 </button>
               </div>
             ) : (
@@ -434,7 +473,7 @@ export default function Dashboard() {
               <div className="p-5 sm:p-6">
                 <div className="text-center mb-4">
                   <Video className="mx-auto w-10 h-10 text-[#01796F]" />
-                  <h4 className="font-bold text-lg mt-2">Get More Network Notes</h4>
+                  <h4 className="font-bold text-lg mt-2">Get More Digital Resumes</h4>
                   <p className="text-gray-600 text-sm mt-1">
                     You've used all your credits. Top up now to continue recording.
                   </p>
@@ -443,7 +482,7 @@ export default function Dashboard() {
                   <ul className="text-sm text-gray-700 space-y-2">
                     <li className="flex items-center gap-2">
                       <CheckCircle className="w-4 h-4 text-[#01796F]" />
-                      <span>Additional Network Notes</span>
+                      <span>Additional Digital Resumes</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle className="w-4 h-4 text-[#01796F]" />

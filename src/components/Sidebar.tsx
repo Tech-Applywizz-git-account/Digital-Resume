@@ -81,7 +81,7 @@
 //                 <CreditCard className="w-4 h-4" />
 //                 Billing & Payment
 //               </button>
-        
+
 //         <button
 //           onClick={() => navigate('/network')}
 //           className={`w-full text-left py-3 px-4 rounded-lg transition-all font-medium flex items-center gap-3 ${
@@ -293,24 +293,29 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
 
   return (
     <aside
-      className={`h-screen sticky top-0 bg-white border-r shadow-sm flex flex-col transition-[width] duration-300 ${
-        collapsed ? "w-20" : "w-72"
-      }`}
+      className={`h-screen sticky top-0 bg-white border-r shadow-sm flex flex-col transition-[width] duration-300 ${collapsed ? "w-20" : "w-72"
+        }`}
     >
       {/* Brand + collapse button */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
-                  <img
-                    src="/images/networknote_final_logo_1 (2).jpg"
-                    alt="NetworkNote logo"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
+          {/* <div className="h-8 w-8 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
+            <img
+              src="/images/networknote_final_logo_1 (2).jpg"
+
+              alt="Digital Resume logo"
+              className="h-full w-full object-cover"
+            />
+          </div> */}
+          <div className="flex iten-center justify-center"></div>
           {!collapsed && (
             <div className="flex flex-col">
-              <span className="text-sm font-semibold text-slate-900">
-                NetworkNote
+              {/* <span className="text-xl font-semibold text-slate-900" style={{ fontFamily: 'Aerospace' }}>
+                Digital Resume
+              </span>
+               */}
+              <span className="text-2xl  text-slate-900" style={{ fontFamily: 'Aerospace' }}>
+                Digital Resume
               </span>
               {/* <span className="text-[11px] text-slate-400">
                 Email Intelligence
@@ -368,11 +373,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
         {/* Dashboard */}
         <button
           onClick={() => navigate("/dashboard")}
-          className={`${baseItemClasses} ${
-            isActive("/dashboard")
-              ? "bg-slate-900 text-white"
-              : "text-slate-600 hover:bg-slate-100"
-          } ${collapsed ? "justify-center" : ""}`}
+          className={`${baseItemClasses} ${isActive("/dashboard")
+            ? "bg-slate-900 text-white"
+            : "text-slate-600 hover:bg-slate-100"
+            } ${collapsed ? "justify-center" : ""}`}
         >
           <LayoutDashboard className="w-4 h-4" />
           {renderLabel("Dashboard")}
@@ -381,11 +385,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
         {/* Billing */}
         <button
           onClick={() => navigate("/billing")}
-          className={`${baseItemClasses} ${
-            isActive("/billing")
-              ? "bg-slate-900 text-white"
-              : "text-slate-600 hover:bg-slate-100"
-          } ${collapsed ? "justify-center" : ""}`}
+          className={`${baseItemClasses} ${isActive("/billing")
+            ? "bg-slate-900 text-white"
+            : "text-slate-600 hover:bg-slate-100"
+            } ${collapsed ? "justify-center" : ""}`}
         >
           <CreditCard className="w-4 h-4" />
           {renderLabel("Billing & Payment")}
@@ -394,11 +397,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
         {/* Network */}
         <button
           onClick={() => navigate("/network")}
-          className={`${baseItemClasses} ${
-            isActive("/network")
-              ? "bg-slate-900 text-white"
-              : "text-slate-600 hover:bg-slate-100"
-          } ${collapsed ? "justify-center" : ""}`}
+          className={`${baseItemClasses} ${isActive("/network")
+            ? "bg-slate-900 text-white"
+            : "text-slate-600 hover:bg-slate-100"
+            } ${collapsed ? "justify-center" : ""}`}
         >
           <Globe className="w-4 h-4" />
           {renderLabel("Network")}
@@ -407,11 +409,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
         {/* Resources */}
         <button
           onClick={() => navigate("/resources")}
-          className={`${baseItemClasses} ${
-            isActive("/resources")
-              ? "bg-slate-900 text-white"
-              : "text-slate-600 hover:bg-slate-100"
-          } ${collapsed ? "justify-center" : ""}`}
+          className={`${baseItemClasses} ${isActive("/resources")
+            ? "bg-slate-900 text-white"
+            : "text-slate-600 hover:bg-slate-100"
+            } ${collapsed ? "justify-center" : ""}`}
         >
           <BookOpen className="w-4 h-4" />
           {renderLabel("Resources")}
@@ -420,11 +421,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
         {/* HR Emails */}
         <button
           onClick={() => navigate("/hr-email")}
-          className={`${baseItemClasses} ${
-            isActive("/hr-email")
-              ? "bg-slate-900 text-white"
-              : "text-slate-600 hover:bg-slate-100"
-          } ${collapsed ? "justify-center" : ""}`}
+          className={`${baseItemClasses} ${isActive("/hr-email")
+            ? "bg-slate-900 text-white"
+            : "text-slate-600 hover:bg-slate-100"
+            } ${collapsed ? "justify-center" : ""}`}
         >
           <Briefcase className="w-4 h-4" />
           {renderLabel("HR Emails")}
@@ -434,11 +434,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
         <div className="pt-1">
           <button
             onClick={handleAccountClick}
-            className={`${baseItemClasses} ${
-              ["/profile", "/password", "/"].includes(location.pathname)
-                ? "bg-slate-900 text-white"
-                : "text-slate-600 hover:bg-slate-100"
-            } ${collapsed ? "justify-center" : ""}`}
+            className={`${baseItemClasses} ${["/profile", "/password", "/"].includes(location.pathname)
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:bg-slate-100"
+              } ${collapsed ? "justify-center" : ""}`}
           >
             <Settings className="w-4 h-4" />
             {renderLabel("Account Settings")}
@@ -454,11 +453,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
             <div className="pl-8 pt-1 space-y-1">
               <button
                 onClick={() => navigate("/profile")}
-                className={`${baseItemClasses} ${
-                  isActive("/profile")
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
-                }`}
+                className={`${baseItemClasses} ${isActive("/profile")
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
+                  }`}
               >
                 <User className="w-4 h-4" />
                 <span className="truncate">Profile</span>
@@ -466,11 +464,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
 
               <button
                 onClick={() => navigate("/password")}
-                className={`${baseItemClasses} ${
-                  isActive("/password")
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
-                }`}
+                className={`${baseItemClasses} ${isActive("/password")
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
+                  }`}
               >
                 <KeyRound className="w-4 h-4" />
                 <span className="truncate">Password</span>
@@ -483,11 +480,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
         <div className="pt-1">
           <button
             onClick={handleSupportClick}
-            className={`${baseItemClasses} ${
-              isActive("/contact")
-                ? "bg-slate-900 text-white"
-                : "text-slate-600 hover:bg-slate-100"
-            } ${collapsed ? "justify-center" : ""}`}
+            className={`${baseItemClasses} ${isActive("/contact")
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:bg-slate-100"
+              } ${collapsed ? "justify-center" : ""}`}
           >
             <HelpCircle className="w-4 h-4" />
             {renderLabel("Support")}
@@ -503,11 +499,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
             <div className="pl-8 pt-1 space-y-1">
               <button
                 onClick={() => navigate("/contact")}
-                className={`${baseItemClasses} ${
-                  isActive("/contact")
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
-                }`}
+                className={`${baseItemClasses} ${isActive("/contact")
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
+                  }`}
               >
                 <Mail className="w-4 h-4" />
                 <span className="truncate">Contact us</span>
@@ -550,9 +545,8 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
       <div className="px-2 pb-4 border-t border-slate-100 pt-3">
         <button
           onClick={onLogout}
-          className={`${baseItemClasses} ${
-            collapsed ? "justify-center" : ""
-          } text-slate-500 hover:bg-slate-100`}
+          className={`${baseItemClasses} ${collapsed ? "justify-center" : ""
+            } text-slate-500 hover:bg-slate-100`}
         >
           <LogOut className="w-4 h-4" />
           {renderLabel("Logout")}

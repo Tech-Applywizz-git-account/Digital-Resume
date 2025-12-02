@@ -33,7 +33,7 @@
 //   const [otpVerified, setOtpVerified] = useState(false);
 //   const [otp, setOtp] = useState('');
 //   const [countdown, setCountdown] = useState(0);
-  
+
 //   const [formData, setFormData] = useState({
 //     email: '',
 //     password: '',
@@ -89,7 +89,7 @@
 
 //   const handleResendOTP = async () => {
 //     if (countdown > 0) return;
-    
+
 //     try {
 //       await sendOTP(formData.email);
 //       setCountdown(60);
@@ -110,7 +110,7 @@
 
 //   const handleSignup = async (e: React.FormEvent) => {
 //     e.preventDefault();
-    
+
 //     if (formData.password1 !== formData.password2) {
 //       alert('Passwords do not match');
 //       return;
@@ -197,7 +197,7 @@
 //                 >
 //                   <span>Sign Up</span>
 //                 </button> */}
-              
+
 
 //               <div className="tab-content">
 //                 <div className={`space-y-4 ${activeTab === 'login' ? 'block' : 'hidden'}`}>
@@ -599,14 +599,14 @@ export default function Auth() {
                   <div className="h-10 w-10 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center">
                     <img
                       src="/images/networknote_final_logo_1 (2).jpg"
-                      alt="Network Note Logo"
+                      alt="Digital Resume Logo"
                       className="h-full w-full object-cover"
                     />
                   </div>
 
                   <div>
                     <span className="text-xl font-bold text-slate-900 font-noto">
-                      NetworkNote
+                      Digital Resume
                     </span>
                     <div className="text-xs text-slate-400">Email Intelligence</div>
                   </div>
@@ -625,11 +625,10 @@ export default function Auth() {
 
               <div className="flex border border-slate-200 rounded-xl p-1 mb-6 bg-slate-50">
                 <button
-                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
-                    activeTab === "login"
+                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === "login"
                       ? "bg-slate-900 text-white shadow-sm"
                       : "text-slate-600 bg-transparent hover:bg-white"
-                  }`}
+                    }`}
                   onClick={() => {
                     setActiveTab("login");
                     resetOTPState();

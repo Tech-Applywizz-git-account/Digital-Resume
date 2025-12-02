@@ -43,12 +43,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [verifiedEmails, setVerifiedEmails] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    const userData = localStorage.getItem('userData');
-    if (token && userData) {
-      setIsAuthenticated(true);
-      setUser(JSON.parse(userData));
-    }
+    const initAuth = async () => {
+      const token = localStorage.getItem('authToken');
+      const userData = localStorage.getItem('userData');
+      if (token && userData) {
+        setIsAuthenticated(true);
+        const parsedUser = JSON.parse(userData);
+        setUser(parsedUser);
+
+        // 🔹 DOUBLE CHECK CRM STATUS ON LOAD (Fix for persisted sessions)
+        try {
+          const { data: crmData } = await supabase
+            .from('digital_resume_by_crm')
+            .select('email')
+            .eq('user_id', parsedUser.id)
+            .single();
+
+          if (crmData) {
+            console.log("✅ CRM User detected on load:", crmData.email);
+            localStorage.setItem('is_crm_user', 'true');
+            localStorage.setItem('crm_user_email', crmData.email);
+          } else {
+            localStorage.removeItem('is_crm_user');
+            localStorage.removeItem('crm_user_email');
+          }
+        } catch (err) {
+          console.error("Error checking CRM status on load:", err);
+        }
+      }
+    };
+    initAuth();
   }, []);
 
   const clearError = () => setError(null);
@@ -62,10 +86,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
 
       const uid = data.user?.id;
+      if (!uid) throw new Error('User ID missing after login');
+
+      // Check if CRM user
+      const { data: crmData } = await supabase
+        .from('digital_resume_by_crm')
+        .select('email')
+        .eq('user_id', uid)
+        .single();
+
+      if (crmData) {
+        localStorage.setItem('is_crm_user', 'true');
+        localStorage.setItem('crm_user_email', crmData.email);
+      } else {
+        localStorage.removeItem('is_crm_user');
+        localStorage.removeItem('crm_user_email');
+      }
+
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).single();
 
       const mockUser = {
-        id: uid || 'local-' + Date.now(),
+        id: uid,
         email,
         firstName: profile?.first_name || email.split('@')[0],
         lastName: profile?.last_name || '',
@@ -195,6 +236,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('userData');
+    localStorage.removeItem('is_crm_user');
+    localStorage.removeItem('crm_user_email');
     setIsAuthenticated(false);
     setUser(null);
   };

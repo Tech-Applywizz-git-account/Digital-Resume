@@ -19,6 +19,7 @@ import Contact from "./pages/Contact";
 import HrEmail from "./pages/hr_email";
 import HrEmailDetails from "./pages/HrEmailDetails";
 import SignupPage from "./pages/SignupPage";
+import AdminSync from "./pages/AdminSync";
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
         <Route path="/contact" element={<Contact />} />
         <Route path="/hr-email" element={<HrEmail />} />
         <Route path="/hr-email-details" element={<HrEmailDetails />} />
+        <Route path="/admin-sync" element={<AdminSync />} />
       </Routes>
     </AuthProvider>
   );

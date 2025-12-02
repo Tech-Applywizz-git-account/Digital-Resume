@@ -2169,7 +2169,7 @@ const SignupPage: React.FC = () => {
             </button>
 
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              NetworkNote – Terms &amp; Conditions
+              Digital Resume – Terms &amp; Conditions
             </h2>
 
             <div className="text-gray-600 space-y-6 text-sm leading-relaxed">
@@ -2177,12 +2177,12 @@ const SignupPage: React.FC = () => {
 
               <section>
                 <h3 className="font-bold text-gray-900 mb-1">1. Acceptance of Terms</h3>
-                <p>By creating an account, purchasing credits, or using the NetworkNote platform ("Service"), you agree to be bound by these Terms and Conditions. If you do not agree to these terms, you must not use our services.</p>
+                <p>By creating an account, purchasing credits, or using the Digital Resume platform ("Service"), you agree to be bound by these Terms and Conditions. If you do not agree to these terms, you must not use our services.</p>
               </section>
 
               <section>
                 <h3 className="font-bold text-gray-900 mb-1">2. Description of Service</h3>
-                <p>NetworkNote is a career enhancement platform that provides tools for job seekers, including but not limited to:</p>
+                <p>Digital Resume is a career enhancement platform that provides tools for job seekers, including but not limited to:</p>
                 <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5">
                   <li>Video resume recording and hosting.</li>
                   <li>AI-powered teleprompter script generation.</li>
@@ -2203,7 +2203,7 @@ const SignupPage: React.FC = () => {
               <section>
                 <h3 className="font-bold text-gray-900 mb-1">4. Credits, Payments, and Refunds</h3>
                 <ul className="list-disc list-inside ml-2 space-y-0.5">
-                  <li><strong>Credit System:</strong> NetworkNote operates on a credit-based system. Credits are required to create new video resumes ("Network Notes") or access premium features.</li>
+                  <li><strong>Credit System:</strong> Digital Resume operates on a credit-based system. Credits are required to create new video resumes ("Digital Resumes") or access premium features.</li>
                   <li><strong>Pricing:</strong> Premium top-ups are sold in bundles (e.g., 3 Credits for $9.99 USD / £9.99 GBP). Prices are subject to change without notice.</li>
                   <li><strong>Payment Processing:</strong> Payments are processed securely via PayPal. We do not store your full credit card details on our servers.</li>
                   <li><strong>Refund Policy:</strong> <strong>All sales are final.</strong> Because our Service offers immediate access to digital tools, data, and AI resources, we do not offer refunds for purchased credits once they have been added to your account, except where required by law.</li>
@@ -2214,7 +2214,7 @@ const SignupPage: React.FC = () => {
                 <h3 className="font-bold text-gray-900 mb-1">5. User-Generated Content (UGC)</h3>
                 <ul className="list-disc list-inside ml-2 space-y-0.5">
                   <li><strong>Ownership:</strong> You retain all ownership rights to the resumes, videos, and scripts you create or upload ("User Content").</li>
-                  <li><strong>License to Us:</strong> By uploading content, you grant NetworkNote a worldwide, non-exclusive, royalty-free license to host, store, process, and display your content <em>solely for the purpose of providing the Service to you</em> (e.g., generating your video link).</li>
+                  <li><strong>License to Us:</strong> By uploading content, you grant Digital Resume a worldwide, non-exclusive, royalty-free license to host, store, process, and display your content <em>solely for the purpose of providing the Service to you</em> (e.g., generating your video link).</li>
                   <li><strong>Prohibited Content:</strong> You may not upload content that is illegal, offensive, sexually explicit, discriminatory, or false. We reserve the right to remove any content and terminate accounts that violate this policy.</li>
                 </ul>
               </section>
@@ -2227,7 +2227,7 @@ const SignupPage: React.FC = () => {
               <section>
                 <h3 className="font-bold text-gray-900 mb-1">7. No Guarantee of Employment</h3>
                 <ul className="list-disc list-inside ml-2 space-y-0.5">
-                  <li><strong>Tool Only:</strong> NetworkNote is a software tool designed to assist in your job search. We are <strong>not</strong> a recruitment agency, staffing firm, or employer.</li>
+                  <li><strong>Tool Only:</strong> Digital Resume is a software tool designed to assist in your job search. We are <strong>not</strong> a recruitment agency, staffing firm, or employer.</li>
                   <li><strong>No Results Guaranteed:</strong> We do not guarantee that using our video resumes or tools will result in job interviews, job offers, visa sponsorship, or employment. Your success depends entirely on your own qualifications, the job market, and third-party employers.</li>
                 </ul>
               </section>
@@ -2239,7 +2239,7 @@ const SignupPage: React.FC = () => {
 
               <section>
                 <h3 className="font-bold text-gray-900 mb-1">9. Limitation of Liability</h3>
-                <p>To the fullest extent permitted by law, NetworkNote shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or employment opportunities, arising out of or in connection with your use of the Service.</p>
+                <p>To the fullest extent permitted by law, Digital Resume shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or employment opportunities, arising out of or in connection with your use of the Service.</p>
               </section>
 
               <section>
