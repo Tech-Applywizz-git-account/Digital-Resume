@@ -86,42 +86,67 @@ serve(async (req) => {
       },
     });
 
-    console.log("Checking for last synced user...");
+    // Check for manual creation request
+    let reqBody: any = {};
+    try {
+      reqBody = await req.json();
+    } catch (e) {
+      // Body might be empty for cron jobs
+    }
 
-    // 1. Get the most recent sync timestamp from our local DB
-    // We look at the 'crm_data' stored in payment_details to find the original created_at
-    const { data: lastSyncRecord } = await supabase
-      .from("digital_resume_by_crm")
-      .select("payment_details")
-      .order("user_created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { action, email, name } = reqBody;
+    let crmUsers: CRMUser[] = [];
 
-    let lastSyncTime = new Date(0).toISOString(); // Default to 1970 (fetch all) if empty
+    if (action === 'manual_create') {
+      if (!email) throw new Error("Email is required for manual creation");
+      console.log(`Manual creation requested for ${email}`);
 
-    // Try to extract the 'created_at' from the stored CRM data
-    if (lastSyncRecord?.payment_details?.crm_data?.created_at) {
-      lastSyncTime = lastSyncRecord.payment_details.crm_data.created_at;
-      console.log(`Last synced user was created at: ${lastSyncTime}`);
+      // Create a mock CRM user object
+      crmUsers = [{
+        email: email,
+        digital_resume_sale_value: 999, // Ensure it passes any checks
+        full_name: name || "Manual User",
+        // Add other fields that might be expected
+      }];
     } else {
-      console.log("No previous sync data found (or missing created_at). Fetching all.");
+      console.log("Checking for last synced user...");
+
+      // 1. Get the most recent sync timestamp from our local DB
+      // We look at the 'crm_data' stored in payment_details to find the original created_at
+      const { data: lastSyncRecord } = await supabase
+        .from("digital_resume_by_crm")
+        .select("payment_details")
+        .order("user_created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let lastSyncTime = new Date(0).toISOString(); // Default to 1970 (fetch all) if empty
+
+      // Try to extract the 'created_at' from the stored CRM data
+      if (lastSyncRecord?.payment_details?.crm_data?.created_at) {
+        lastSyncTime = lastSyncRecord.payment_details.crm_data.created_at;
+        console.log(`Last synced user was created at: ${lastSyncTime}`);
+      } else {
+        console.log("No previous sync data found (or missing created_at). Fetching all.");
+      }
+
+      console.log(`Fetching CRM users created AFTER: ${lastSyncTime}`);
+
+      // 2. Fetch only NEW users from CRM view who have PAID (value > 0)
+      // We removed 'created_at' check because the column doesn't exist in the view.
+      const { data: fetchedUsers, error: crmError } = await crmSupabase
+        .from("client_digital_resume_view")
+        .select("*")
+        .gt("digital_resume_sale_value", 0); // Only Paid Users
+
+      if (crmError) {
+        console.error("Error fetching from CRM:", crmError);
+        throw new Error(`CRM fetch error: ${crmError.message}`);
+      }
+
+      crmUsers = fetchedUsers as CRMUser[];
+      console.log(`Found ${crmUsers?.length || 0} PAID CRM users to process`);
     }
-
-    console.log(`Fetching CRM users created AFTER: ${lastSyncTime}`);
-
-    // 2. Fetch only NEW users from CRM view who have PAID (value > 0)
-    // We removed 'created_at' check because the column doesn't exist in the view.
-    const { data: crmUsers, error: crmError } = await crmSupabase
-      .from("client_digital_resume_view")
-      .select("*")
-      .gt("digital_resume_sale_value", 0); // Only Paid Users
-
-    if (crmError) {
-      console.error("Error fetching from CRM:", crmError);
-      throw new Error(`CRM fetch error: ${crmError.message}`);
-    }
-
-    console.log(`Found ${crmUsers?.length || 0} PAID CRM users to process`);
 
     const results: SyncResult[] = [];
 
