@@ -363,7 +363,18 @@ export default function Dashboard() {
                   </thead>
                   <tbody>
                     {careercasts.map((cast) => {
-                      const video = cast.recordings?.[0]?.storage_path || null;
+                      const videoPath = cast.recordings?.[0]?.storage_path || null;
+                      // Convert storage path to public URL if needed
+                      let video = null;
+                      if (videoPath) {
+                        if (videoPath.startsWith('http')) {
+                          video = videoPath;
+                        } else {
+                          // Determine bucket based on whether this is CRM user
+                          const bucket = isCRM ? 'CRM_users_recordings' : 'recordings';
+                          video = supabase.storage.from(bucket).getPublicUrl(videoPath).data.publicUrl;
+                        }
+                      }
                       const both = cast.resume_path && video;
                       return (
                         <>
@@ -549,6 +560,41 @@ export default function Dashboard() {
                 >
                   {userCountry === "GB" ? "Top Up Now - £9.99" : "Top Up Now - $9.99"}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Video Player Modal */}
+        {selectedVideo && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 overflow-hidden">
+              <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] p-4 flex justify-between items-center">
+                <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                  <Play className="w-5 h-5" fill="white" />
+                  Video Preview
+                </h3>
+                <button
+                  onClick={handleCloseVideo}
+                  className="text-white hover:text-gray-200 text-2xl font-bold p-1"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="p-6 bg-gray-50">
+                <div className="bg-black rounded-lg overflow-hidden">
+                  <video
+                    controls
+                    autoPlay
+                    className="w-full h-auto"
+                    style={{ maxHeight: '70vh' }}
+                    src={selectedVideo}
+                  >
+                    <source src={selectedVideo} type="video/webm" />
+                    <source src={selectedVideo} type="video/mp4" />
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
               </div>
             </div>
           </div>

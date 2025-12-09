@@ -607,7 +607,7 @@ const FinalResult: React.FC = () => {
                 }}
                 className="flex items-center gap-2 border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700"
               >
-                Copy careercast Link
+                Copy Digital Resume Link
               </Button>
             </div>
           )}
@@ -693,9 +693,9 @@ const FinalResult: React.FC = () => {
               <source src={videoUrl} type="video/mp4" />
               Your browser does not support the video tag.
             </video>
-            <div className="mt-2 text-xs text-gray-500 break-all">
+            {/* <div className="mt-2 text-xs text-gray-500 break-all">
               Video URL: {videoUrl}
-            </div>
+            </div> */}
           </div>
         </div>
       )}
