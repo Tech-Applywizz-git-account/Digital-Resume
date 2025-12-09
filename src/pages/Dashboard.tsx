@@ -136,7 +136,7 @@ export default function Dashboard() {
       setCRMEmail(userInfo.email);
 
       if (userInfo.isCRMUser && userInfo.email) {
-        // Fetch from CRM tables
+        // Fetch from CRM tables with recordings
         const { data, error } = await supabase
           .from('crm_job_requests')
           .select(`
@@ -151,19 +151,29 @@ export default function Dashboard() {
 
         if (error) throw error;
 
-        // Transform CRM data to match expected format
-        const transformedData = (data || []).map(item => ({
-          ...item,
-          resume_path: item.resume_url,
-          status: item.application_status || 'draft',
-          recordings: [] // We'll fetch recordings separately if needed
-        }));
+        // Fetch recordings for each job request
+        const jobsWithRecordings = await Promise.all(
+          (data || []).map(async (item) => {
+            const { data: recordings } = await supabase
+              .from('crm_recordings')
+              .select('video_url')
+              .eq('job_request_id', item.id)
+              .limit(1);
 
-        setcareercasts(transformedData);
+            return {
+              ...item,
+              resume_path: item.resume_url,
+              status: item.application_status || 'draft',
+              recordings: recordings?.map(r => ({ storage_path: r.video_url })) || []
+            };
+          })
+        );
+
+        setcareercasts(jobsWithRecordings);
       } else {
         // Fetch from regular tables
         const { data, error } = await supabase
-          .from('crm_job_requests')
+          .from('job_requests')
           .select(`
             id,
             job_title,

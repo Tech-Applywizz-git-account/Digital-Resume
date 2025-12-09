@@ -246,7 +246,56 @@ const FinalResult: React.FC = () => {
 
   const loadExternalData = async (id: string) => {
     try {
-      // Fetch job request data from Supabase
+      // Try CRM tables first
+      const { data: crmData, error: crmError } = await supabase
+        .from('crm_job_requests')
+        .select(`
+          job_title,
+          resume_url,
+          application_status
+        `)
+        .eq('id', id)
+        .maybeSingle();
+
+      console.log("CRM external data load:", { crmData, crmError });
+
+      if (crmData) {
+        // CRM user data found
+        setJobTitle(crmData.job_title || "");
+        setResumeUrl(crmData.resume_url || null);
+        setResumeFileName(crmData.resume_url ?
+          crmData.resume_url.split('/').pop() || "Resume.pdf" :
+          "Resume.pdf");
+
+        // Get video URL from crm_recordings
+        const { data: recordingData } = await supabase
+          .from('crm_recordings')
+          .select('video_url')
+          .eq('job_request_id', id)
+          .limit(1)
+          .maybeSingle();
+
+        let finalVideoUrl = null;
+        if (recordingData?.video_url) {
+          const path = recordingData.video_url;
+          finalVideoUrl = path.startsWith('http')
+            ? path
+            : supabase.storage.from('CRM_users_recordings').getPublicUrl(path).data.publicUrl;
+        }
+
+        setVideoUrl(finalVideoUrl);
+
+        console.log("Set CRM external state values:", {
+          jobTitle: crmData.job_title || "",
+          resumeUrl: crmData.resume_url || null,
+          resumeFileName,
+          videoUrl: finalVideoUrl
+        });
+
+        return; // Exit early if CRM data found
+      }
+
+      // If not CRM, try regular job_requests table
       const { data, error } = await supabase
         .from('job_requests')
         .select(`
@@ -257,9 +306,9 @@ const FinalResult: React.FC = () => {
           )
         `)
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      console.log("External data load:", { data, error });
+      console.log("Regular external data load:", { data, error });
 
       if (error) throw error;
 
@@ -287,7 +336,7 @@ const FinalResult: React.FC = () => {
 
         setVideoUrl(finalVideoUrl);
 
-        console.log("Set external state values:", {
+        console.log("Set regular external state values:", {
           jobTitle: data.job_title || "",
           resumeUrl: data.resume_path || null,
           resumeFileName: data.resume_path ?
