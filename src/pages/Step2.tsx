@@ -168,7 +168,7 @@ const Step2: React.FC = () => {
           .from("job_requests")
           .update({
             resume_path: publicUrl,
-            resume_original_name: fileName,
+            resume_original_name: selectedFile.name,
             status: "ready",
             updated_at: new Date().toISOString(),
           })
@@ -206,7 +206,7 @@ const Step2: React.FC = () => {
 
       // Save to localStorage
       localStorage.setItem("uploadedResumeUrl", publicUrl || "");
-      localStorage.setItem("resumeFileName", fileName);
+      localStorage.setItem("resumeFileName", selectedFile.name);
       localStorage.setItem("resumeFullText", extractedText);
       localStorage.removeItem("teleprompterText");
 

@@ -151,6 +151,7 @@ const FinalResult: React.FC = () => {
             .select(`
               job_title,
               resume_path,
+              resume_original_name,
               recordings (
                 storage_path
               )
@@ -163,9 +164,9 @@ const FinalResult: React.FC = () => {
           if (!error && data) {
             setJobTitle(data.job_title || jobTitle || "");
             setResumeUrl(data.resume_path || uploadedResumeUrl);
-            setResumeFileName(fileName || data.resume_path ?
+            setResumeFileName(fileName || data.resume_original_name || (data.resume_path ?
               data.resume_path.split('/').pop() || "Resume.pdf" :
-              "Resume.pdf");
+              "Resume.pdf"));
 
             // Get video URL from recordings
             let finalVideoUrl = null;
@@ -301,6 +302,7 @@ const FinalResult: React.FC = () => {
         .select(`
           job_title,
           resume_path,
+          resume_original_name,
           recordings (
             storage_path
           )
@@ -315,9 +317,9 @@ const FinalResult: React.FC = () => {
       if (data) {
         setJobTitle(data.job_title || "");
         setResumeUrl(data.resume_path || null);
-        setResumeFileName(data.resume_path ?
+        setResumeFileName(data.resume_original_name || (data.resume_path ?
           data.resume_path.split('/').pop() || "Resume.pdf" :
-          "Resume.pdf");
+          "Resume.pdf"));
 
         // Get video URL from recordings
         let finalVideoUrl = null;
@@ -339,9 +341,9 @@ const FinalResult: React.FC = () => {
         console.log("Set regular external state values:", {
           jobTitle: data.job_title || "",
           resumeUrl: data.resume_path || null,
-          resumeFileName: data.resume_path ?
+          resumeFileName: data.resume_original_name || (data.resume_path ?
             data.resume_path.split('/').pop() || "Resume.pdf" :
-            "Resume.pdf",
+            "Resume.pdf"),
           videoUrl: finalVideoUrl
         });
       }
@@ -500,15 +502,25 @@ const FinalResult: React.FC = () => {
       const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
       const enhancedUrl = await enhancePDF(resumeUrl, currentCastId);
 
-      // ✅ Generate filename based on first name
-      const firstName =
-        localStorage.getItem("first_name") ||
-        ((user as any)?.user_metadata?.full_name?.split(" ")[0]) ||
-        "user";
-
-
-      const cleanFirstName = firstName.trim().replace(/\s+/g, "_").toLowerCase();
-      const finalFileName = `${cleanFirstName}_careercast_resume.pdf`;
+      // ✅ Generate filename based on original name
+      let finalFileName = "DigitalResume.pdf";
+      if (resumeFileName && resumeFileName !== "Resume.pdf") {
+        const lastDotIndex = resumeFileName.lastIndexOf('.');
+        if (lastDotIndex !== -1) {
+          const nameWithoutExt = resumeFileName.substring(0, lastDotIndex);
+          const extension = resumeFileName.substring(lastDotIndex);
+          finalFileName = `${nameWithoutExt}_DIGITALRESUME${extension}`;
+        } else {
+          finalFileName = `${resumeFileName}_DIGITALRESUME.pdf`;
+        }
+      } else {
+        const firstName =
+          localStorage.getItem("first_name") ||
+          ((user as any)?.user_metadata?.full_name?.split(" ")[0]) ||
+          "user";
+        const cleanFirstName = firstName.trim().replace(/\s+/g, "_").toLowerCase();
+        finalFileName = `${cleanFirstName}_DIGITALRESUME.pdf`;
+      }
 
       console.log("Downloading file:", { enhancedUrl, finalFileName });
 
