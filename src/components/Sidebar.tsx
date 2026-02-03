@@ -236,6 +236,7 @@ import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
+  Users,
   BookOpen,
   Settings,
   HelpCircle,
@@ -429,6 +430,7 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
           <Briefcase className="w-4 h-4" />
           {renderLabel("HR Emails")}
         </button>
+
 
         {/* Account settings with dropdown (only when expanded) */}
         <div className="pt-1">

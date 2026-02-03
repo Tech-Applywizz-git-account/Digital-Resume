@@ -21,6 +21,9 @@ import HrEmailDetails from "./pages/HrEmailDetails";
 import SignupPage from "./pages/SignupPage";
 import AdminSync from "./pages/AdminSync";
 
+import DigitalResumeDashboard from "./pages/DigitalResumeDashboard";
+import DigitalResumeLogin from "./pages/DigitalResumeLogin";
+
 function App() {
   return (
     <AuthProvider>
@@ -29,6 +32,8 @@ function App() {
         <Route path="/auth" element={<Auth />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/digital-resume-dashboard" element={<DigitalResumeDashboard />} />
+        <Route path="/DigitalResumeLogin" element={<DigitalResumeLogin />} />
         <Route path="/step1" element={<Step1 />} />
         <Route path="/step2" element={<Step2 />} />
         <Route path="/step3" element={<Step3 />} />
