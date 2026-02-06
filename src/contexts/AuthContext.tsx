@@ -83,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearError();
     try {
       const normalizedEmail = email.trim().toLowerCase();
+      console.log('Attempting login for:', normalizedEmail);
       const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
       if (error) throw error;
 
