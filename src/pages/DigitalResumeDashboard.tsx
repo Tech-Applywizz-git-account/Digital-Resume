@@ -186,7 +186,7 @@ export default function DigitalResumeDashboard() {
 
             if (authError) {
                 // If user already exists, we continue to check/add to crm_admins
-                if (authError.message.includes('already registered')) {
+                if (authError.message.toLowerCase().includes('already registered') || authError.message.toLowerCase().includes('already been registered')) {
                     console.log('User already exists in Auth, checking crm_admins...');
                 } else {
                     throw authError;

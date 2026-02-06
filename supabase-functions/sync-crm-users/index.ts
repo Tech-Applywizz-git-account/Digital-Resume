@@ -106,82 +106,68 @@ serve(async (req) => {
         email: email,
         digital_resume_sale_value: 999, // Ensure it passes any checks
         full_name: name || "Manual User",
+        // Add other fields that might be expected
       }];
     } else {
-      console.log("Fetching CRM users...");
+      console.log("Checking for last synced user...");
 
-      // Fetch only users from CRM view who have PAID (value > 0)
+      // 1. Get the most recent sync timestamp from our local DB
+      // We look at the 'crm_data' stored in payment_details to find the original created_at
+      const { data: lastSyncRecord } = await supabase
+        .from("digital_resume_by_crm")
+        .select("payment_details")
+        .order("user_created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let lastSyncTime = new Date(0).toISOString(); // Default to 1970 (fetch all) if empty
+
+      // Try to extract the 'created_at' from the stored CRM data
+      if (lastSyncRecord?.payment_details?.crm_data?.created_at) {
+        lastSyncTime = lastSyncRecord.payment_details.crm_data.created_at;
+        console.log(`Last synced user was created at: ${lastSyncTime}`);
+      } else {
+        console.log("No previous sync data found (or missing created_at). Fetching all.");
+      }
+
+      console.log(`Fetching CRM users created AFTER: ${lastSyncTime}`);
+
+      // 2. Fetch only NEW users from CRM view who have PAID (value > 0)
+      // We removed 'created_at' check because the column doesn't exist in the view.
       const { data: fetchedUsers, error: crmError } = await crmSupabase
         .from("client_digital_resume_view")
         .select("*")
-        .gt("digital_resume_sale_value", 0);
+        .gt("digital_resume_sale_value", 0); // Only Paid Users
 
       if (crmError) {
         console.error("Error fetching from CRM:", crmError);
         throw new Error(`CRM fetch error: ${crmError.message}`);
       }
 
-      const allFetched = (fetchedUsers as CRMUser[]) || [];
-      console.log(`Found ${allFetched.length} total PAID CRM records`);
-
-      // De-duplicate by email in memory
-      const uniqueUsersMap = new Map<string, CRMUser>();
-      allFetched.forEach(user => {
-        if (!uniqueUsersMap.has(user.email)) {
-          uniqueUsersMap.set(user.email, user);
-        }
-      });
-      crmUsers = Array.from(uniqueUsersMap.values());
-      console.log(`Unique PAID users to process: ${crmUsers.length}`);
+      crmUsers = fetchedUsers as CRMUser[];
+      console.log(`Found ${crmUsers?.length || 0} PAID CRM users to process`);
     }
 
     const results: SyncResult[] = [];
-    let processedCount = 0;
-    const MAX_NEW_USERS_PER_RUN = 40;
-
-    // Get MS365 Token ONCE at the start
-    let ms365Token: string | null = null;
-    try {
-      ms365Token = await getMS365AccessToken();
-      console.log("MS365 Token acquired successfully");
-    } catch (e: any) {
-      console.error("Failed to acquire MS365 token - welcome emails will not be sent:", e.message);
-    }
 
     // Process each CRM user
-    for (const crmUser of crmUsers) {
+    for (const crmUser of (crmUsers as CRMUser[]) || []) {
       try {
-        console.log(`Checking user: ${crmUser.email}`);
+        console.log(`Processing user: ${crmUser.email}`);
 
         // Check if user already exists in our CRM tracking table
         const { data: existingCRMRecord } = await supabase
           .from("digital_resume_by_crm")
           .select("email, user_id")
           .eq("email", crmUser.email)
-          .maybeSingle();
+          .single();
 
         if (existingCRMRecord) {
-          if (action === 'manual_create') {
-            console.log(`Manual request: user ${crmUser.email} already exists.`);
-            results.push({
-              email: crmUser.email,
-              status: "already_exists",
-              user_id: existingCRMRecord.user_id,
-            });
-          }
-          continue; // Skip already exists in bulk run without logging to save time
+          console.log(`User ${crmUser.email} already exists in CRM tracking, ensuring Auth password is sync...`);
         }
-
-        // Limit check for bulk sync
-        if (processedCount >= MAX_NEW_USERS_PER_RUN && action !== 'manual_create') {
-          console.log(`Reached max batch limit (${MAX_NEW_USERS_PER_RUN}). Stopping for this run.`);
-          break;
-        }
-        processedCount++;
-
-        console.log(`Processing NEW user: ${crmUser.email}`);
 
         // Create or get existing auth user
+        console.log(`Creating/fetching auth user for ${crmUser.email}`);
         let authUserId: string;
 
         // Try to create user
@@ -189,114 +175,190 @@ serve(async (req) => {
           .createUser({
             email: crmUser.email,
             password: "Applywizz@123",
-            email_confirm: true,
+            email_confirm: true, // Auto-confirm email
           });
 
         if (authError) {
-          // If user already exists in Auth, fetch their ID
+          // If user already exists, reset their password
           if (authError.message.includes("already been registered")) {
-            console.log(`User ${crmUser.email} exists in auth, linking...`);
-            const { data: existingUsers } = await supabase.auth.admin.listUsers();
-            const existingUser = existingUsers.users.find(u => u.email === crmUser.email);
+            console.log(`User ${crmUser.email} already exists in auth, resetting password...`);
 
-            if (!existingUser) throw new Error(`User exists but not found in list`);
+            // Fetch and update
+            const { data: userData, error: fetchError } = await supabase.auth.admin.listUsers();
+            if (fetchError) throw fetchError;
+
+            const existingUser = userData.users.find(u => u.email?.toLowerCase() === crmUser.email.toLowerCase());
+            if (!existingUser) throw new Error(`User ${crmUser.email} registered but not found`);
+
             authUserId = existingUser.id;
+            await supabase.auth.admin.updateUserById(authUserId, {
+              password: "Applywizz@123",
+              email_confirm: true
+            });
+            console.log(`Password reset for existing user: ${authUserId}`);
           } else {
-            throw authError;
+            console.error(`Auth error for ${crmUser.email}:`, authError);
+            throw new Error(`Failed to create auth user: ${authError.message}`);
           }
         } else {
-          if (!authUser.user) throw new Error("Auth user creation returned no user");
+          if (!authUser.user) {
+            throw new Error("Auth user creation returned no user");
+          }
           authUserId = authUser.user.id;
+          console.log(`Auth user created: ${authUserId}`);
         }
 
-        // Create/Update profile
-        await supabase.from("profiles").upsert({
-          id: authUserId,
-          email: crmUser.email,
-          credits_remaining: 4,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "id" });
+        // If user already had a CRM record, we're done with the logic after ensuring auth is fine
+        if (existingCRMRecord) {
+          results.push({
+            email: crmUser.email,
+            status: "already_exists",
+            user_id: authUserId,
+          });
+          continue;
+        }
+
+        // Create profile with 4 credits
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .upsert({
+            id: authUserId,
+            email: crmUser.email,
+            credits_remaining: 4,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: "id",
+          });
+
+        if (profileError) {
+          console.error(`Profile error for ${crmUser.email}:`, profileError);
+          throw new Error(`Failed to create profile: ${profileError.message}`);
+        }
+
+        console.log(`Profile created with 4 credits`);
 
         // Insert into CRM tracking table
-        await supabase.from("digital_resume_by_crm").insert({
-          email: crmUser.email,
-          user_id: authUserId,
-          credits_remaining: 4,
-          payment_details: {
-            source: "CRM",
-            crm_data: crmUser,
-            synced_at: new Date().toISOString(),
-          },
-          user_created_at: new Date().toISOString(),
-          last_sync_at: new Date().toISOString(),
-          is_active: true,
-        });
+        const { error: crmTableError } = await supabase
+          .from("digital_resume_by_crm")
+          .insert({
+            email: crmUser.email,
+            user_id: authUserId,
+            credits_remaining: 4,
+            payment_details: {
+              source: "CRM",
+              crm_data: crmUser, // Store all columns from the view
+              synced_at: new Date().toISOString(),
+            },
+            user_created_at: new Date().toISOString(),
+            last_sync_at: new Date().toISOString(),
+            is_active: true,
+          });
+
+        if (crmTableError) {
+          console.error(`CRM table error for ${crmUser.email}:`, crmTableError);
+          throw new Error(
+            `Failed to insert into CRM table: ${crmTableError.message}`,
+          );
+        }
+
+        console.log(`CRM tracking record created`);
 
         // Create dashboard stats record
-        await supabase.from("crm_dashboard_stats").insert({
-          email: crmUser.email,
-          user_id: authUserId,
-          total_applications: 0,
-          total_recordings: 0,
-          total_resumes: 0,
-          total_views: 0,
-          last_login_date: new Date().toISOString(),
-        }).catch(e => console.warn("Dashboard stats failed (non-critical)"));
+        const { error: dashboardStatsError } = await supabase
+          .from("crm_dashboard_stats")
+          .insert({
+            email: crmUser.email,
+            user_id: authUserId,
+            total_applications: 0,
+            total_recordings: 0,
+            total_resumes: 0,
+            total_views: 0,
+            last_login_date: new Date().toISOString(),
+          });
+
+        if (dashboardStatsError) {
+          console.error(`Dashboard stats error for ${crmUser.email}:`, dashboardStatsError);
+          // Don't throw error, just log it - dashboard stats is not critical
+          console.warn(`Failed to create dashboard stats, but user was created successfully`);
+        } else {
+          console.log(`Dashboard stats record created`);
+        }
 
         // Send welcome email using MS365
-        if (ms365Token) {
-          try {
-            await fetch('https://graph.microsoft.com/v1.0/users/support@applywizz.com/sendMail', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${ms365Token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                message: {
-                  subject: 'Welcome to Digital Resume - Your Account is Ready!',
-                  body: {
-                    contentType: 'HTML',
-                    content: `
-                      <html>
-                        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                            <h2 style="color: #0B4F6C;">Welcome to Digital Resume!</h2>
-                            <p>Hello,</p>
-                            <p>Your Digital Resume account has been created successfully!</p>
-                            
-                            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                              <h3 style="margin-top: 0;">Your Login Credentials:</h3>
-                              <p><strong>Email:</strong> ${crmUser.email}</p>
-                              <p><strong>Password:</strong> Applywizz@123</p>
-                              <p><strong>Credits:</strong> 4 Digital Resume Credits</p>
-                            </div>
-                            
-                            <p>You can now create professional digital video resumes and apply to jobs!</p>
-                            
-                            <p>
-                              <a href="https://digital-resume.applywizz.com/auth" style="background-color: #0B4F6C; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">
-                                Login Now
-                              </a>
-                            </p>
-                            
-                            <p style="margin-top: 30px; color: #666; font-size: 14px;">
-                              Best regards,<br>
-                              The Digital Resume Team
-                            </p>
+        try {
+          const emailResponse = await fetch('https://graph.microsoft.com/v1.0/users/support@applywizz.com/sendMail', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${await getMS365AccessToken()}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: {
+                subject: 'Welcome to Digital Resume - Your Account is Ready!',
+                body: {
+                  contentType: 'HTML',
+                  content: `
+                    <html>
+                      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                          <h2 style="color: #0B4F6C;">Welcome to Digital Resume!</h2>
+                          <p>Hello,</p>
+                          <p>Your Digital Resume account has been created successfully!</p>
+                          
+                          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                            <h3 style="margin-top: 0;">Your Login Credentials:</h3>
+                            <p><strong>Email:</strong> ${crmUser.email}</p>
+                            <p><strong>Password:</strong> Applywizz@123</p>
+                            <p><strong>Credits:</strong> 4 Digital Resume Credits</p>
                           </div>
-                        </body>
-                      </html>
-                    `
-                  },
-                  toRecipients: [{ emailAddress: { address: crmUser.email } }]
-                }
-              })
-            });
+                          
+                          <p>You can now:</p>
+                          <ul>
+                            <li>Create professional digital video resumes</li>
+                            <li>Apply to jobs with your video profile</li>
+                            <li>Track your applications</li>
+                          </ul>
+                          
+                          <p>
+                            <a href="https://your-app-url.com/auth" style="background-color: #0B4F6C; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">
+                              Login Now
+                            </a>
+                          </p>
+                          
+                          <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                            If you have any questions, please contact our support team.
+                          </p>
+                          
+                          <p style="color: #666; font-size: 14px;">
+                            Best regards,<br>
+                            The Digital Resume Team
+                          </p>
+                        </div>
+                      </body>
+                    </html>
+                  `
+                },
+                toRecipients: [
+                  {
+                    emailAddress: {
+                      address: crmUser.email
+                    }
+                  }
+                ]
+              }
+            })
+          });
+
+          if (emailResponse.ok) {
             console.log(`✅ Welcome email sent to ${crmUser.email}`);
-          } catch (emailError: any) {
-            console.error(`❌ Email error for ${crmUser.email}:`, emailError.message);
+          } else {
+            const errorText = await emailResponse.text();
+            console.error(`❌ Failed to send email to ${crmUser.email}:`, errorText);
           }
+        } catch (emailError: any) {
+          console.error(`❌ Email sending error for ${crmUser.email}:`, emailError.message);
+          // Don't fail the whole process if email fails
         }
 
         results.push({
@@ -305,6 +367,7 @@ serve(async (req) => {
           user_id: authUserId,
         });
 
+        console.log(`Successfully created user ${crmUser.email}`);
       } catch (error: any) {
         console.error(`Error processing ${crmUser.email}:`, error);
         results.push({
@@ -317,11 +380,12 @@ serve(async (req) => {
 
     // Summary
     const created = results.filter((r) => r.status === "created").length;
-    const alreadyExists = results.filter((r) => r.status === "already_exists").length;
+    const alreadyExists = results.filter((r) => r.status === "already_exists")
+      .length;
     const errors = results.filter((r) => r.status === "error").length;
 
     const summary = {
-      total_attempted: processedCount,
+      total: results.length,
       created,
       alreadyExists,
       errors,

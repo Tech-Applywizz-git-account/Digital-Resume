@@ -52,7 +52,7 @@ export default function DigitalResumeLogin() {
             });
 
             if (authError) {
-                if (authError.message.includes('Invalid login credentials')) {
+                if (authError.message.toLowerCase().includes('invalid login credentials')) {
                     throw new Error('Invalid email or password.');
                 }
                 if (authError.message.includes('Email not confirmed')) {

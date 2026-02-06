@@ -26,3 +26,5 @@ yarn-error.log*
 supabase_backup_clean.sql
 supabase_backup.sql
 supabase_backup_fixed.sql
+*.node_modules
+*.md
