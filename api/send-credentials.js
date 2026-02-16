@@ -94,7 +94,7 @@ export default async function handler(req, res) {
                       <p style="margin: 0;"><strong>Password:</strong> ${password}</p>
                     </div>
 
-                    <p>You can login at: <a href="https://digital-resume-cyan.vercel.app/auth" style="color: #0B4F6C; font-weight: bold; text-decoration: none;">Digital Resume Dashboard</a></p>
+                    <p>You can login at: <a href="https://digital-resume-bice.vercel.app/auth" style="color: #0B4F6C; font-weight: bold; text-decoration: none;">Digital Resume Dashboard</a></p>
                     
                     <p style="margin-top: 30px;">For security reasons, we recommend changing your password after your first login.</p>
                     
