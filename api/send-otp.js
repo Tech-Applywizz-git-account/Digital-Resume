@@ -207,7 +207,7 @@
 //   const res = await fetch(
 //     `https://graph.microsoft.com/v1.0/users/${senderEmail}/sendMail`,
 //     {
-     
+
 //  method: "POST",
 //       headers: {
 //         Authorization: `Bearer ${accessToken}`,
@@ -869,7 +869,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid JSON", details: err.message });
   }
 
-  const { action, email, otp } = body;
+  const { action, otp } = body;
+  const email = (body.email || '').trim().toLowerCase();
   if (!action || !email)
     return res.status(400).json({ error: "Missing required fields" });
 

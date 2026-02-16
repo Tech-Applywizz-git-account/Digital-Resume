@@ -9,7 +9,7 @@ import { showToast } from "../components/ui/toast";
 
 // ✅ real GPT endpoint
 // Handle both Vercel and local environment variables
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 
 const Step3: React.FC = () => {
   const navigate = useNavigate();
@@ -28,7 +28,7 @@ const Step3: React.FC = () => {
   // ----------- GPT PROMPT FUNCTION -------------
   const callOpenAI = async (prompt: string): Promise<string> => {
     // For Vercel deployment, use the backend API endpoint instead of calling OpenAI directly from frontend
-    if (process.env.NODE_ENV === 'production') {
+    if (import.meta.env.PROD) {
       console.log('📤 Sending request to /api/generate-introduction');
       console.log('📤 Prompt length:', prompt.length);
       console.log('📤 Prompt preview:', prompt.substring(0, 100) + '...');

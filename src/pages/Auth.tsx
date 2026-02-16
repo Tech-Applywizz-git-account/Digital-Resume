@@ -665,6 +665,7 @@ export default function Auth() {
                         name="email"
                         value={formData.email}
                         onChange={handleInputChange}
+                        onInput={(e: any) => e.target.value = e.target.value.toLowerCase()}
                         className="w-full h-12 px-4 border border-slate-300 rounded-lg focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 transition-all"
                         placeholder="Enter your email"
                         required
@@ -750,6 +751,7 @@ export default function Auth() {
                           name="email"
                           value={formData.email}
                           onChange={handleInputChange}
+                          onInput={(e: any) => e.target.value = e.target.value.toLowerCase()}
                           className="flex-1 h-12 px-4 border border-slate-300 rounded-lg focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 transition-all"
                           placeholder="Email Address"
                           required

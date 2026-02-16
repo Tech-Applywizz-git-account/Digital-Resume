@@ -1947,7 +1947,7 @@ const SignupPage: React.FC = () => {
                     name="email"
                     type="email"
                     value={form.email}
-                    onChange={handleChange}
+                    onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value.toLowerCase() }))}
                     placeholder="Enter your email"
                     required
                     className="w-full rounded-xl border border-transparent bg-indigo-50/60 px-4 py-3 text-gray-900 placeholder-gray-400 outline-none ring-1 ring-indigo-100 focus:ring-2 focus:ring-indigo-300"

@@ -33,6 +33,7 @@ interface CRMUser {
     user_created_at: string;
     is_active: boolean;
     user_id: string | null;
+    added_by: string | null;
 }
 
 interface CRMAdmin {
@@ -48,9 +49,12 @@ export default function DigitalResumeDashboard() {
     const [admins, setAdmins] = useState<CRMAdmin[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [showAddAdminModal, setShowAddAdminModal] = useState(false);
+    const [showAddUserModal, setShowAddUserModal] = useState(false);
     const [isAdminAdding, setIsAdminAdding] = useState(false);
+    const [isUserAdding, setIsUserAdding] = useState(false);
     const [newAdminEmail, setNewAdminEmail] = useState('');
     const [newAdminPassword, setNewAdminPassword] = useState('');
+    const [newUserEmail, setNewUserEmail] = useState('');
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     // Credit editing state
@@ -154,6 +158,120 @@ export default function DigitalResumeDashboard() {
             setAdmins(data || []);
         } catch (error: any) {
             console.error('Error fetching admins:', error);
+        }
+    };
+
+    const handleAddUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            setIsUserAdding(true);
+            setMessage(null);
+
+            const normalizedEmail = newUserEmail.trim().toLowerCase();
+            const defaultPassword = "Applywizz@123";
+
+            // 1. Create a transient supabase client to sign up the new user
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+            const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: false,
+                    detectSessionInUrl: false
+                }
+            });
+
+            // 2. Attempt to create the user in Supabase Auth
+            const { data: authData, error: authError } = await authClient.auth.signUp({
+                email: normalizedEmail,
+                password: defaultPassword,
+            });
+
+            let targetUserId = authData.user?.id || null;
+            let isNewUser = !!authData.user;
+
+            if (authError) {
+                // If user already exists, we continue to check/add to digital_resume_by_crm
+                if (authError.message.toLowerCase().includes('already registered') || authError.message.toLowerCase().includes('already been registered')) {
+                    console.log('User already exists in Auth, checking digital_resume_by_crm...');
+
+                    // Try to get the user ID if they exist
+                    const { data: existingUser } = await supabase
+                        .from('profiles')
+                        .select('id')
+                        .eq('email', normalizedEmail)
+                        .maybeSingle();
+
+                    if (existingUser) targetUserId = existingUser.id;
+                } else {
+                    throw authError;
+                }
+            }
+
+            // 3. Add to digital_resume_by_crm table
+            const { error: dbError } = await supabase
+                .from('digital_resume_by_crm')
+                .insert({
+                    email: normalizedEmail,
+                    user_id: targetUserId,
+                    credits_remaining: 4,
+                    added_by: user?.email || sessionStorage.getItem('admin_email'),
+                    is_active: true
+                });
+
+            if (dbError) {
+                if (dbError.code === '23505') throw new Error('This user is already in the CRM system.');
+                throw dbError;
+            }
+
+            // 4. Create initial dashboard stats record (matching the server-side function)
+            await supabase.from('crm_dashboard_stats').insert({
+                email: normalizedEmail,
+                user_id: targetUserId,
+                total_applications: 0,
+                total_recordings: 0,
+                total_resumes: 0,
+                total_views: 0
+            }).select().maybeSingle();
+
+            // 5. Send credentials email
+            let emailSent = false;
+            try {
+                const emailRes = await fetch('/api/send-credentials', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: normalizedEmail,
+                        password: defaultPassword
+                    })
+                });
+                const emailData = await emailRes.json();
+                if (emailRes.ok) emailSent = true;
+                else console.error('Email API Error:', emailData);
+            } catch (emailErr) {
+                console.error('Failed to send credentials email:', emailErr);
+            }
+
+            if (isNewUser) {
+                setMessage({
+                    type: 'success',
+                    text: `User ${normalizedEmail} added successfully. ${emailSent ? 'Email sent.' : 'Warning: Email failed to send, please check console.'}`
+                });
+            } else {
+                setMessage({
+                    type: 'success',
+                    text: `Existing user ${normalizedEmail} linked to CRM. Password NOT changed as they already had an account. ${emailSent ? 'Notification email sent.' : 'Warning: Notification email failed.'}`
+                });
+            }
+            setNewUserEmail('');
+            setShowAddUserModal(false);
+            fetchUsers();
+        } catch (error: any) {
+            console.error('Error adding user:', error);
+            setMessage({ type: 'error', text: error.message || 'Failed to add user' });
+        } finally {
+            setIsUserAdding(false);
         }
     };
 
@@ -287,10 +405,18 @@ export default function DigitalResumeDashboard() {
 
                 <div className="flex items-center gap-4">
                     <button
-                        onClick={() => setShowAddAdminModal(true)}
+                        onClick={() => setShowAddUserModal(true)}
                         className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shadow-sm"
                     >
                         <UserPlus className="w-3.5 h-3.5" />
+                        <span className="hidden md:inline">Add User</span>
+                    </button>
+
+                    <button
+                        onClick={() => setShowAddAdminModal(true)}
+                        className="bg-[#159A9C] hover:bg-[#159A9C]/90 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shadow-sm"
+                    >
+                        <ShieldCheck className="w-3.5 h-3.5" />
                         <span className="hidden md:inline">Add Admin</span>
                     </button>
 
@@ -384,6 +510,7 @@ export default function DigitalResumeDashboard() {
                                             <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[25%]">Personal Email</th>
                                             <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[14%] text-center">Available Credits</th>
                                             <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[11%]">Joined</th>
+                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%]">Added By</th>
                                             <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[8%] text-center">Status</th>
                                             <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-right">Audit</th>
                                         </tr>
@@ -448,6 +575,9 @@ export default function DigitalResumeDashboard() {
                                                 <td className="px-6 py-5 text-slate-700 text-[14px] font-bold">
                                                     {formatDate(user_row.user_created_at)}
                                                 </td>
+                                                <td className="px-6 py-5 text-slate-500 text-[12px] truncate">
+                                                    {user_row.added_by || 'System/Legacy'}
+                                                </td>
                                                 <td className="px-6 py-5 text-center">
                                                     <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider border-2 ${user_row.is_active
                                                         ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -474,6 +604,80 @@ export default function DigitalResumeDashboard() {
                     </div>
                 </div>
             </main>
+
+            {/* Add User Modal */}
+            {showAddUserModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-emerald-600 text-white">
+                            <div>
+                                <h3 className="text-xl font-bold flex items-center gap-2">
+                                    <UserPlus className="w-6 h-6" />
+                                    Add New CRM User
+                                </h3>
+                                <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mt-1">User Enrollment Portal</p>
+                            </div>
+                            <button
+                                onClick={() => !isUserAdding && setShowAddUserModal(false)}
+                                className="hover:bg-white/10 p-2 rounded-xl transition-colors"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleAddUser} className="p-8 space-y-6">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">User Email Address</label>
+                                    <div className="relative group">
+                                        <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-emerald-500 transition-colors" />
+                                        <input
+                                            type="email"
+                                            required
+                                            placeholder="user@example.com"
+                                            className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-500/5 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-300 font-medium"
+                                            value={newUserEmail}
+                                            onChange={(e) => setNewUserEmail(e.target.value.toLowerCase())}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                                    <p className="text-[11px] text-emerald-800 font-medium">
+                                        <span className="font-bold">Default Credentials:</span><br />
+                                        Password: <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-200 font-bold ml-1">Applywizz@123</code>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-4 pt-4">
+                                <button
+                                    type="button"
+                                    disabled={isUserAdding}
+                                    onClick={() => setShowAddUserModal(false)}
+                                    className="flex-1 px-4 py-4 rounded-2xl border border-slate-200 text-slate-500 font-bold hover:bg-slate-50 transition-all text-sm"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isUserAdding}
+                                    className="flex-1 bg-emerald-600 text-white px-4 py-4 rounded-2xl font-bold shadow-xl shadow-emerald-200 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 text-sm"
+                                >
+                                    {isUserAdding ? (
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <>
+                                            Add User
+                                            <ArrowRight className="w-4 h-4" />
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Add Admin Modal */}
             {showAddAdminModal && (
@@ -507,7 +711,7 @@ export default function DigitalResumeDashboard() {
                                             placeholder="name@applywizz.com"
                                             className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#0B4F6C]/5 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-300 font-medium"
                                             value={newAdminEmail}
-                                            onChange={(e) => setNewAdminEmail(e.target.value)}
+                                            onChange={(e) => setNewAdminEmail(e.target.value.toLowerCase())}
                                         />
                                     </div>
                                 </div>

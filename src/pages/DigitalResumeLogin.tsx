@@ -31,7 +31,7 @@ export default function DigitalResumeLogin() {
                 const { data: adminData, error: adminCheckError } = await supabase
                     .from('crm_admins')
                     .select('email')
-                    .eq('email', normalizedEmail)
+                    .ilike('email', normalizedEmail)
                     .maybeSingle();
 
                 if ((adminCheckError || !adminData) && normalizedEmail !== 'dinesh@applywizz.com') {
@@ -106,7 +106,7 @@ export default function DigitalResumeLogin() {
                             placeholder="Enter your admin email"
                             className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-4 rounded-xl focus:border-[#0B4F6C] focus:ring-4 focus:ring-[#0B4F6C]/5 outline-none transition-all placeholder:text-slate-400 font-medium"
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            onChange={(e) => setEmail(e.target.value.toLowerCase())}
                         />
                     </div>
 

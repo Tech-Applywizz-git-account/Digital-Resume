@@ -27,6 +27,10 @@
       "dest": "/api/send-otp.js"
     },
     {
+      "src": "/api/send-credentials",
+      "dest": "/api/send-credentials.js"
+    },
+    {
       "handle": "filesystem"
     },
     {
