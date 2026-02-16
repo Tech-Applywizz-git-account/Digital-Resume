@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const uid = data.user?.id;
       if (!uid) throw new Error('User ID missing after login');
 
-      // Check if CRM user
+      // Check if CRM user (we do this again to ensure we get the right crmData)
       const { data: crmData } = await supabase
         .from('digital_resume_by_crm')
         .select('email')

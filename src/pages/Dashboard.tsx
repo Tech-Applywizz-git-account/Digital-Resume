@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import {
@@ -13,10 +13,12 @@ import {
   Loader2,
   X,
   Menu,
+  FileUp,
 } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserInfo } from '../utils/crmHelpers';
+import { showToast } from "../components/ui/toast";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -36,6 +38,10 @@ export default function Dashboard() {
   // CRM user tracking
   const [isCRM, setIsCRM] = useState(false);
   const [crmEmail, setCRMEmail] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [replacingId, setReplacingId] = useState<string | null>(null);
+  const [isReplacing, setIsReplacing] = useState(false);
 
   const handleLogout = () => navigate('/');
 
@@ -192,6 +198,93 @@ export default function Dashboard() {
       console.error('Error fetching Network Notes:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReplaceClick = (id: string) => {
+    setReplacingId(id);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !replacingId || !user) return;
+
+    try {
+      setIsReplacing(true);
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+      const timestamp = Date.now();
+      const fileName = `replaced_resume_${timestamp}.${fileExt}`;
+
+      let publicUrl: string | null = null;
+
+      if (isCRM && crmEmail) {
+        // CRM User - Upload to CRM bucket
+        const filePath = `${crmEmail}/${fileName}`;
+        const { error: uploadError } = await supabase.storage
+          .from('CRM_users_resumes')
+          .upload(filePath, file, { upsert: true });
+        if (uploadError) throw uploadError;
+
+        const { data: publicData } = supabase.storage
+          .from('CRM_users_resumes')
+          .getPublicUrl(filePath);
+        publicUrl = publicData?.publicUrl ?? null;
+
+        // Update crm_job_requests
+        const { error: updateError } = await supabase.from('crm_job_requests')
+          .update({
+            resume_url: publicUrl,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', replacingId);
+
+        if (updateError) throw updateError;
+
+        // Also update crm_resumes for consistency
+        await supabase.from('crm_resumes').insert({
+          email: crmEmail,
+          user_id: user.id,
+          resume_name: file.name,
+          resume_url: publicUrl,
+          file_type: fileExt,
+          file_size: file.size,
+        });
+
+      } else {
+        // Regular User - Upload to regular bucket
+        const filePath = `${user.id}/${fileName}`;
+        const { error: uploadError } = await supabase.storage
+          .from('resumes')
+          .upload(filePath, file, { upsert: true });
+        if (uploadError) throw uploadError;
+
+        const { data: publicData } = supabase.storage
+          .from('resumes')
+          .getPublicUrl(filePath);
+        publicUrl = publicData?.publicUrl ?? null;
+
+        // Update job_requests
+        const { error: updateError } = await supabase.from('job_requests')
+          .update({
+            resume_path: publicUrl,
+            resume_original_name: file.name,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', replacingId);
+
+        if (updateError) throw updateError;
+      }
+
+      showToast("Resume replaced successfully!", "success");
+      fetchcareercasts(); // Refresh the list
+    } catch (err: any) {
+      console.error("❌ Replace failed:", err);
+      showToast("Failed to replace resume: " + err.message, "error");
+    } finally {
+      setIsReplacing(false);
+      setReplacingId(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -417,13 +510,25 @@ export default function Dashboard() {
                                   className={`${both
                                     ? 'bg-[#01796F] hover:bg-[#016761] text-white'
                                     : 'bg-gray-200 text-gray-400'
-                                    } px-3 py-1.5 rounded-md font-semibold text-xs`}
+                                    } px-3 py-1.5 rounded-md font-semibold text-xs transition-colors`}
                                 >
                                   View
                                 </button>
                                 <button
+                                  onClick={() => handleReplaceClick(cast.id)}
+                                  disabled={isReplacing && replacingId === cast.id}
+                                  className="border-2 border-emerald-500 text-emerald-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-emerald-500 hover:text-white transition-colors flex items-center gap-1"
+                                >
+                                  {isReplacing && replacingId === cast.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <FileUp className="w-3 h-3" />
+                                  )}
+                                  Replace
+                                </button>
+                                <button
                                   onClick={() => handleReRecord(cast.id)}
-                                  className="border-2 border-[#0B4F6C] text-[#0B4F6C] px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white"
+                                  className="border-2 border-[#0B4F6C] text-[#0B4F6C] px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white transition-colors"
                                 >
                                   Re-record
                                 </button>
@@ -489,6 +594,18 @@ export default function Dashboard() {
                                       } px-3 py-2 rounded-lg font-medium text-sm transition-colors`}
                                   >
                                     View Details
+                                  </button>
+                                  <button
+                                    onClick={() => handleReplaceClick(cast.id)}
+                                    disabled={isReplacing && replacingId === cast.id}
+                                    className="flex-1 border border-emerald-500 text-emerald-600 px-3 py-2 rounded-lg font-medium text-sm hover:bg-emerald-500 hover:text-white transition-colors flex items-center justify-center gap-1"
+                                  >
+                                    {isReplacing && replacingId === cast.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <FileUp className="w-4 h-4" />
+                                    )}
+                                    Replace
                                   </button>
                                   <button
                                     onClick={() => handleReRecord(cast.id)}
@@ -599,6 +716,15 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {/* Hidden File Input for Resume Replace */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept=".pdf,.doc,.docx"
+          className="hidden"
+        />
       </div>
     </div>
   );

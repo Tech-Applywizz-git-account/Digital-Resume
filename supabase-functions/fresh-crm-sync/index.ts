@@ -270,6 +270,7 @@ serve(async (req) => {
                 await supabase.from("profiles").upsert({
                     id: userId,
                     email: email,
+                    full_name: crmUser.lead_name || crmUser.full_name || "CRM User",
                     credits_remaining: 4,
                     updated_at: new Date().toISOString(),
                 }, { onConflict: "id" });
@@ -279,6 +280,7 @@ serve(async (req) => {
                 await supabase.from("digital_resume_by_crm").insert({
                     email: email,
                     user_id: userId,
+                    company_application_email: crmUser.company_application_email || null,
                     credits_remaining: 4,
                     payment_details: {
                         source: "CRM",

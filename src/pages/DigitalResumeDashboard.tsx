@@ -20,11 +20,14 @@ import {
     Save,
     LogOut,
     LayoutDashboard,
-    UserPlus
+    UserPlus,
+    FileUp
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { showToast } from "../components/ui/toast";
+import { useRef } from 'react';
 
 interface CRMUser {
     email: string;
@@ -32,7 +35,10 @@ interface CRMUser {
     company_application_email: string | null;
     user_created_at: string;
     is_active: boolean;
-    user_id: string | null;
+    user_id: string;
+    profiles?: {
+        full_name: string | null;
+    };
     added_by: string | null;
 }
 
@@ -62,6 +68,11 @@ export default function DigitalResumeDashboard() {
     const [newCreditValue, setNewCreditValue] = useState<number>(0);
     const [isUpdatingCredits, setIsUpdatingCredits] = useState(false);
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+
+    // Replace Resume state
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [replacingUserEmail, setReplacingUserEmail] = useState<string | null>(null);
+    const [isReplacing, setIsReplacing] = useState(false);
 
     useEffect(() => {
         const checkAccess = async () => {
@@ -137,7 +148,7 @@ export default function DigitalResumeDashboard() {
         try {
             const { data, error } = await supabase
                 .from('digital_resume_by_crm')
-                .select('*')
+                .select('*, profiles:user_id(full_name)')
                 .order('user_created_at', { ascending: false });
 
             if (error) throw error;
@@ -340,6 +351,78 @@ export default function DigitalResumeDashboard() {
         }
     };
 
+    const handleReplaceClick = (email: string) => {
+        setReplacingUserEmail(email);
+        fileInputRef.current?.click();
+    };
+
+    const handleAdminFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !replacingUserEmail) return;
+
+        try {
+            setIsReplacing(true);
+
+            const { data: jobReq, error: jobError } = await supabase
+                .from('crm_job_requests')
+                .select('id')
+                .eq('email', replacingUserEmail)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (jobError) throw jobError;
+            if (!jobReq) {
+                showToast("No job request found for this user. Cannot replace resume.", "error");
+                return;
+            }
+
+            const fileExt = file.name.split('.').pop()?.toLowerCase();
+            const timestamp = Date.now();
+            const fileName = `admin_replaced_${timestamp}.${fileExt}`;
+            const filePath = `${replacingUserEmail}/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('CRM_users_resumes')
+                .upload(filePath, file, { upsert: true });
+
+            if (uploadError) throw uploadError;
+
+            const { data: publicData } = supabase.storage
+                .from('CRM_users_resumes')
+                .getPublicUrl(filePath);
+            const publicUrl = publicData?.publicUrl;
+
+            const { error: updateError } = await supabase.from('crm_job_requests')
+                .update({
+                    resume_url: publicUrl,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', jobReq.id);
+
+            if (updateError) throw updateError;
+
+            await supabase.from('crm_resumes').insert({
+                email: replacingUserEmail,
+                resume_name: file.name,
+                resume_url: publicUrl,
+                file_type: fileExt,
+                file_size: file.size,
+                uploaded_by_admin: true
+            });
+
+            showToast(`Resume replaced for ${replacingUserEmail}`, "success");
+            fetchUsers();
+        } catch (err: any) {
+            console.error("❌ Admin replace failed:", err);
+            showToast("Failed to replace resume: " + err.message, "error");
+        } finally {
+            setIsReplacing(false);
+            setReplacingUserEmail(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
     const handleUpdateCredits = async (email: string) => {
         try {
             setIsUpdatingCredits(true);
@@ -378,7 +461,7 @@ export default function DigitalResumeDashboard() {
 
     const filteredUsers = users.filter(u =>
         u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (u.company_application_email?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
+        (u.company_application_email && u.company_application_email.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     const formatDate = (date: string) =>
@@ -522,7 +605,9 @@ export default function DigitalResumeDashboard() {
                                                     {user_row.company_application_email ? (
                                                         user_row.company_application_email
                                                     ) : (
-                                                        <span className="text-slate-400 font-normal">-- Dashboard Record --</span>
+                                                        <span className="text-slate-900 font-semibold block">
+                                                            {user_row.profiles?.full_name || user_row.email.split('@')[0]}
+                                                        </span>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-5">
@@ -588,12 +673,26 @@ export default function DigitalResumeDashboard() {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <button
-                                                        onClick={fetchUsers}
-                                                        className="p-2 text-slate-400 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all"
-                                                    >
-                                                        <RefreshCcw className="w-4 h-4" />
-                                                    </button>
+                                                    <div className="flex justify-end gap-2">
+                                                        <button
+                                                            onClick={() => handleReplaceClick(user_row.email)}
+                                                            disabled={isReplacing && replacingUserEmail === user_row.email}
+                                                            title="Replace Resume"
+                                                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all disabled:opacity-50"
+                                                        >
+                                                            {isReplacing && replacingUserEmail === user_row.email ? (
+                                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                            ) : (
+                                                                <FileUp className="w-4 h-4" />
+                                                            )}
+                                                        </button>
+                                                        <button
+                                                            onClick={fetchUsers}
+                                                            className="p-2 text-slate-400 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all"
+                                                        >
+                                                            <RefreshCcw className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -774,6 +873,15 @@ export default function DigitalResumeDashboard() {
                     </div>
                 </div>
             )}
+
+            {/* Hidden File Input for Resume Replace */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleAdminFileChange}
+                accept=".pdf,.doc,.docx"
+                className="hidden"
+            />
         </div>
     );
 }

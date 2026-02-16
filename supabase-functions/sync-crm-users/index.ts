@@ -106,7 +106,8 @@ serve(async (req) => {
         email: email,
         digital_resume_sale_value: 999, // Ensure it passes any checks
         full_name: name || "Manual User",
-        // Add other fields that might be expected
+        lead_name: name || "Manual User",
+        company_application_email: null,
       }];
     } else {
       console.log("Checking for last synced user...");
@@ -224,6 +225,7 @@ serve(async (req) => {
           .upsert({
             id: authUserId,
             email: crmUser.email,
+            full_name: crmUser.lead_name || crmUser.full_name || "CRM User",
             credits_remaining: 4,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -244,6 +246,7 @@ serve(async (req) => {
           .insert({
             email: crmUser.email,
             user_id: authUserId,
+            company_application_email: crmUser.company_application_email || null,
             credits_remaining: 4,
             payment_details: {
               source: "CRM",
