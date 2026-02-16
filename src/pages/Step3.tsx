@@ -19,7 +19,10 @@ const Step3: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRewriting, setIsRewriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [teleprompterSpeed, setTeleprompterSpeed] = useState<number>(1);
+  const [teleprompterSpeed, setTeleprompterSpeed] = useState<number>(() => {
+    const saved = localStorage.getItem("teleprompterSpeed");
+    return saved ? parseFloat(saved) : 1;
+  });
 
   const handleLogout = () => {
     navigate('/');

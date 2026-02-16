@@ -19,13 +19,10 @@ const Record: React.FC = () => {
   const [state, setState] = useState<"idle" | "recording">("idle");
   const [timer, setTimer] = useState("0:00");
   const [startTime, setStartTime] = useState<number>(0);
-  const [scrollInterval, setScrollInterval] = useState<NodeJS.Timeout | null>(
-    null
-  );
-  const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(
-    null
-  );
+  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
   const [teleprompterText, setTeleprompterText] = useState("");
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
   const [checkingCredits, setCheckingCredits] = useState(false);
@@ -93,76 +90,78 @@ const Record: React.FC = () => {
   // ------------------------------------------
   // Camera + Recorder Initialization
   // ------------------------------------------
-  useEffect(() => {
-    const setupCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            aspectRatio: 16 / 9,
-            frameRate: { ideal: 30, max: 60 },
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-          },
-        });
+  const setupCamera = async () => {
+    try {
+      setIsInitializing(true);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          aspectRatio: 16 / 9,
+          frameRate: { ideal: 30, max: 60 },
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => videoRef.current?.play();
-          // Ensure camera is on initially
-          stream.getVideoTracks().forEach((track) => (track.enabled = true));
-        }
-
-        await new Promise((r) => setTimeout(r, 800)); // small wait for tracks
-
-        const mimeType = MediaRecorder.isTypeSupported(
-          "video/webm;codecs=vp8,opus"
-        )
-          ? "video/webm;codecs=vp8,opus"
-          : "video/webm";
-
-        let recorder: MediaRecorder;
-
-        // Try higher bitrate for better clarity
-        try {
-          recorder = new MediaRecorder(stream, {
-            mimeType,
-            videoBitsPerSecond: 5_000_000, // ~5 Mbps
-            audioBitsPerSecond: 128_000,
-          });
-        } catch {
-          // Fallback if browser doesn't like bitrate options
-          recorder = new MediaRecorder(stream, { mimeType });
-        }
-
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) chunksRef.current.push(event.data);
-        };
-        recorder.onstop = handleRecordingStop;
-        recorder.onerror = (err) => console.error("⚠️ Recorder error:", err);
-
-        setMediaRecorder(recorder);
-        setRecorderReady(true); // ✅ recorder ready, button can be used
-        console.log("✅ MediaRecorder ready:", mimeType);
-      } catch (err) {
-        console.error("🚫 Camera/Mic access failed:", err);
-        showToast(
-          "Please allow camera and microphone access, then reload the page.",
-          "error"
-        );
-        setRecorderReady(false);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => videoRef.current?.play();
+        // Ensure camera is on initially
+        stream.getVideoTracks().forEach((track) => (track.enabled = true));
       }
-    };
 
-    setupCamera();
+      await new Promise((r) => setTimeout(r, 800)); // small wait for tracks
 
-    // Cleanup
+      const mimeType = MediaRecorder.isTypeSupported(
+        "video/webm;codecs=vp8,opus"
+      )
+        ? "video/webm;codecs=vp8,opus"
+        : "video/webm";
+
+      let recorder: MediaRecorder;
+
+      // Try higher bitrate for better clarity
+      try {
+        recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 5_000_000, // ~5 Mbps
+          audioBitsPerSecond: 128_000,
+        });
+      } catch {
+        // Fallback if browser doesn't like bitrate options
+        recorder = new MediaRecorder(stream, { mimeType });
+      }
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = handleRecordingStop;
+      recorder.onerror = (err) => console.error("⚠️ Recorder error:", err);
+
+      setMediaRecorder(recorder);
+      setRecorderReady(true);
+      console.log("✅ MediaRecorder ready:", mimeType);
+      setIsInitializing(false);
+      return recorder;
+    } catch (err) {
+      console.error("🚫 Camera/Mic access failed:", err);
+      showToast(
+        "Please allow camera and microphone access to record.",
+        "error"
+      );
+      setRecorderReady(false);
+      setIsInitializing(false);
+      return null;
+    }
+  };
+
+  useEffect(() => {
     return () => {
-      if (scrollInterval) clearInterval(scrollInterval);
-      if (timerInterval) clearInterval(timerInterval);
+      if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
       // stop camera tracks on unmount
       if (videoRef.current && videoRef.current.srcObject) {
@@ -182,11 +181,14 @@ const Record: React.FC = () => {
       const minutes = Math.floor(seconds / 60);
       setTimer(`${minutes}:${String(seconds % 60).padStart(2, "0")}`);
     }, 1000);
-    setTimerInterval(interval);
+    timerIntervalRef.current = interval;
   };
 
   const resetTimer = () => {
-    if (timerInterval) clearInterval(timerInterval);
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
     setTimer("0:00");
   };
 
@@ -195,13 +197,15 @@ const Record: React.FC = () => {
     let y = 100; // starts below Record button
     const speed = parseFloat(localStorage.getItem("teleprompterSpeed") || "1");
     const interval = setInterval(() => {
-      y -= 0.18 * speed;
+      y -= 0.08 * speed;
       if (teleprompterRef.current) {
         teleprompterRef.current.style.transform = `translate(-50%, ${y}%)`;
       }
-      if (y < -200) clearInterval(interval);
+      if (y < -300) {
+        if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
+      }
     }, 40);
-    setScrollInterval(interval);
+    scrollIntervalRef.current = interval;
   };
 
   const resetTeleprompterPosition = () => {
@@ -212,13 +216,16 @@ const Record: React.FC = () => {
 
   // 🔹 Start/Stop Recording (single-click toggle)
   const handleRecordClick = async () => {
-    if (!mediaRecorder) {
-      // Just ignore click if not ready – no more "Recorder not initialized yet."
-      return;
-    }
-
     // START recording
     if (state === "idle") {
+      let currentRecorder = mediaRecorder;
+
+      // Initialize camera ONLY when user clicks Record
+      if (!currentRecorder) {
+        currentRecorder = await setupCamera();
+        if (!currentRecorder) return;
+      }
+
       // Check credits before starting recording
       if (creditsRemaining !== null && creditsRemaining <= 0) {
         showToast(
@@ -231,16 +238,11 @@ const Record: React.FC = () => {
         }, 2000);
         return;
       }
-      try {
-        // Turn camera on
-        if (videoRef.current && videoRef.current.srcObject) {
-          const stream = videoRef.current.srcObject as MediaStream;
-          stream.getVideoTracks().forEach((track) => (track.enabled = true));
-        }
 
+      try {
         chunksRef.current = [];
         setStartTime(Date.now());
-        mediaRecorder.start(250); // gather data every 250ms
+        currentRecorder.start(250); // gather data every 250ms
         console.log("🎥 Recording started");
         setState("recording");
         startTeleprompterScroll();
@@ -254,8 +256,10 @@ const Record: React.FC = () => {
     // STOP recording
     if (state === "recording") {
       try {
-        mediaRecorder.requestData();
-        mediaRecorder.stop();
+        if (mediaRecorder) {
+          mediaRecorder.requestData();
+          mediaRecorder.stop();
+        }
         console.log("🛑 Recording stopped:", Date.now());
         setState("idle");
       } catch (err) {
@@ -266,16 +270,25 @@ const Record: React.FC = () => {
 
   // 🔹 When Recording Stops
   const handleRecordingStop = async () => {
-    if (scrollInterval) clearInterval(scrollInterval);
-    if (timerInterval) clearInterval(timerInterval);
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
     resetTimer();
     resetTeleprompterPosition();
 
-    // Turn camera off (preview freezes but not black)
+    // Turn camera off COMPLETELY (light goes off)
     if (videoRef.current && videoRef.current.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
-      stream.getVideoTracks().forEach((track) => (track.enabled = false));
+      stream.getTracks().forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
     }
+    setMediaRecorder(null);
+    setRecorderReady(false);
 
     console.log("📹 Finalizing recording...");
     await new Promise((res) => setTimeout(res, 300));
@@ -492,7 +505,7 @@ const Record: React.FC = () => {
     }
   };
 
-  const recordingDisabled = !recorderReady || isUploading;
+  const recordingDisabled = isUploading || isInitializing;
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
@@ -526,13 +539,15 @@ const Record: React.FC = () => {
           </div>
         )}
 
-        {/* Timer */}
+        {/* Timer / Status */}
         <div className="absolute top-3 right-4 text-white font-semibold text-xl flex items-center">
           <span
-            className={`w-2 h-2 rounded-full mr-2 ${state === "recording" ? "bg-red-500" : "bg-gray-400"
+            className={`w-2 h-2 rounded-full mr-2 ${state === "recording" ? "bg-red-500" : (isInitializing ? "bg-yellow-400 animate-pulse" : "bg-gray-400")
               }`}
           />
-          <span ref={timerRef}>{isUploading ? "Uploading..." : timer}</span>
+          <span ref={timerRef}>
+            {isUploading ? "Uploading..." : (isInitializing ? "Starting Camera..." : timer)}
+          </span>
         </div>
 
         {/* Teleprompter */}
@@ -560,16 +575,16 @@ const Record: React.FC = () => {
             border-4 border-white/85 cursor-pointer transition-all duration-200 
             flex items-center justify-center
             ${recordingDisabled
-              ? "opacity-40 cursor-not-allowed"
+              ? "opacity-60 cursor-not-allowed"
               : state === "recording"
                 ? "bg-red-500 shadow-[0_0_0_6px_rgba(255,59,48,0.35),0_0_24px_rgba(255,59,48,0.8)]"
-                : "bg-red-500"
+                : "bg-red-500 hover:scale-105 active:scale-95"
             }`}
         >
           {/* inner dot for nicer UI */}
           <div
-            className={`w-8 h-8 rounded-full ${state === "recording" ? "bg-red-700" : "bg-red-400"
-              }`}
+            className={`w-8 h-8 rounded-full ${state === "recording" ? "bg-white" : "bg-white/90"
+              } transition-all duration-300 ${state === "recording" ? "rounded-md scale-75" : "rounded-full"}`}
           />
         </button>
       </div>
