@@ -463,6 +463,7 @@ import {
   Shield,
 } from "lucide-react";
 import { useAuthContext } from "../contexts/AuthContext";
+import { supabase } from "../integrations/supabase/client";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -547,7 +548,27 @@ export default function Auth() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await login(formData.email, formData.password);
+      const normalizedEmail = formData.email.trim().toLowerCase();
+      await login(normalizedEmail, formData.password);
+
+      // Check if user is a CRM Dashboard admin
+      try {
+        const { data: adminData } = await supabase
+          .from('crm_admins')
+          .select('email')
+          .ilike('email', normalizedEmail)
+          .maybeSingle();
+
+        if (adminData || normalizedEmail === 'dinesh@applywizz.com') {
+          sessionStorage.setItem('digital_resume_admin_access', 'true');
+          sessionStorage.setItem('admin_email', normalizedEmail);
+          navigate("/digital-resume-dashboard");
+          return;
+        }
+      } catch (adminErr) {
+        console.warn('Admin check failed, proceeding to user dashboard:', adminErr);
+      }
+
       navigate("/dashboard");
     } catch (err) {
       // handled in context
