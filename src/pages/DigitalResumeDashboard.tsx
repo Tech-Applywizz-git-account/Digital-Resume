@@ -20,14 +20,11 @@ import {
     Save,
     LogOut,
     LayoutDashboard,
-    UserPlus,
-    FileUp
+    UserPlus
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { showToast } from "../components/ui/toast";
-import { useRef } from 'react';
 
 interface CRMUser {
     email: string;
@@ -35,11 +32,11 @@ interface CRMUser {
     company_application_email: string | null;
     user_created_at: string;
     is_active: boolean;
-    user_id: string;
+    user_id: string | null;
+    added_by: string | null;
     profiles?: {
         full_name: string | null;
-    };
-    added_by: string | null;
+    } | null;
 }
 
 interface CRMAdmin {
@@ -68,11 +65,7 @@ export default function DigitalResumeDashboard() {
     const [newCreditValue, setNewCreditValue] = useState<number>(0);
     const [isUpdatingCredits, setIsUpdatingCredits] = useState(false);
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-
-    // Replace Resume state
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [replacingUserEmail, setReplacingUserEmail] = useState<string | null>(null);
-    const [isReplacing, setIsReplacing] = useState(false);
+    const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
 
     useEffect(() => {
         const checkAccess = async () => {
@@ -146,15 +139,51 @@ export default function DigitalResumeDashboard() {
 
     const fetchUsers = async () => {
         try {
-            const { data, error } = await supabase
+            setIsRefreshingUsers(true);
+            // 1. Fetch CRM users first
+            const { data: crmData, error: crmError } = await supabase
                 .from('digital_resume_by_crm')
-                .select('*, profiles:user_id(full_name)')
+                .select('*')
                 .order('user_created_at', { ascending: false });
 
-            if (error) throw error;
-            setUsers(data || []);
+            if (crmError) throw crmError;
+            if (!crmData) return;
+
+            // 2. Identify all valid user_ids to fetch names for
+            const userIds = crmData
+                .map(u => u.user_id)
+                .filter(id => id !== null && id !== undefined);
+
+            if (userIds.length > 0) {
+                // 3. Fetch profiles in chunks (to satisfy Supabase limits/performance)
+                const { data: profileData, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('id, full_name')
+                    .in('id', userIds);
+
+                if (!profileError && profileData) {
+                    // 4. Create a lookup map for speed
+                    const profileMap = new Map(profileData.map(p => [p.id, p.full_name]));
+
+                    // 5. Attach names to the CRM users locally
+                    const usersWithNames = crmData.map(user => ({
+                        ...user,
+                        profiles: profileMap.has(user.user_id)
+                            ? { full_name: profileMap.get(user.user_id) }
+                            : null
+                    }));
+                    setUsers(usersWithNames);
+                } else {
+                    setUsers(crmData);
+                }
+            } else {
+                setUsers(crmData);
+            }
         } catch (error: any) {
             console.error('Error fetching CRM users:', error);
+            setMessage({ type: 'error', text: 'Error loading user data' });
+        } finally {
+            setIsRefreshingUsers(false);
         }
     };
 
@@ -351,78 +380,6 @@ export default function DigitalResumeDashboard() {
         }
     };
 
-    const handleReplaceClick = (email: string) => {
-        setReplacingUserEmail(email);
-        fileInputRef.current?.click();
-    };
-
-    const handleAdminFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !replacingUserEmail) return;
-
-        try {
-            setIsReplacing(true);
-
-            const { data: jobReq, error: jobError } = await supabase
-                .from('crm_job_requests')
-                .select('id')
-                .eq('email', replacingUserEmail)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (jobError) throw jobError;
-            if (!jobReq) {
-                showToast("No job request found for this user. Cannot replace resume.", "error");
-                return;
-            }
-
-            const fileExt = file.name.split('.').pop()?.toLowerCase();
-            const timestamp = Date.now();
-            const fileName = `admin_replaced_${timestamp}.${fileExt}`;
-            const filePath = `${replacingUserEmail}/${fileName}`;
-
-            const { error: uploadError } = await supabase.storage
-                .from('CRM_users_resumes')
-                .upload(filePath, file, { upsert: true });
-
-            if (uploadError) throw uploadError;
-
-            const { data: publicData } = supabase.storage
-                .from('CRM_users_resumes')
-                .getPublicUrl(filePath);
-            const publicUrl = publicData?.publicUrl;
-
-            const { error: updateError } = await supabase.from('crm_job_requests')
-                .update({
-                    resume_url: publicUrl,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', jobReq.id);
-
-            if (updateError) throw updateError;
-
-            await supabase.from('crm_resumes').insert({
-                email: replacingUserEmail,
-                resume_name: file.name,
-                resume_url: publicUrl,
-                file_type: fileExt,
-                file_size: file.size,
-                uploaded_by_admin: true
-            });
-
-            showToast(`Resume replaced for ${replacingUserEmail}`, "success");
-            fetchUsers();
-        } catch (err: any) {
-            console.error("❌ Admin replace failed:", err);
-            showToast("Failed to replace resume: " + err.message, "error");
-        } finally {
-            setIsReplacing(false);
-            setReplacingUserEmail(null);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-    };
-
     const handleUpdateCredits = async (email: string) => {
         try {
             setIsUpdatingCredits(true);
@@ -461,7 +418,7 @@ export default function DigitalResumeDashboard() {
 
     const filteredUsers = users.filter(u =>
         u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (u.company_application_email && u.company_application_email.toLowerCase().includes(searchTerm.toLowerCase()))
+        (u.company_application_email?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
     );
 
     const formatDate = (date: string) =>
@@ -602,16 +559,21 @@ export default function DigitalResumeDashboard() {
                                         {filteredUsers.map((user_row) => (
                                             <tr key={user_row.email} className="hover:bg-slate-50/80 transition-colors group">
                                                 <td className="px-6 py-5 text-[14px] font-medium text-slate-800">
-                                                    {user_row.company_application_email ? (
-                                                        user_row.company_application_email
-                                                    ) : (
-                                                        <span className="text-slate-900 font-semibold block">
-                                                            {user_row.profiles?.full_name || user_row.email.split('@')[0]}
-                                                        </span>
-                                                    )}
+                                                    <div className="flex flex-col">
+                                                        {user_row.profiles?.full_name && (
+                                                            <span className="font-bold text-slate-900">{user_row.profiles.full_name}</span>
+                                                        )}
+                                                        {user_row.company_application_email ? (
+                                                            <span className={user_row.profiles?.full_name ? "text-xs text-slate-500" : ""}>
+                                                                {user_row.company_application_email}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-slate-400 font-normal">Dashboard Record</span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-5">
-                                                    <p className="font-medium text-slate-700 text-[14px] truncate">{user_row.email}</p>
+                                                    <p className="font-medium text-slate-600 text-[13px] truncate">{user_row.email}</p>
                                                 </td>
                                                 <td className="px-6 py-5">
                                                     {editingCredits === user_row.email ? (
@@ -673,26 +635,17 @@ export default function DigitalResumeDashboard() {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <div className="flex justify-end gap-2">
-                                                        <button
-                                                            onClick={() => handleReplaceClick(user_row.email)}
-                                                            disabled={isReplacing && replacingUserEmail === user_row.email}
-                                                            title="Replace Resume"
-                                                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all disabled:opacity-50"
-                                                        >
-                                                            {isReplacing && replacingUserEmail === user_row.email ? (
-                                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                            ) : (
-                                                                <FileUp className="w-4 h-4" />
-                                                            )}
-                                                        </button>
-                                                        <button
-                                                            onClick={fetchUsers}
-                                                            className="p-2 text-slate-400 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all"
-                                                        >
-                                                            <RefreshCcw className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
+                                                    <button
+                                                        onClick={async () => {
+                                                            await fetchUsers();
+                                                            setMessage({ type: 'success', text: 'User list refreshed successfully' });
+                                                        }}
+                                                        disabled={isRefreshingUsers}
+                                                        className="p-2 text-slate-400 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all disabled:opacity-50"
+                                                        title="Sync with database"
+                                                    >
+                                                        <RefreshCcw className={`w-4 h-4 ${isRefreshingUsers ? 'animate-spin text-[#0B4F6C]' : ''}`} />
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}
@@ -873,15 +826,6 @@ export default function DigitalResumeDashboard() {
                     </div>
                 </div>
             )}
-
-            {/* Hidden File Input for Resume Replace */}
-            <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleAdminFileChange}
-                accept=".pdf,.doc,.docx"
-                className="hidden"
-            />
         </div>
     );
 }

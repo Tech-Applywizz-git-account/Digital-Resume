@@ -26,6 +26,9 @@ const Record: React.FC = () => {
   const [teleprompterText, setTeleprompterText] = useState("");
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
   const [checkingCredits, setCheckingCredits] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+
+  const MAX_RECORDING_SECONDS = 150; // 2.5 minutes
 
   // 🔹 Load teleprompter text
   useEffect(() => {
@@ -95,8 +98,8 @@ const Record: React.FC = () => {
       setIsInitializing(true);
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 1280 }, // Set to 720p as requested
+          height: { ideal: 720 },
           aspectRatio: 16 / 9,
           frameRate: { ideal: 30, max: 60 },
         },
@@ -123,12 +126,13 @@ const Record: React.FC = () => {
 
       let recorder: MediaRecorder;
 
-      // Try higher bitrate for better clarity
+      // Optimize bitrate to prevent hitting 50MB limit too quickly
+      // 2.5 Mbps provides excellent quality for intro videos while doubling allowed duration
       try {
         recorder = new MediaRecorder(stream, {
           mimeType,
-          videoBitsPerSecond: 5_000_000, // ~5 Mbps
-          audioBitsPerSecond: 128_000,
+          videoBitsPerSecond: 2500000, // Reduced from 5Mbps to 2.5Mbps
+          audioBitsPerSecond: 128000,
         });
       } catch {
         // Fallback if browser doesn't like bitrate options
@@ -177,9 +181,18 @@ const Record: React.FC = () => {
     const start = Date.now();
     setStartTime(start);
     const interval = setInterval(() => {
-      const seconds = Math.floor((Date.now() - start) / 1000);
-      const minutes = Math.floor(seconds / 60);
-      setTimer(`${minutes}:${String(seconds % 60).padStart(2, "0")}`);
+      const elapsed = Math.floor((Date.now() - start) / 1000);
+      const remaining = MAX_RECORDING_SECONDS - elapsed;
+
+      const minutes = Math.floor(elapsed / 60);
+      setTimer(`${minutes}:${String(elapsed % 60).padStart(2, "0")}`);
+      setTimeRemaining(remaining > 0 ? remaining : 0);
+
+      // Auto-stop at 150s
+      if (elapsed >= MAX_RECORDING_SECONDS) {
+        clearInterval(interval);
+        handleRecordClick(); // This will trigger the stop logic
+      }
     }, 1000);
     timerIntervalRef.current = interval;
   };
@@ -190,6 +203,7 @@ const Record: React.FC = () => {
       timerIntervalRef.current = null;
     }
     setTimer("0:00");
+    setTimeRemaining(null);
   };
 
   // 🔹 Teleprompter scroll
@@ -338,7 +352,7 @@ const Record: React.FC = () => {
       try {
         newRecorder = new MediaRecorder(stream, {
           mimeType,
-          videoBitsPerSecond: 5_000_000,
+          videoBitsPerSecond: 2500000, // Optimized bitrate
           audioBitsPerSecond: 128_000,
         });
       } catch {
@@ -370,6 +384,12 @@ const Record: React.FC = () => {
 
       const fileName = `${Date.now()}.webm`;
       let publicUrl: string | null = null;
+
+      // Supabase default limit is usually 50MB
+      const fiftyMB = 50 * 1024 * 1024;
+      if (blob.size > fiftyMB) {
+        throw new Error("Video too large! Please record a shorter video (maximum 2.5 minutes).");
+      }
 
       if (isCRMUser && crmEmail) {
         // CRM User - Upload to CRM bucket
@@ -494,6 +514,11 @@ const Record: React.FC = () => {
         setTimeout(() => {
           navigate('/billing');
         }, 2000);
+      } else if (err.message && (err.message.toLowerCase().includes('size') || err.message.toLowerCase().includes('too large'))) {
+        showToast(
+          "Upload failed: File exceeds 50MB storage limit. Please record a shorter video.",
+          "error"
+        );
       } else {
         showToast(
           err.message || "Upload failed. Please try again.",
@@ -545,8 +570,13 @@ const Record: React.FC = () => {
             className={`w-2 h-2 rounded-full mr-2 ${state === "recording" ? "bg-red-500" : (isInitializing ? "bg-yellow-400 animate-pulse" : "bg-gray-400")
               }`}
           />
-          <span ref={timerRef}>
-            {isUploading ? "Uploading..." : (isInitializing ? "Starting Camera..." : timer)}
+          <span ref={timerRef} className="flex flex-col items-end">
+            <span className="text-white">{isUploading ? "Uploading..." : (isInitializing ? "Starting Camera..." : timer)}</span>
+            {state === "recording" && timeRemaining !== null && (
+              <span className={`text-xs font-normal ${timeRemaining < 10 ? 'text-red-500 animate-pulse' : 'text-white/60'}`}>
+                {timeRemaining}s left
+              </span>
+            )}
           </span>
         </div>
 
