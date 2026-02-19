@@ -148,6 +148,7 @@ export default function Dashboard() {
           .select(`
             id,
             job_title,
+            job_description,
             resume_url,
             application_status,
             created_at
@@ -183,6 +184,7 @@ export default function Dashboard() {
           .select(`
             id,
             job_title,
+            job_description,
             resume_path,
             status,
             created_at,
@@ -299,7 +301,27 @@ export default function Dashboard() {
     }
   };
 
-  const handleReRecord = (id: string) => navigate(`/record/${id}`);
+  const handleReRecord = (cast: any) => {
+    // Populate localStorage so steps can resume correctly
+    localStorage.setItem('careercast_jobTitle', cast.job_title || '');
+    localStorage.setItem('careercast_jobDescription', cast.job_description || '');
+    localStorage.setItem('current_job_request_id', cast.id);
+    localStorage.setItem('uploadedResumeUrl', cast.resume_path || '');
+    localStorage.setItem('resumeFileName', cast.resume_path ? cast.resume_path.split('/').pop() : 'Resume.pdf');
+    localStorage.setItem('is_crm_user', isCRM ? 'true' : 'false');
+    if (isCRM && crmEmail) {
+      localStorage.setItem('crm_user_email', crmEmail);
+    }
+
+    const videoPath = cast.recordings?.[0]?.storage_path || null;
+    if (videoPath) {
+      // If video exists, they can go straight to record page to re-record
+      navigate(`/record/${cast.id}`);
+    } else {
+      // If no video, take them back to Step 3 to generate script/complete flow
+      navigate('/step3');
+    }
+  };
   const handleViewDetails = (id: string) => navigate(`/final-result/${id}`);
   const handleCloseVideo = () => setSelectedVideo(null);
   const handleClosePricingPopup = () => setShowPricingPopup(false);
@@ -470,9 +492,9 @@ export default function Dashboard() {
                       }
                       const both = cast.resume_path && video;
                       return (
-                        <>
+                        <React.Fragment key={cast.id}>
                           {/* Desktop view */}
-                          <tr key={cast.id} className="border-b hover:bg-gray-50 hidden md:table-row">
+                          <tr className="border-b hover:bg-gray-50 hidden md:table-row">
                             <td className="py-3 px-4 font-medium">{cast.job_title || 'Untitled'}</td>
                             <td className="py-3 px-4">
                               {cast.resume_path ? (
@@ -526,12 +548,21 @@ export default function Dashboard() {
                                   )}
                                   Replace
                                 </button>
-                                <button
-                                  onClick={() => handleReRecord(cast.id)}
-                                  className="border-2 border-[#0B4F6C] text-[#0B4F6C] px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white transition-colors"
-                                >
-                                  Re-record
-                                </button>
+                                {both ? (
+                                  <button
+                                    onClick={() => handleReRecord(cast)}
+                                    className="border-2 border-[#0B4F6C] text-[#0B4F6C] px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white transition-colors"
+                                  >
+                                    Re-record
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleReRecord(cast)}
+                                    className="border-2 border-orange-500 text-orange-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-orange-500 hover:text-white transition-colors"
+                                  >
+                                    Continue
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -607,17 +638,26 @@ export default function Dashboard() {
                                     )}
                                     Replace
                                   </button>
-                                  <button
-                                    onClick={() => handleReRecord(cast.id)}
-                                    className="flex-1 border border-[#0B4F6C] text-[#0B4F6C] px-3 py-2 rounded-lg font-medium text-sm hover:bg-[#0B4F6C] hover:text-white transition-colors"
-                                  >
-                                    Re-record
-                                  </button>
+                                  {both ? (
+                                    <button
+                                      onClick={() => handleReRecord(cast)}
+                                      className="flex-1 border border-[#0B4F6C] text-[#0B4F6C] px-3 py-2 rounded-lg font-medium text-sm hover:bg-[#0B4F6C] hover:text-white transition-colors"
+                                    >
+                                      Re-record
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleReRecord(cast)}
+                                      className="flex-1 border border-orange-500 text-orange-600 px-3 py-2 rounded-lg font-medium text-sm hover:bg-orange-500 hover:text-white transition-colors"
+                                    >
+                                      Continue
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </td>
                           </tr>
-                        </>
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
