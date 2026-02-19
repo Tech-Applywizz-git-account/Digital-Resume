@@ -477,8 +477,8 @@ const FinalResult: React.FC = () => {
             <Button
               variant="outline"
               onClick={() => {
-                const isCRM = localStorage.getItem('is_crm_user') === 'true';
-                navigate(isCRM ? "/digitalresumedashboard" : "/dashboard");
+                const isAdmin = sessionStorage.getItem('digital_resume_admin_access') === 'true';
+                navigate(isAdmin ? "/digital-resume-dashboard" : "/dashboard");
               }}
               className="flex items-center gap-2 border-gray-300 text-gray-700 hover:bg-gray-50"
             >
