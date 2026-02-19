@@ -5347,7 +5347,7 @@ const TypeAnimation = ({ sequence, cursor, className, ...props }: any) => (
 );
 // --- END: Mocked/Local Dependencies ---
 
-const ASSET_IMAGE = "/mnt/data/ba866d83-dfcd-42fc-a5c0-f6581a9a459e.png";
+const ASSET_IMAGE = "https://images.unsplash.com/photo-1586281380349-632531db7ed4?q=80&w=2670&auto=format&fit=crop"; // Placeholder resume/office image
 
 const slideUp = {
   hidden: { opacity: 0, y: 40 },

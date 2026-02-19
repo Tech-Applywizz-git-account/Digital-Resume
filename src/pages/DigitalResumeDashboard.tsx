@@ -20,7 +20,10 @@ import {
     Save,
     LogOut,
     LayoutDashboard,
-    UserPlus
+    UserPlus,
+    FileUp,
+    Download,
+    FileText
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
@@ -34,6 +37,9 @@ interface CRMUser {
     is_active: boolean;
     user_id: string | null;
     added_by: string | null;
+    resume_url?: string | null;
+    resume_name?: string | null;
+    latest_job_request_id?: string | null;
     profiles?: {
         full_name: string | null;
     } | null;
@@ -66,6 +72,11 @@ export default function DigitalResumeDashboard() {
     const [isUpdatingCredits, setIsUpdatingCredits] = useState(false);
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
     const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
+
+    // New: Resume replacing state
+    const [replacingResumeEmail, setReplacingResumeEmail] = useState<string | null>(null);
+    const [isReplacingResume, setIsReplacingResume] = useState(false);
+    const resumeFileInputRef = React.useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const checkAccess = async () => {
@@ -149,33 +160,77 @@ export default function DigitalResumeDashboard() {
             if (crmError) throw crmError;
             if (!crmData) return;
 
-            // 2. Identify all valid user_ids to fetch names for
-            const userIds = crmData
-                .map(u => u.user_id)
-                .filter(id => id !== null && id !== undefined);
+            // 2. Identify identifiers
+            const userIds = crmData.map(u => u.user_id).filter(id => !!id);
+            const userEmails = crmData.map(u => u.email).filter(e => !!e);
 
-            if (userIds.length > 0) {
-                // 3. Fetch profiles in chunks (to satisfy Supabase limits/performance)
-                const { data: profileData, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('id, full_name')
-                    .in('id', userIds);
+            if (userIds.length > 0 || userEmails.length > 0) {
+                const BATCH_SIZE = 50;
+                const fetchInBatches = async (ids: any[], fetcher: (chunk: any[]) => Promise<any[]>) => {
+                    const results = [];
+                    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                        const chunk = ids.slice(i, i + BATCH_SIZE);
+                        const data = await fetcher(chunk);
+                        if (data) results.push(...data);
+                    }
+                    return results;
+                };
 
-                if (!profileError && profileData) {
-                    // 4. Create a lookup map for speed
-                    const profileMap = new Map(profileData.map(p => [p.id, p.full_name]));
+                const [profileData, resumeData, jobRequestData] = await Promise.all([
+                    fetchInBatches(userIds, async (chunk) => {
+                        const { data } = await supabase.from('profiles').select('id, full_name').in('id', chunk);
+                        return data || [];
+                    }),
+                    fetchInBatches(userEmails, async (chunk) => {
+                        const { data } = await supabase.from('crm_resumes')
+                            .select('email, resume_url, resume_name, created_at')
+                            .in('email', chunk)
+                            .order('created_at', { ascending: false });
+                        return data || [];
+                    }),
+                    fetchInBatches(userEmails, async (chunk) => {
+                        const { data } = await supabase.from('crm_job_requests')
+                            .select('id, email, created_at')
+                            .in('email', chunk)
+                            .order('created_at', { ascending: false });
+                        return data || [];
+                    })
+                ]);
 
-                    // 5. Attach names to the CRM users locally
-                    const usersWithNames = crmData.map(user => ({
-                        ...user,
-                        profiles: profileMap.has(user.user_id)
-                            ? { full_name: profileMap.get(user.user_id) }
-                            : null
-                    }));
-                    setUsers(usersWithNames);
-                } else {
-                    setUsers(crmData);
-                }
+                const profileMap = new Map(profileData?.map(p => [p.id, p.full_name]) || []);
+                const resumeMap = new Map();
+                const jobRequestMap = new Map();
+
+                const sortedResumes = [...(resumeData || [])].sort((a, b) =>
+                    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                );
+
+                sortedResumes.forEach(r => {
+                    if (!resumeMap.has(r.email)) {
+                        resumeMap.set(r.email, { url: r.resume_url, name: r.resume_name });
+                    }
+                });
+
+                const sortedJobRequests = [...(jobRequestData || [])].sort((a, b) =>
+                    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                );
+
+                sortedJobRequests.forEach(jr => {
+                    if (!jobRequestMap.has(jr.email)) {
+                        jobRequestMap.set(jr.email, jr.id);
+                    }
+                });
+
+                const usersWithDetails = crmData.map(user => ({
+                    ...user,
+                    profiles: profileMap.has(user.user_id)
+                        ? { full_name: profileMap.get(user.user_id) }
+                        : null,
+                    resume_url: resumeMap.get(user.email)?.url || null,
+                    resume_name: resumeMap.get(user.email)?.name || null,
+                    latest_job_request_id: jobRequestMap.get(user.email) || null
+                }));
+                setUsers(usersWithDetails);
             } else {
                 setUsers(crmData);
             }
@@ -410,6 +465,60 @@ export default function DigitalResumeDashboard() {
         }
     };
 
+    const handleReplaceResumeClick = (email: string) => {
+        setReplacingResumeEmail(email);
+        resumeFileInputRef.current?.click();
+    };
+
+    const handleResumeFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !replacingResumeEmail) return;
+
+        try {
+            setIsReplacingResume(true);
+            const fileExt = file.name.split('.').pop()?.toLowerCase();
+            const timestamp = Date.now();
+            const fileName = `admin_replaced_${timestamp}.${fileExt}`;
+            const filePath = `${replacingResumeEmail}/${fileName}`;
+
+            // 1. Upload to CRM bucket
+            const { error: uploadError } = await supabase.storage
+                .from('CRM_users_resumes')
+                .upload(filePath, file, { upsert: true });
+            if (uploadError) throw uploadError;
+
+            const { data: publicData } = supabase.storage
+                .from('CRM_users_resumes')
+                .getPublicUrl(filePath);
+            const publicUrl = publicData?.publicUrl;
+
+            // 2. Update all CRM job requests for this user (to keep consistency)
+            await supabase.from('crm_job_requests')
+                .update({ resume_url: publicUrl })
+                .eq('email', replacingResumeEmail);
+
+            // 3. Insert/Update crm_resumes record
+            await supabase.from('crm_resumes').insert({
+                email: replacingResumeEmail,
+                resume_name: file.name,
+                resume_url: publicUrl,
+                file_type: fileExt,
+                file_size: file.size,
+                user_id: users.find(u => u.email === replacingResumeEmail)?.user_id || null
+            });
+
+            setMessage({ type: 'success', text: `Resume replaced successfully for ${replacingResumeEmail}` });
+            fetchUsers();
+        } catch (err: any) {
+            console.error("❌ Admin replace failed:", err);
+            setMessage({ type: 'error', text: "Failed to replace resume: " + err.message });
+        } finally {
+            setIsReplacingResume(false);
+            setReplacingResumeEmail(null);
+            if (resumeFileInputRef.current) resumeFileInputRef.current.value = '';
+        }
+    };
+
     const handleAdminLogout = () => {
         sessionStorage.removeItem('digital_resume_admin_access');
         sessionStorage.removeItem('admin_email');
@@ -546,13 +655,13 @@ export default function DigitalResumeDashboard() {
                                 <table className="w-full text-left border-collapse table-fixed">
                                     <thead className="sticky top-0 bg-slate-50 z-10">
                                         <tr className="border-b border-slate-200 bg-[#fbfcfd]">
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[35%]">Company Application Email</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[25%]">Personal Email</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[14%] text-center">Available Credits</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[11%]">Joined</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%]">Added By</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[8%] text-center">Status</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-right">Audit</th>
+                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[30%]">Company Application Email</th>
+                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[22%]">Personal Email</th>
+                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Resume</th>
+                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Credits</th>
+                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%]">Joined</th>
+                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-center">Status</th>
+                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[5%] text-right">Audit</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -574,6 +683,52 @@ export default function DigitalResumeDashboard() {
                                                 </td>
                                                 <td className="px-6 py-5">
                                                     <p className="font-medium text-slate-600 text-[13px] truncate">{user_row.email}</p>
+                                                </td>
+                                                <td className="px-6 py-5 text-center">
+                                                    <div className="flex flex-col items-center gap-2">
+                                                        {user_row.resume_url ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        if (user_row.latest_job_request_id) {
+                                                                            navigate(`/final-result/${user_row.latest_job_request_id}`);
+                                                                        } else if (user_row.resume_url) {
+                                                                            window.open(user_row.resume_url, '_blank');
+                                                                        }
+                                                                    }}
+                                                                    className="flex items-center gap-1.5 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg hover:bg-[#0B4F6C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                                                                >
+                                                                    <FileText className="w-3.5 h-3.5" />
+                                                                    View
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleReplaceResumeClick(user_row.email)}
+                                                                    disabled={isReplacingResume && replacingResumeEmail === user_row.email}
+                                                                    className="flex items-center gap-1.5 px-4 py-2 bg-[#159A9C] text-white rounded-lg hover:bg-[#159A9C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                                >
+                                                                    {isReplacingResume && replacingResumeEmail === user_row.email ? (
+                                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                    ) : (
+                                                                        <FileUp className="w-3.5 h-3.5" />
+                                                                    )}
+                                                                    Replace
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => handleReplaceResumeClick(user_row.email)}
+                                                                disabled={isReplacingResume && replacingResumeEmail === user_row.email}
+                                                                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                            >
+                                                                {isReplacingResume && replacingResumeEmail === user_row.email ? (
+                                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <Plus className="w-3.5 h-3.5" />
+                                                                )}
+                                                                Add Resume
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-5">
                                                     {editingCredits === user_row.email ? (
@@ -622,9 +777,6 @@ export default function DigitalResumeDashboard() {
                                                 <td className="px-6 py-5 text-slate-700 text-[14px] font-bold">
                                                     {formatDate(user_row.user_created_at)}
                                                 </td>
-                                                <td className="px-6 py-5 text-slate-500 text-[12px] truncate">
-                                                    {user_row.added_by || 'System/Legacy'}
-                                                </td>
                                                 <td className="px-6 py-5 text-center">
                                                     <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider border-2 ${user_row.is_active
                                                         ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -658,174 +810,186 @@ export default function DigitalResumeDashboard() {
             </main>
 
             {/* Add User Modal */}
-            {showAddUserModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-emerald-600 text-white">
-                            <div>
-                                <h3 className="text-xl font-bold flex items-center gap-2">
-                                    <UserPlus className="w-6 h-6" />
-                                    Add New CRM User
-                                </h3>
-                                <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mt-1">User Enrollment Portal</p>
-                            </div>
-                            <button
-                                onClick={() => !isUserAdding && setShowAddUserModal(false)}
-                                className="hover:bg-white/10 p-2 rounded-xl transition-colors"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleAddUser} className="p-8 space-y-6">
-                            <div className="space-y-4">
+            {
+                showAddUserModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-emerald-600 text-white">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">User Email Address</label>
-                                    <div className="relative group">
-                                        <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-emerald-500 transition-colors" />
-                                        <input
-                                            type="email"
-                                            required
-                                            placeholder="user@example.com"
-                                            className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-500/5 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-300 font-medium"
-                                            value={newUserEmail}
-                                            onChange={(e) => setNewUserEmail(e.target.value.toLowerCase())}
-                                        />
-                                    </div>
+                                    <h3 className="text-xl font-bold flex items-center gap-2">
+                                        <UserPlus className="w-6 h-6" />
+                                        Add New CRM User
+                                    </h3>
+                                    <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mt-1">User Enrollment Portal</p>
                                 </div>
-
-                                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
-                                    <p className="text-[11px] text-emerald-800 font-medium">
-                                        <span className="font-bold">Default Credentials:</span><br />
-                                        Password: <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-200 font-bold ml-1">Applywizz@123</code>
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-4 pt-4">
                                 <button
-                                    type="button"
-                                    disabled={isUserAdding}
-                                    onClick={() => setShowAddUserModal(false)}
-                                    className="flex-1 px-4 py-4 rounded-2xl border border-slate-200 text-slate-500 font-bold hover:bg-slate-50 transition-all text-sm"
+                                    onClick={() => !isUserAdding && setShowAddUserModal(false)}
+                                    className="hover:bg-white/10 p-2 rounded-xl transition-colors"
                                 >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isUserAdding}
-                                    className="flex-1 bg-emerald-600 text-white px-4 py-4 rounded-2xl font-bold shadow-xl shadow-emerald-200 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 text-sm"
-                                >
-                                    {isUserAdding ? (
-                                        <Loader2 className="w-5 h-5 animate-spin" />
-                                    ) : (
-                                        <>
-                                            Add User
-                                            <ArrowRight className="w-4 h-4" />
-                                        </>
-                                    )}
+                                    <X className="w-6 h-6" />
                                 </button>
                             </div>
-                        </form>
-                    </div>
-                </div>
-            )}
 
-            {/* Add Admin Modal */}
-            {showAddAdminModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-[#0f172a] text-white">
-                            <div>
-                                <h3 className="text-xl font-bold flex items-center gap-2">
-                                    <ShieldCheck className="w-6 h-6" />
-                                    Grant Admin Access
-                                </h3>
-                                <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mt-1">Permission Control Portal</p>
-                            </div>
-                            <button
-                                onClick={() => !isAdminAdding && setShowAddAdminModal(false)}
-                                className="hover:bg-white/10 p-2 rounded-xl transition-colors"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleAddAdmin} className="p-8 space-y-6">
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Admin Email Address</label>
-                                    <div className="relative group">
-                                        <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-[#0B4F6C] transition-colors" />
-                                        <input
-                                            type="email"
-                                            required
-                                            placeholder="name@applywizz.com"
-                                            className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#0B4F6C]/5 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-300 font-medium"
-                                            value={newAdminEmail}
-                                            onChange={(e) => setNewAdminEmail(e.target.value.toLowerCase())}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Admin Secure Password</label>
-                                    <div className="relative group">
-                                        <ShieldCheck className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-[#0B4F6C] transition-colors" />
-                                        <input
-                                            type="password"
-                                            required
-                                            placeholder="Set a password"
-                                            className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#0B4F6C]/5 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-300 font-medium"
-                                            value={newAdminPassword}
-                                            onChange={(e) => setNewAdminPassword(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100/50">
-                                <div className="flex gap-4">
-                                    <div className="bg-blue-100 p-2 rounded-xl flex-shrink-0 w-10 h-10 flex items-center justify-center">
-                                        <AlertCircle className="w-5 h-5 text-blue-600" />
-                                    </div>
+                            <form onSubmit={handleAddUser} className="p-8 space-y-6">
+                                <div className="space-y-4">
                                     <div>
-                                        <h4 className="text-xs font-bold text-blue-900 mb-1 uppercase tracking-wide">Privilege Information</h4>
-                                        <p className="text-[11px] text-blue-800 leading-relaxed">
-                                            New admins will have full read/write access to this dashboard, including credit management and admin enrollment privileges.
+                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">User Email Address</label>
+                                        <div className="relative group">
+                                            <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-emerald-500 transition-colors" />
+                                            <input
+                                                type="email"
+                                                required
+                                                placeholder="user@example.com"
+                                                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-500/5 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-300 font-medium"
+                                                value={newUserEmail}
+                                                onChange={(e) => setNewUserEmail(e.target.value.toLowerCase())}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                                        <p className="text-[11px] text-emerald-800 font-medium">
+                                            <span className="font-bold">Default Credentials:</span><br />
+                                            Password: <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-200 font-bold ml-1">Applywizz@123</code>
                                         </p>
                                     </div>
                                 </div>
+
+                                <div className="flex gap-4 pt-4">
+                                    <button
+                                        type="button"
+                                        disabled={isUserAdding}
+                                        onClick={() => setShowAddUserModal(false)}
+                                        className="flex-1 px-4 py-4 rounded-2xl border border-slate-200 text-slate-500 font-bold hover:bg-slate-50 transition-all text-sm"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isUserAdding}
+                                        className="flex-1 bg-emerald-600 text-white px-4 py-4 rounded-2xl font-bold shadow-xl shadow-emerald-200 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 text-sm"
+                                    >
+                                        {isUserAdding ? (
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                        ) : (
+                                            <>
+                                                Add User
+                                                <ArrowRight className="w-4 h-4" />
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Add Admin Modal */}
+            {
+                showAddAdminModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-[#0f172a] text-white">
+                                <div>
+                                    <h3 className="text-xl font-bold flex items-center gap-2">
+                                        <ShieldCheck className="w-6 h-6" />
+                                        Grant Admin Access
+                                    </h3>
+                                    <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mt-1">Permission Control Portal</p>
+                                </div>
+                                <button
+                                    onClick={() => !isAdminAdding && setShowAddAdminModal(false)}
+                                    className="hover:bg-white/10 p-2 rounded-xl transition-colors"
+                                >
+                                    <X className="w-6 h-6" />
+                                </button>
                             </div>
 
-                            <div className="flex gap-4 pt-4">
-                                <button
-                                    type="button"
-                                    disabled={isAdminAdding}
-                                    onClick={() => setShowAddAdminModal(false)}
-                                    className="flex-1 px-4 py-4 rounded-2xl border border-slate-200 text-slate-500 font-bold hover:bg-slate-50 transition-all text-sm"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isAdminAdding}
-                                    className="flex-1 bg-[#0f172a] text-white px-4 py-4 rounded-2xl font-bold shadow-xl shadow-slate-200 hover:bg-[#1e293b] transition-all flex items-center justify-center gap-2 text-sm"
-                                >
-                                    {isAdminAdding ? (
-                                        <Loader2 className="w-5 h-5 animate-spin" />
-                                    ) : (
-                                        <>
-                                            Grant Access
-                                            <ArrowRight className="w-4 h-4" />
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </form>
+                            <form onSubmit={handleAddAdmin} className="p-8 space-y-6">
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Admin Email Address</label>
+                                        <div className="relative group">
+                                            <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-[#0B4F6C] transition-colors" />
+                                            <input
+                                                type="email"
+                                                required
+                                                placeholder="name@applywizz.com"
+                                                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#0B4F6C]/5 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-300 font-medium"
+                                                value={newAdminEmail}
+                                                onChange={(e) => setNewAdminEmail(e.target.value.toLowerCase())}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Admin Secure Password</label>
+                                        <div className="relative group">
+                                            <ShieldCheck className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-[#0B4F6C] transition-colors" />
+                                            <input
+                                                type="password"
+                                                required
+                                                placeholder="Set a password"
+                                                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#0B4F6C]/5 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-300 font-medium"
+                                                value={newAdminPassword}
+                                                onChange={(e) => setNewAdminPassword(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100/50">
+                                    <div className="flex gap-4">
+                                        <div className="bg-blue-100 p-2 rounded-xl flex-shrink-0 w-10 h-10 flex items-center justify-center">
+                                            <AlertCircle className="w-5 h-5 text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-bold text-blue-900 mb-1 uppercase tracking-wide">Privilege Information</h4>
+                                            <p className="text-[11px] text-blue-800 leading-relaxed">
+                                                New admins will have full read/write access to this dashboard, including credit management and admin enrollment privileges.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-4 pt-4">
+                                    <button
+                                        type="button"
+                                        disabled={isAdminAdding}
+                                        onClick={() => setShowAddAdminModal(false)}
+                                        className="flex-1 px-4 py-4 rounded-2xl border border-slate-200 text-slate-500 font-bold hover:bg-slate-50 transition-all text-sm"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isAdminAdding}
+                                        className="flex-1 bg-[#0f172a] text-white px-4 py-4 rounded-2xl font-bold shadow-xl shadow-slate-200 hover:bg-[#1e293b] transition-all flex items-center justify-center gap-2 text-sm"
+                                    >
+                                        {isAdminAdding ? (
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                        ) : (
+                                            <>
+                                                Grant Access
+                                                <ArrowRight className="w-4 h-4" />
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
+            {/* Hidden File Input for Resume Replace */}
+            <input
+                type="file"
+                ref={resumeFileInputRef}
+                onChange={handleResumeFileChange}
+                accept=".pdf,.doc,.docx"
+                className="hidden"
+            />
         </div>
     );
 }

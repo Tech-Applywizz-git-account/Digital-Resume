@@ -1,47 +1,49 @@
-// import React, { useState, useEffect } from 'react';
-// import { useNavigate, useParams } from 'react-router-dom';
-// import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-// import { Button } from '../components/ui/button';
-// import { Download, Play, ArrowLeft, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
-// import { useAuthContext } from '../contexts/AuthContext';
-
-// interface careercast {
-//   id: string;
-//   jobTitle: string;
-//   resumeFileName?: string;
-//   videoUrl?: string;
-//   createdAt: string;
-//   resumeContent?: string;
-// }
-
-// const FinalResult: React.FC = () => {
-//   const navigate = useNavigate();
-//   const { castId } = useParams<{ castId: string }>();
-//   const { user, logout } = useAuthContext();
-//   const [careercast, setcareercast] = useState<careercast | null>(null);
-//   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
-//   const [resumeContent, setResumeContent] = useState<string>('');```
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button";
-import { Download, Play, ArrowLeft, LogOut } from "lucide-react";
+import { Download, Play, ArrowLeft, LogOut, MessageSquare, Link, Copy, CheckCircle } from "lucide-react";
 import { useAuthContext } from "../contexts/AuthContext";
 import { PDFDocument, PDFName, PDFNumber, PDFArray, PDFString, rgb } from "pdf-lib";
 import { supabase } from "../integrations/supabase/client";
 import { showToast } from "../components/ui/toast";
+import ResumeChatPanel from "../components/ResumeChatPanel";
 
 const FinalResult: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuthContext();
   const { castId } = useParams<{ castId: string }>();
 
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
   const [resumeFileName, setResumeFileName] = useState<string>("Resume.pdf");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
   const [jobTitle, setJobTitle] = useState<string>("");
   const [isExternalVisitor, setIsExternalVisitor] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [candidateName, setCandidateName] = useState<string>("Candidate");
+
+  const searchParams = new URLSearchParams(location.search);
+  const isFromPdf = searchParams.get('from') === 'pdf';
+
+  // Panel State
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [panelMode, setPanelMode] = useState<'chat' | 'video' | 'resume'>('chat');
+
+  // ✅ Handle URL query parameters for mode
+  useEffect(() => {
+    // Set window name to help with targeting from external sources
+    window.name = "careercast_main";
+
+    const params = new URLSearchParams(location.search);
+    const mode = params.get('mode');
+    const fromPdf = params.get('from') === 'pdf';
+
+    // Only auto-open if explicitly coming from PDF version
+    if (fromPdf && (mode === 'video' || mode === 'chat' || mode === 'resume')) {
+      setPanelMode(mode as 'chat' | 'video' | 'resume');
+      setIsPanelOpen(true);
+    }
+  }, [location.search]);
 
   // ✅ Load data from localStorage or Supabase
   useEffect(() => {
@@ -98,7 +100,8 @@ const FinalResult: React.FC = () => {
             .select(`
               job_title,
               resume_url,
-              application_status
+              application_status,
+              user_id
             `)
             .eq('id', currentJobRequestId)
             .single();
@@ -140,6 +143,12 @@ const FinalResult: React.FC = () => {
               videoUrl: finalVideoUrl
             });
 
+            // Fetch owner's name for filename
+            if (data.user_id) {
+              const { data: profile } = await supabase.from('profiles').select('first_name, last_name, full_name').eq('id', data.user_id).single();
+              if (profile) setCandidateName(profile.first_name || profile.full_name?.split(' ')[0] || "Candidate");
+            }
+
             return;
           } else {
             console.error("CRM Supabase error or no data:", error);
@@ -152,6 +161,7 @@ const FinalResult: React.FC = () => {
               job_title,
               resume_path,
               resume_original_name,
+              user_id,
               recordings (
                 storage_path
               )
@@ -184,27 +194,22 @@ const FinalResult: React.FC = () => {
               finalVideoUrl = recordedVideoUrl || null;
             }
 
-            // Ensure the video URL is properly formatted
-            if (finalVideoUrl && !finalVideoUrl.startsWith('http')) {
-              // If it's a relative path, construct the full URL
-              try {
-                finalVideoUrl = supabase.storage.from('recordings').getPublicUrl(finalVideoUrl).data.publicUrl;
-              } catch (urlError) {
-                console.error("Error constructing video URL:", urlError);
-                // Fallback to the original URL
-              }
-            }
-
             setVideoUrl(finalVideoUrl);
 
             console.log("Set state values:", {
               jobTitle: data.job_title || jobTitle || "",
               resumeUrl: data.resume_path || uploadedResumeUrl,
-              resumeFileName: fileName || data.resume_path ?
+              resumeFileName: fileName || (data.resume_path ?
                 data.resume_path.split('/').pop() || "Resume.pdf" :
-                "Resume.pdf",
+                "Resume.pdf"),
               videoUrl: finalVideoUrl
             });
+
+            // Fetch owner's name for filename
+            if (data.user_id) {
+              const { data: profile } = await supabase.from('profiles').select('first_name, last_name, full_name').eq('id', data.user_id).single();
+              if (profile) setCandidateName(profile.first_name || profile.full_name?.split(' ')[0] || "Candidate");
+            }
 
             return;
           } else {
@@ -236,13 +241,6 @@ const FinalResult: React.FC = () => {
       setVideoUrl(finalVideoUrl);
     }
     if (jobTitle) setJobTitle(jobTitle);
-
-    console.log("🎬 Loaded local data:", {
-      uploadedResumeUrl,
-      recordedVideoUrl,
-      fileName,
-      jobTitle
-    });
   };
 
   const loadExternalData = async (id: string) => {
@@ -253,27 +251,23 @@ const FinalResult: React.FC = () => {
         .select(`
           job_title,
           resume_url,
-          application_status
+          application_status,
+          user_id
         `)
         .eq('id', id)
         .maybeSingle();
 
-      console.log("CRM external data load:", { crmData, crmError });
-
       if (crmData) {
-        // CRM user data found
         setJobTitle(crmData.job_title || "");
         setResumeUrl(crmData.resume_url || null);
         setResumeFileName(crmData.resume_url ?
           crmData.resume_url.split('/').pop() || "Resume.pdf" :
           "Resume.pdf");
 
-        // Get video URL from crm_recordings
         const { data: recordingData } = await supabase
           .from('crm_recordings')
           .select('video_url')
           .eq('job_request_id', id)
-          .limit(1)
           .maybeSingle();
 
         let finalVideoUrl = null;
@@ -283,36 +277,28 @@ const FinalResult: React.FC = () => {
             ? path
             : supabase.storage.from('CRM_users_recordings').getPublicUrl(path).data.publicUrl;
         }
-
         setVideoUrl(finalVideoUrl);
-
-        console.log("Set CRM external state values:", {
-          jobTitle: crmData.job_title || "",
-          resumeUrl: crmData.resume_url || null,
-          resumeFileName,
-          videoUrl: finalVideoUrl
-        });
-
-        return; // Exit early if CRM data found
+        // Fetch candidate name
+        if (crmData.user_id) {
+          const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', crmData.user_id).single();
+          if (profile) setCandidateName(profile.first_name || "Candidate");
+        }
+        return;
       }
 
-      // If not CRM, try regular job_requests table
       const { data, error } = await supabase
         .from('job_requests')
         .select(`
           job_title,
           resume_path,
           resume_original_name,
+          user_id,
           recordings (
             storage_path
           )
         `)
         .eq('id', id)
         .maybeSingle();
-
-      console.log("Regular external data load:", { data, error });
-
-      if (error) throw error;
 
       if (data) {
         setJobTitle(data.job_title || "");
@@ -321,208 +307,153 @@ const FinalResult: React.FC = () => {
           data.resume_path.split('/').pop() || "Resume.pdf" :
           "Resume.pdf"));
 
-        // Get video URL from recordings
         let finalVideoUrl = null;
         if (data.recordings && data.recordings.length > 0) {
           const path = data.recordings[0].storage_path;
-          // ✅ Convert relative storage path to full Supabase URL if needed
           if (path) {
             finalVideoUrl = path.startsWith('http')
               ? path
               : supabase.storage.from('recordings').getPublicUrl(path).data.publicUrl;
-          } else {
-            finalVideoUrl = null;
           }
         }
-
-
         setVideoUrl(finalVideoUrl);
 
-        console.log("Set regular external state values:", {
-          jobTitle: data.job_title || "",
-          resumeUrl: data.resume_path || null,
-          resumeFileName: data.resume_original_name || (data.resume_path ?
-            data.resume_path.split('/').pop() || "Resume.pdf" :
-            "Resume.pdf"),
-          videoUrl: finalVideoUrl
-        });
+        // Fetch candidate name
+        if (data.user_id) {
+          const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', data.user_id).single();
+          if (profile) setCandidateName(profile.first_name || "Candidate");
+        }
       }
     } catch (error) {
       console.error("❌ Error loading external data:", error);
     }
   };
 
-  // ✅ Play video modal
-  const handlePlayVideo = () => {
-    console.log("Play video clicked, videoUrl:", videoUrl);
-    if (!videoUrl) {
-      showToast("No recorded video found for this profile.", "warning");
-      return;
-    }
-
-    // Test if the video URL is accessible
-    fetch(videoUrl, { method: 'HEAD' })
-      .then(response => {
-        if (!response.ok) {
-          console.error("Video URL not accessible:", response.status, response.statusText);
-          showToast("Video file not accessible. Please try again later.", "error");
-        } else {
-          console.log("Video URL is accessible");
-          setShowVideoPlayer(true);
-        }
-      })
-      .catch(error => {
-        console.error("Error checking video URL:", error);
-        // Still try to show the player even if the check fails
-        setShowVideoPlayer(true);
-      });
-  };
+  const closePanel = () => setIsPanelOpen(false);
 
   const handleLogout = () => {
     logout();
     navigate("/");
   };
 
-  // ✅ Enhance PDF with embedded clickable "Play Video" button
+  // ✅ Enhance PDF
   const enhancePDF = async (resumeUrl: string, castId: string) => {
     try {
-      // Absolute URL of the current page for redirect
       const baseUrl = window.location.origin || "https://careercast-omega.vercel.app";
       const finalResultUrl = `${baseUrl}/final-result/${castId || "profile"}`;
+      const hasVideo = !!videoUrl;
 
-      console.log("🎯 Embedding link to:", finalResultUrl);
-
-      // Use a proxy approach to avoid CORS issues
-      // First, fetch the PDF as a blob
-      let response;
-      try {
-        response = await fetch(resumeUrl);
-      } catch (fetchError) {
-        // If direct fetch fails, try with credentials
-        response = await fetch(resumeUrl, { credentials: 'include' });
-      }
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
-      }
+      let response = await fetch(resumeUrl);
+      if (!response.ok) response = await fetch(resumeUrl, { credentials: 'include' });
+      if (!response.ok) throw new Error("Failed to fetch PDF");
 
       const arrayBuffer = await response.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const firstPage = pdfDoc.getPages()[0];
+      const pages = pdfDoc.getPages();
+      const firstPage = pages[0];
+      const lastPage = pages[pages.length - 1];
       const { width, height } = firstPage.getSize();
+      const lastPageSize = lastPage.getSize();
 
-      // Embed the play button image
-      const buttonImageUrl = `${baseUrl}/images/play_video_button.png`;
-      console.log("🖼️ Loading play button image from:", buttonImageUrl);
+      const btnW_play = 110;
+      const btnW_chat = 125;
+      const btnH = 32;
+      const gap = 12;
+      const margin = 20;
 
-      let buttonImageResponse;
-      try {
-        buttonImageResponse = await fetch(buttonImageUrl);
-      } catch (imageError) {
-        // Try with credentials if direct fetch fails
-        buttonImageResponse = await fetch(buttonImageUrl, { credentials: 'include' });
-      }
+      const totalW = hasVideo ? (btnW_play + gap + btnW_chat) : btnW_chat;
+      let currentX = width - totalW - margin;
+      const btnY = height - btnH - margin;
 
-      if (!buttonImageResponse.ok) {
-        throw new Error(`Button image not found at ${buttonImageUrl}, received status: ${buttonImageResponse.status}`);
-      }
-
-      const imageBytes = await buttonImageResponse.arrayBuffer();
-      let buttonImage;
-
-      // Check if it's a PNG or JPG
-      if (buttonImageUrl.endsWith('.png')) {
-        buttonImage = await pdfDoc.embedPng(imageBytes);
-      } else {
-        buttonImage = await pdfDoc.embedJpg(imageBytes);
-      }
-
-      // Position at Top-Right corner
-      const buttonWidth = 120;
-      const buttonHeight = 40;
-      const margin = 10;
-      const x = width - buttonWidth - margin;
-      const y = height - buttonHeight - margin;
-
-      // Draw the play button image
-      firstPage.drawImage(buttonImage, {
-        x,
-        y,
-        width: buttonWidth,
-        height: buttonHeight,
-      });
-
-      // ✅ Create clickable annotation linking to the current FinalResult page
+      const white = rgb(1, 1, 1);
       const context = pdfDoc.context;
-      const annotationDict = context.obj({
-        Type: PDFName.of("Annot"),
-        Subtype: PDFName.of("Link"),
-        Rect: context.obj([
-          PDFNumber.of(x),
-          PDFNumber.of(y),
-          PDFNumber.of(x + buttonWidth),
-          PDFNumber.of(y + buttonHeight),
-        ]),
-        Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
-        A: context.obj({
-          S: PDFName.of("URI"),
-          URI: PDFString.of(finalResultUrl),
-        }),
-      });
 
-      // Attach annotation
-      let annots = firstPage.node.lookup(PDFName.of("Annots"));
-      if (annots instanceof PDFArray) {
-        annots.push(annotationDict);
-      } else {
-        const annotsArray = context.obj([annotationDict]);
-        firstPage.node.set(PDFName.of("Annots"), annotsArray);
+      // 1. Render Chat with Resume (Top Right of First Page)
+      const chatButtonUrl = `${baseUrl}/images/chat_with_resume_button.png`;
+      let chatRes;
+      try {
+        chatRes = await fetch(chatButtonUrl);
+      } catch (err) {
+        chatRes = await fetch(chatButtonUrl, { credentials: 'include' });
       }
 
-      // Save the modified PDF
+      if (chatRes.ok) {
+        const chatBytes = await chatRes.arrayBuffer();
+        const chatImg = await pdfDoc.embedPng(chatBytes);
+
+        firstPage.drawImage(chatImg, {
+          x: currentX,
+          y: btnY,
+          width: btnW_chat,
+          height: btnH
+        });
+
+        const chatLink = context.obj({
+          Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
+          Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_chat), PDFNumber.of(btnY + btnH)]),
+          Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
+          A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(`${finalResultUrl}?mode=chat&from=pdf`) })
+        });
+
+        let annotsChat = firstPage.node.lookup(PDFName.of("Annots"));
+        if (annotsChat instanceof PDFArray) annotsChat.push(chatLink);
+        else firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
+
+        currentX += btnW_chat + gap;
+      }
+
+      // 2. Render Play Intro (Top Right of First Page)
+      if (hasVideo) {
+        const playButtonUrl = `${baseUrl}/images/play_intro.png`;
+        let playRes;
+        try {
+          playRes = await fetch(playButtonUrl);
+        } catch (err) {
+          playRes = await fetch(playButtonUrl, { credentials: 'include' });
+        }
+
+        if (playRes.ok) {
+          const playBytes = await playRes.arrayBuffer();
+          const playImg = await pdfDoc.embedPng(playBytes);
+
+          firstPage.drawImage(playImg, {
+            x: currentX,
+            y: btnY,
+            width: btnW_play,
+            height: btnH
+          });
+
+          const playLink = context.obj({
+            Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
+            Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_play), PDFNumber.of(btnY + btnH)]),
+            Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
+            A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(`${finalResultUrl}?mode=video&from=pdf`) })
+          });
+
+          let annots = firstPage.node.lookup(PDFName.of("Annots"));
+          if (annots instanceof PDFArray) annots.push(playLink);
+          else firstPage.node.set(PDFName.of("Annots"), context.obj([playLink]));
+        }
+      }
+
       const modifiedPdfBytes = await pdfDoc.save();
       const blob = new Blob([new Uint8Array(modifiedPdfBytes)], { type: "application/pdf" });
       return URL.createObjectURL(blob);
     } catch (error) {
-      console.error("❌ Error enhancing PDF:", error);
+      console.error("Error enhancing PDF:", error);
       throw error;
     }
   };
 
-  // ✅ Download Enhanced Resume
   const handleDownloadEnhanced = async () => {
     try {
-      console.log("Download enhanced resume clicked, resumeUrl:", resumeUrl);
-      if (!resumeUrl) {
-        showToast("No resume found to enhance.", "warning");
-        return;
-      }
-
-      console.log("Enhancing PDF...");
+      if (!resumeUrl) return;
       const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
       const enhancedUrl = await enhancePDF(resumeUrl, currentCastId);
 
-      // ✅ Generate filename based on original name
-      let finalFileName = "DigitalResume.pdf";
-      if (resumeFileName && resumeFileName !== "Resume.pdf") {
-        const lastDotIndex = resumeFileName.lastIndexOf('.');
-        if (lastDotIndex !== -1) {
-          const nameWithoutExt = resumeFileName.substring(0, lastDotIndex);
-          const extension = resumeFileName.substring(lastDotIndex);
-          finalFileName = `${nameWithoutExt}_DIGITALRESUME${extension}`;
-        } else {
-          finalFileName = `${resumeFileName}_DIGITALRESUME.pdf`;
-        }
-      } else {
-        const firstName =
-          localStorage.getItem("first_name") ||
-          ((user as any)?.user_metadata?.full_name?.split(" ")[0]) ||
-          "user";
-        const cleanFirstName = firstName.trim().replace(/\s+/g, "_").toLowerCase();
-        finalFileName = `${cleanFirstName}_DIGITALRESUME.pdf`;
-      }
-
-      console.log("Downloading file:", { enhancedUrl, finalFileName });
+      // Prepare dynamic filename based on candidate's name
+      const userName = candidateName !== "Candidate" ? candidateName : (user?.firstName || user?.name || localStorage.getItem("first_name") || "Candidate");
+      const finalFileName = `${userName}_DIGITALRESUME.pdf`;
 
       const a = document.createElement("a");
       a.href = enhancedUrl;
@@ -530,46 +461,19 @@ const FinalResult: React.FC = () => {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-
-      // Clean up the URL object
       setTimeout(() => URL.revokeObjectURL(enhancedUrl), 1000);
-    } catch (err: any) {
-      console.error("Error enhancing file:", err);
-      showToast(`Failed to enhance PDF: ${err.message || 'Unknown error occurred. Please try again.'}`, "error");
+    } catch (err) {
+      showToast("Download failed", "error");
     }
   };
 
-  // ✅ Loading state
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-600">Loading your careercast...</p>
-      </div>
-    );
-  }
-
-  // ✅ Fallback message
-  if (!resumeUrl && !videoUrl) {
-    console.log("No data found, resumeUrl:", resumeUrl, "videoUrl:", videoUrl);
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-600">No resume or video data found.</p>
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Debug info */}
-      <div className="fixed top-0 left-0 bg-black text-white text-xs p-2 z-50">
-        resumeUrl: {resumeUrl ? 'YES' : 'NO'}, videoUrl: {videoUrl ? 'YES' : 'NO'},
-        isExternalVisitor: {isExternalVisitor ? 'YES' : 'NO'}, user: {user ? 'YES' : 'NO'}
-      </div>
-
-      {/* ===== Header Section ===== */}
-      <header className="fixed top-0 left-0 right-0 bg-white border-b shadow-sm z-50">
-        <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center px-4 py-3 gap-3">
-          {user ? (
+      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b shadow-sm z-[100]">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center px-4 py-3 gap-4">
+          {user && !isFromPdf ? (
             <Button
               variant="outline"
               onClick={() => navigate("/dashboard")}
@@ -579,137 +483,137 @@ const FinalResult: React.FC = () => {
               Back to Dashboard
             </Button>
           ) : (
-            <div></div> // Empty div for spacing
+            <div></div> // Minimal spacer
           )}
 
-          {user && (
+          {!isFromPdf && user && (
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 variant="outline"
                 onClick={handleDownloadEnhanced}
-                className="flex items-center gap-2 border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                className="flex items-center gap-2 border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700 h-10 px-4"
                 disabled={!resumeUrl}
               >
                 <Download className="h-4 w-4" />
-                Download Enhanced Resume
+                <span className="hidden sm:inline">Download Enhanced Resume</span>
+                <span className="sm:hidden">Download</span>
               </Button>
 
-              {/* Copy careercast Link Button */}
               <Button
                 variant="outline"
                 onClick={() => {
-                  // Generate the actual shareable link for this careercast
-                  const baseUrl = window.location.origin;
-                  // Use castId if available (for shared links), otherwise use the current job request ID
                   const currentCastId = castId || localStorage.getItem("current_job_request_id");
+                  let shareableLink = window.location.href.split('?')[0];
 
-                  if (!currentCastId) {
-                    showToast('Unable to generate shareable link. No careercast ID found.', 'error');
+                  if (!castId && currentCastId) {
+                    shareableLink = `${window.location.origin}/final-result/${currentCastId}`;
+                  }
+
+                  if (!shareableLink.includes('/final-result/')) {
+                    showToast('Unable to generate valid shareable link.', 'error');
                     return;
                   }
 
-                  const shareableLink = `${baseUrl}/final-result/${currentCastId}`;
-
-                  navigator.clipboard.writeText(shareableLink).then(() => {
-                    showToast('careercast link copied to clipboard!', 'success');
-                  }).catch(err => {
-                    console.error('Failed to copy link: ', err);
-                    showToast('Failed to copy link. Please try again.', 'error');
-                  });
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(shareableLink).then(() => {
+                      showToast('Digital Resume link copied to clipboard!', 'success');
+                    }).catch(err => {
+                      console.error('Failed to copy: ', err);
+                      showToast('Failed to copy link.', 'error');
+                    });
+                  } else {
+                    // Fallback
+                    const textArea = document.createElement("textarea");
+                    textArea.value = shareableLink;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                      document.execCommand('copy');
+                      showToast('Digital Resume link copied to clipboard!', 'success');
+                    } catch (err) {
+                      showToast('Failed to copy link.', 'error');
+                    }
+                    document.body.removeChild(textArea);
+                  }
                 }}
-                className="flex items-center gap-2 border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700"
+                className="flex items-center gap-2 border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700 h-10 px-4"
               >
-                Copy Digital Resume Link
+                <Link className="h-4 w-4" />
+                <span className="hidden sm:inline">Copy Digital Resume Link</span>
+                <span className="sm:hidden">Copy Link</span>
               </Button>
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              onClick={handlePlayVideo}
-              className="bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 text-white font-semibold px-4 py-2 rounded-lg shadow-md hover:scale-105 transition-transform"
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setPanelMode('video');
+                setIsPanelOpen(true);
+                const newParams = new URLSearchParams(location.search);
+                newParams.set('mode', 'video');
+                navigate({ search: newParams.toString() });
+              }}
               disabled={!videoUrl}
+              className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-md hover:scale-105 ${isPanelOpen && panelMode === 'video'
+                ? "bg-blue-600 text-white ring-2 ring-blue-400 ring-offset-2 scale-[1.05] z-10"
+                : "bg-blue-600 text-white"
+                } disabled:opacity-50`}
             >
-              <Play className="h-4 w-4 mr-1" fill="white" />
-              Play Video
-            </Button>
-            {user && (
-              <Button
-                variant="outline"
-                onClick={handleLogout}
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                <LogOut className="h-4 w-4 mr-1" />
-                Logout
-              </Button>
-            )}
+              <Play className="h-4 w-4" />
+              Play Intro
+            </button>
+            <button
+              onClick={() => {
+                setPanelMode('chat');
+                setIsPanelOpen(true);
+                const newParams = new URLSearchParams(location.search);
+                newParams.set('mode', 'chat');
+                navigate({ search: newParams.toString() });
+              }}
+              className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-md hover:scale-105 ${isPanelOpen && panelMode === 'chat'
+                ? "bg-[#159A9C] text-white ring-2 ring-teal-400 ring-offset-2 scale-[1.05] z-10"
+                : "bg-[#159A9C] text-white"
+                }`}
+            >
+              <MessageSquare className="h-4 w-4" />
+              Chat with Resume
+            </button>
           </div>
+
+          {user && !isFromPdf && (
+            <Button
+              variant="outline"
+              onClick={handleLogout}
+              className="hidden md:flex border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              <LogOut className="h-4 w-4 mr-1" />
+              Logout
+            </Button>
+          )}
         </div>
       </header>
 
-      {/* ===== Resume Display Section ===== */}
-      <div className="pt-20 pb-0 px-2">
-        <div
-          className="max-w-5xl mx-auto border-none shadow-none overflow-hidden flex flex-col"
-          style={{ height: "calc(100vh - 140px)" }}
-        >
-          {/* {isExternalVisitor && (
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg p-4 mb-4 text-center shadow-md">
-              <div className="flex items-center justify-center gap-2">
-                <div className="bg-white/20 rounded-full p-2">
-                  <Play className="h-5 w-5" />
-                </div>
-                <h3 className="font-bold text-lg">Shared careercast Profile</h3>
-              </div>
-              <p className="mt-2 text-blue-100">
-                {user 
-                  ? "You're viewing a shared profile. You can play the video introduction above." 
-                  : "You're viewing a shared careercast profile. Log in to access the full video introduction."}
-              </p>
-            </div>
-          )} */}
-
+      <div className="relative pt-32 pb-10 min-h-screen bg-slate-50/50">
+        <div className="w-full max-w-7xl mx-auto px-4 pt-5">
           {resumeUrl ? (
-            <iframe
-              src={`${resumeUrl}#zoom=100&view=FitH`}
-              title="Resume Preview"
-              className="w-full h-full border-0 rounded-lg"
-              style={{
-                height: "calc(100vh - 140px)",
-                transform: 'scale(1)',
-                transformOrigin: '0 0'
-              }}
-              allowFullScreen
-            ></iframe>
-          ) : (
-            <p className="text-gray-500 text-center py-10">No resume available.</p>
-          )}
+            <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden">
+              <iframe src={`${resumeUrl}#zoom=100&view=FitH`} title="Resume Preview" className="w-full border-0 min-h-[1100px]" style={{ display: 'block', width: '100%', height: 'auto' }} allowFullScreen />
+            </div>
+          ) : <div className="min-h-[400px] flex items-center justify-center text-gray-500">No resume available.</div>}
         </div>
       </div>
 
-      {/* ===== Video Player Modal ===== */}
-      {showVideoPlayer && videoUrl && (
-        <div className="fixed top-20 right-6 w-96 bg-white rounded-lg shadow-2xl border border-gray-200 z-50">
-          <div className="p-3 border-b border-gray-200 flex justify-between items-center">
-            <h4 className="text-sm font-semibold text-gray-900">Video Preview</h4>
-            <Button
-              variant="ghost"
-              onClick={() => setShowVideoPlayer(false)}
-              className="h-6 w-6 p-0"
-            >
-              ✕
-            </Button>
-          </div>
-          <div className="p-2">
-            <video controls autoPlay className="w-full rounded" src={videoUrl}>
-              <source src={videoUrl} type="video/mp4" />
-              Your browser does not support the video tag.
-            </video>
-            {/* <div className="mt-2 text-xs text-gray-500 break-all">
-              Video URL: {videoUrl}
-            </div> */}
-          </div>
-        </div>
+      {isPanelOpen && (
+        <ResumeChatPanel
+          isOpen={isPanelOpen}
+          onClose={closePanel}
+          mode={panelMode}
+          videoUrl={videoUrl}
+          resumeUrl={resumeUrl}
+          onModeChange={setPanelMode}
+          onDownload={handleDownloadEnhanced}
+        />
       )}
     </div>
   );

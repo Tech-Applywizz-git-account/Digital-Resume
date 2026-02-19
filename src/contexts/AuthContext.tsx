@@ -105,14 +105,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('crm_user_email');
       }
 
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).single();
+      let profileData = null;
+      try {
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+        profileData = profile;
+      } catch (profileErr) {
+        console.warn("Could not fetch user profile:", profileErr);
+      }
 
       const mockUser = {
         id: uid,
         email,
-        firstName: profile?.first_name || email.split('@')[0],
-        lastName: profile?.last_name || '',
-        name: profile?.full_name || email.split('@')[0],
+        firstName: profileData?.first_name || email.split('@')[0],
+        lastName: profileData?.last_name || '',
+        name: profileData?.full_name || email.split('@')[0],
       };
 
       localStorage.setItem('authToken', 'supabase-session');
