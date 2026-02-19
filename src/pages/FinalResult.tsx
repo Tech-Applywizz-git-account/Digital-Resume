@@ -476,7 +476,10 @@ const FinalResult: React.FC = () => {
           {user && !isFromPdf ? (
             <Button
               variant="outline"
-              onClick={() => navigate("/dashboard")}
+              onClick={() => {
+                const isCRM = localStorage.getItem('is_crm_user') === 'true';
+                navigate(isCRM ? "/digitalresumedashboard" : "/dashboard");
+              }}
               className="flex items-center gap-2 border-gray-300 text-gray-700 hover:bg-gray-50"
             >
               <ArrowLeft className="h-4 w-4" />
