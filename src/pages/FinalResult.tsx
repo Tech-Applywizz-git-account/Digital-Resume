@@ -546,23 +546,24 @@ const FinalResult: React.FC = () => {
           )}
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                setPanelMode('video');
-                setIsPanelOpen(true);
-                const newParams = new URLSearchParams(location.search);
-                newParams.set('mode', 'video');
-                navigate({ search: newParams.toString() });
-              }}
-              disabled={!videoUrl}
-              className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-md hover:scale-105 ${isPanelOpen && panelMode === 'video'
-                ? "bg-blue-600 text-white ring-2 ring-blue-400 ring-offset-2 scale-[1.05] z-10"
-                : "bg-blue-600 text-white"
-                } disabled:opacity-50`}
-            >
-              <Play className="h-4 w-4" />
-              Play Intro
-            </button>
+            {videoUrl && (
+              <button
+                onClick={() => {
+                  setPanelMode('video');
+                  setIsPanelOpen(true);
+                  const newParams = new URLSearchParams(location.search);
+                  newParams.set('mode', 'video');
+                  navigate({ search: newParams.toString() });
+                }}
+                className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-md hover:scale-105 ${isPanelOpen && panelMode === 'video'
+                  ? "bg-blue-600 text-white ring-2 ring-blue-400 ring-offset-2 scale-[1.05] z-10"
+                  : "bg-blue-600 text-white"
+                  }`}
+              >
+                <Play className="h-4 w-4" />
+                Play Intro
+              </button>
+            )}
             <button
               onClick={() => {
                 setPanelMode('chat');
