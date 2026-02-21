@@ -327,8 +327,8 @@ const FinalResult: React.FC = () => {
   // ✅ Enhance PDF
   const enhancePDF = async (resumeUrl: string, currentRequestId: string) => {
     try {
-      // Chat button → portfolio site
-      const chatUrl = `https://digital-resume-sample-portfolio.vercel.app/?resumeId=${currentRequestId}&openChat=true`;
+      // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
+      const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}`;
       // Play Intro button → this app's final-result page
       const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video`;
       const hasVideo = !!videoUrl;
@@ -554,11 +554,11 @@ const FinalResult: React.FC = () => {
             )}
             <button
               onClick={() => {
-                // ✅ CHAT WITH RESUME: Redirect to portfolio with query params
-                // This button ONLY handles chat — no panel opening on FinalResult page
+                // ✅ CHAT WITH RESUME: Open this app's /chat page
+                // ChatPage.tsx embeds the portfolio iframe + chat panel side-by-side
                 const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
-                const portfolioUrl = `https://digital-resume-sample-portfolio.vercel.app/?resumeId=${currentCastId}&openChat=true`;
-                window.open(portfolioUrl, '_blank');
+                const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}`;
+                window.open(chatPageUrl, '_blank');
               }}
               className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-md hover:scale-105 bg-[#159A9C] text-white"
             >
