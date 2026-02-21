@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button";
-import { Download, Play, ArrowLeft, LogOut, MessageSquare, Link, Copy, CheckCircle } from "lucide-react";
+import { Download, Play, ArrowLeft, LogOut, MessageSquare, Link, Copy, CheckCircle, Loader2 } from "lucide-react";
 import { useAuthContext } from "../contexts/AuthContext";
 import { PDFDocument, PDFName, PDFNumber, PDFArray, PDFString, rgb } from "pdf-lib";
 import { supabase } from "../integrations/supabase/client";
@@ -26,8 +26,12 @@ const FinalResult: React.FC = () => {
   const isFromPdf = searchParams.get('from') === 'pdf';
 
   // Panel State
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const [panelMode, setPanelMode] = useState<'chat' | 'video' | 'resume'>('chat');
+  const initialParams = new URLSearchParams(window.location.search);
+  const initialMode = initialParams.get('mode') as 'chat' | 'video' | 'resume' | null;
+  const initialFromPdf = initialParams.get('from') === 'pdf';
+
+  const [isPanelOpen, setIsPanelOpen] = useState(initialFromPdf && !!initialMode);
+  const [panelMode, setPanelMode] = useState<'chat' | 'video' | 'resume'>(initialMode || 'chat');
 
   // ✅ Handle URL query parameters for mode
   useEffect(() => {
@@ -38,26 +42,31 @@ const FinalResult: React.FC = () => {
     const mode = params.get('mode');
     const fromPdf = params.get('from') === 'pdf';
 
-    // Only auto-open if explicitly coming from PDF version
+    // Update panel state if URL changes after mount
     if (fromPdf && (mode === 'video' || mode === 'chat' || mode === 'resume')) {
-      setPanelMode(mode as 'chat' | 'video' | 'resume');
-      setIsPanelOpen(true);
+      if (!isPanelOpen || panelMode !== mode) {
+        setPanelMode(mode as 'chat' | 'video' | 'resume');
+        setIsPanelOpen(true);
+      }
     }
-  }, [location.search]);
+  }, [location.search, isPanelOpen, panelMode]);
 
   // ✅ Load data from localStorage or Supabase
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        console.log("Loading data with:", { user, castId });
-        // Check if this is an external visitor (no user but has castId)
-        const isExternal = !user && castId;
+        const idFromQuery = new URLSearchParams(location.search).get('id');
+        const effectiveId = castId || idFromQuery;
+
+        console.log("Loading data with:", { user, castId, idFromQuery });
+        // Check if this is an external visitor (no user but has an ID)
+        const isExternal = !user && effectiveId;
         setIsExternalVisitor(!!isExternal);
 
-        if (castId) {
-          // If we have a specific castId (from URL), load that specific record
-          await loadExternalData(castId);
+        if (effectiveId) {
+          // If we have an ID (from path or query), load that specific record
+          await loadExternalData(effectiveId);
         } else {
           // Otherwise load from localStorage (fallback for legacy or incomplete flows)
           await loadLocalData();
@@ -245,62 +254,42 @@ const FinalResult: React.FC = () => {
 
   const loadExternalData = async (id: string) => {
     try {
-      // Try CRM tables first
-      const { data: crmData, error: crmError } = await supabase
-        .from('crm_job_requests')
-        .select(`
-          job_title,
-          resume_url,
-          application_status,
-          user_id
-        `)
-        .eq('id', id)
-        .maybeSingle();
+      // Parallelize checking CRM and regular tables
+      const [crmResult, regularResult] = await Promise.all([
+        supabase.from('crm_job_requests').select('job_title, resume_url, application_status, user_id').eq('id', id).maybeSingle(),
+        supabase.from('job_requests').select('job_title, resume_path, resume_original_name, user_id, recordings(storage_path)').eq('id', id).maybeSingle()
+      ]);
 
-      if (crmData) {
+      if (crmResult.data) {
+        const crmData = crmResult.data;
         setJobTitle(crmData.job_title || "");
         setResumeUrl(crmData.resume_url || null);
         setResumeFileName(crmData.resume_url ?
           crmData.resume_url.split('/').pop() || "Resume.pdf" :
           "Resume.pdf");
 
-        const { data: recordingData } = await supabase
-          .from('crm_recordings')
-          .select('video_url')
-          .eq('job_request_id', id)
-          .maybeSingle();
+        // Concurrent fetch for CRM recordings and profile
+        const [recordingResult, profileResult] = await Promise.all([
+          supabase.from('crm_recordings').select('video_url').eq('job_request_id', id).maybeSingle(),
+          crmData.user_id ? supabase.from('profiles').select('first_name').eq('id', crmData.user_id).single() : Promise.resolve({ data: null })
+        ]);
 
-        let finalVideoUrl = null;
-        if (recordingData?.video_url) {
-          const path = recordingData.video_url;
-          finalVideoUrl = path.startsWith('http')
+        if (recordingResult.data?.video_url) {
+          const path = recordingResult.data.video_url;
+          const finalVideoUrl = path.startsWith('http')
             ? path
             : supabase.storage.from('CRM_users_recordings').getPublicUrl(path).data.publicUrl;
+          setVideoUrl(finalVideoUrl);
         }
-        setVideoUrl(finalVideoUrl);
-        // Fetch candidate name
-        if (crmData.user_id) {
-          const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', crmData.user_id).single();
-          if (profile) setCandidateName(profile.first_name || "Candidate");
+
+        if (profileResult.data?.first_name) {
+          setCandidateName(profileResult.data.first_name);
         }
         return;
       }
 
-      const { data, error } = await supabase
-        .from('job_requests')
-        .select(`
-          job_title,
-          resume_path,
-          resume_original_name,
-          user_id,
-          recordings (
-            storage_path
-          )
-        `)
-        .eq('id', id)
-        .maybeSingle();
-
-      if (data) {
+      if (regularResult.data) {
+        const data = regularResult.data;
         setJobTitle(data.job_title || "");
         setResumeUrl(data.resume_path || null);
         setResumeFileName(data.resume_original_name || (data.resume_path ?
@@ -308,8 +297,8 @@ const FinalResult: React.FC = () => {
           "Resume.pdf"));
 
         let finalVideoUrl = null;
-        if (data.recordings && data.recordings.length > 0) {
-          const path = data.recordings[0].storage_path;
+        if (data.recordings && (data.recordings as any).length > 0) {
+          const path = (data.recordings as any)[0].storage_path;
           if (path) {
             finalVideoUrl = path.startsWith('http')
               ? path
@@ -318,9 +307,8 @@ const FinalResult: React.FC = () => {
         }
         setVideoUrl(finalVideoUrl);
 
-        // Fetch candidate name
         if (data.user_id) {
-          const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', data.user_id).single();
+          const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', data.user_id).maybeSingle();
           if (profile) setCandidateName(profile.first_name || "Candidate");
         }
       }
@@ -337,10 +325,12 @@ const FinalResult: React.FC = () => {
   };
 
   // ✅ Enhance PDF
-  const enhancePDF = async (resumeUrl: string, castId: string) => {
+  const enhancePDF = async (resumeUrl: string, currentRequestId: string) => {
     try {
-      const baseUrl = window.location.origin || "https://careercast-omega.vercel.app";
-      const finalResultUrl = `${baseUrl}/final-result/${castId || "profile"}`;
+      // Chat button → portfolio site
+      const chatUrl = `https://digital-resume-sample-portfolio.vercel.app/?resumeId=${currentRequestId}&openChat=true`;
+      // Play Intro button → this app's final-result page
+      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video`;
       const hasVideo = !!videoUrl;
 
       let response = await fetch(resumeUrl);
@@ -351,9 +341,7 @@ const FinalResult: React.FC = () => {
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const pages = pdfDoc.getPages();
       const firstPage = pages[0];
-      const lastPage = pages[pages.length - 1];
       const { width, height } = firstPage.getSize();
-      const lastPageSize = lastPage.getSize();
 
       const btnW_play = 110;
       const btnW_chat = 125;
@@ -365,11 +353,10 @@ const FinalResult: React.FC = () => {
       let currentX = width - totalW - margin;
       const btnY = height - btnH - margin;
 
-      const white = rgb(1, 1, 1);
       const context = pdfDoc.context;
 
       // 1. Render Chat with Resume (Top Right of First Page)
-      const chatButtonUrl = `${baseUrl}/images/chat_with_resume_button.png`;
+      const chatButtonUrl = `${window.location.origin}/images/chat_with_resume_button.png`;
       let chatRes;
       try {
         chatRes = await fetch(chatButtonUrl);
@@ -392,7 +379,7 @@ const FinalResult: React.FC = () => {
           Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
           Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_chat), PDFNumber.of(btnY + btnH)]),
           Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
-          A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(`${finalResultUrl}?mode=chat&from=pdf`) })
+          A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(chatUrl) })
         });
 
         let annotsChat = firstPage.node.lookup(PDFName.of("Annots"));
@@ -404,7 +391,7 @@ const FinalResult: React.FC = () => {
 
       // 2. Render Play Intro (Top Right of First Page)
       if (hasVideo) {
-        const playButtonUrl = `${baseUrl}/images/play_intro.png`;
+        const playButtonUrl = `${window.location.origin}/images/play_intro.png`;
         let playRes;
         try {
           playRes = await fetch(playButtonUrl);
@@ -427,7 +414,7 @@ const FinalResult: React.FC = () => {
             Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
             Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_play), PDFNumber.of(btnY + btnH)]),
             Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
-            A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(`${finalResultUrl}?mode=video&from=pdf`) })
+            A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(playIntroUrl) })
           });
 
           let annots = firstPage.node.lookup(PDFName.of("Annots"));
@@ -466,8 +453,6 @@ const FinalResult: React.FC = () => {
       showToast("Download failed", "error");
     }
   };
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -569,16 +554,13 @@ const FinalResult: React.FC = () => {
             )}
             <button
               onClick={() => {
-                setPanelMode('chat');
-                setIsPanelOpen(true);
-                const newParams = new URLSearchParams(location.search);
-                newParams.set('mode', 'chat');
-                navigate({ search: newParams.toString() });
+                // ✅ CHAT WITH RESUME: Redirect to portfolio with query params
+                // This button ONLY handles chat — no panel opening on FinalResult page
+                const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
+                const portfolioUrl = `https://digital-resume-sample-portfolio.vercel.app/?resumeId=${currentCastId}&openChat=true`;
+                window.open(portfolioUrl, '_blank');
               }}
-              className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-md hover:scale-105 ${isPanelOpen && panelMode === 'chat'
-                ? "bg-[#159A9C] text-white ring-2 ring-teal-400 ring-offset-2 scale-[1.05] z-10"
-                : "bg-[#159A9C] text-white"
-                }`}
+              className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-md hover:scale-105 bg-[#159A9C] text-white"
             >
               <MessageSquare className="h-4 w-4" />
               Chat with Resume
@@ -604,7 +586,13 @@ const FinalResult: React.FC = () => {
             <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden">
               <iframe src={`${resumeUrl}#zoom=100&view=FitH`} title="Resume Preview" className="w-full border-0 min-h-[1100px]" style={{ display: 'block', width: '100%', height: 'auto' }} allowFullScreen />
             </div>
-          ) : <div className="min-h-[400px] flex items-center justify-center text-gray-500">No resume available.</div>}
+          ) : loading ? (
+            <div className="min-h-[400px] flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            </div>
+          ) : (
+            <div className="min-h-[400px] flex items-center justify-center text-gray-500">No resume available.</div>
+          )}
         </div>
       </div>
 
@@ -617,6 +605,7 @@ const FinalResult: React.FC = () => {
           resumeUrl={resumeUrl}
           onModeChange={setPanelMode}
           onDownload={handleDownloadEnhanced}
+          isParentLoading={loading}
         />
       )}
     </div>

@@ -23,6 +23,8 @@ interface ResumeChatPanelProps {
     resumeUrl?: string | null;
     onModeChange: (mode: 'chat' | 'video' | 'resume') => void;
     onDownload?: () => void;
+    isParentLoading?: boolean;
+    recruiterMode?: boolean;
 }
 
 const DEFAULT_QUESTIONS = [
@@ -32,6 +34,13 @@ const DEFAULT_QUESTIONS = [
     "What is their education background?"
 ];
 
+const RECRUITER_QUESTIONS = [
+    "Tell me about yourself",
+    "What are your key strengths?",
+    "What projects are you most proud of?",
+    "How can I contact you?"
+];
+
 const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
     isOpen,
     onClose,
@@ -39,12 +48,16 @@ const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
     videoUrl,
     resumeUrl,
     onModeChange,
-    onDownload
+    onDownload,
+    isParentLoading,
+    recruiterMode = false
 }) => {
     const [messages, setMessages] = useState<Message[]>([
         {
             id: '1',
-            text: "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
+            text: recruiterMode
+                ? "Hi there! 👋 I'm glad you're here. Feel free to ask me anything — about my experience, skills, projects, or how I can add value to your team. I'm happy to chat!"
+                : "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
             sender: 'bot',
             timestamp: new Date()
         }
@@ -52,7 +65,9 @@ const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
     const [inputText, setInputText] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [resumeText, setResumeText] = useState<string>("");
-    const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>(DEFAULT_QUESTIONS);
+    const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>(
+        recruiterMode ? RECRUITER_QUESTIONS : DEFAULT_QUESTIONS
+    );
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -151,7 +166,8 @@ const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
                 body: {
                     resumeText: resumeText,
                     messages: messages.map(m => ({ role: m.sender === 'bot' ? 'assistant' : 'user', content: m.text })),
-                    question: text
+                    question: text,
+                    recruiterMode: recruiterMode
                 }
             });
 
@@ -216,7 +232,7 @@ const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed top-[112px] right-4 w-full max-w-[400px] h-[calc(100vh-140px)] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 flex flex-col overflow-hidden transition-all duration-300 animate-in slide-in-from-right">
+        <div className="fixed top-20 right-6 w-full max-w-[420px] h-[calc(100vh-100px)] bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 z-[110] flex flex-col overflow-hidden transition-all duration-300">
             {/* Header */}
             <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-4 flex justify-between items-center text-white shrink-0">
                 <h3 className="font-semibold flex items-center gap-2">
@@ -282,6 +298,11 @@ const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
                                     className="w-full h-full border-none"
                                     title="Resume PDF"
                                 />
+                                {isParentLoading && (
+                                    <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-20">
+                                        <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin" />
+                                    </div>
+                                )}
                                 {onDownload && (
                                     <div className="absolute bottom-6 right-6 z-10">
                                         <Button
