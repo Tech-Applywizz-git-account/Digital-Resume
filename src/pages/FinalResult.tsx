@@ -314,7 +314,12 @@ const FinalResult: React.FC = () => {
       const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}`;
       // Play Intro button → this app's final-result page
       const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video`;
-      const hasVideo = !!videoUrl;
+
+      // Improved video detection
+      const hasVideo = !!videoUrl &&
+        videoUrl !== "null" &&
+        videoUrl !== "undefined" &&
+        (videoUrl.startsWith('http') || videoUrl.startsWith('blob:'));
 
       let response = await fetch(resumeUrlStr);
       if (!response.ok) response = await fetch(resumeUrlStr, { credentials: 'include' });
@@ -326,47 +331,73 @@ const FinalResult: React.FC = () => {
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
 
-      const btnW_play = 110;
-      const btnW_chat = 125;
-      const btnH = 32;
+      const btnW_play = 100;
+      const btnW_chat = 100;
+      const btnH = 28;
       const gap = 12;
       const margin = 20;
 
+      // Calculate positions - Right-aligned at the top
       const totalW = hasVideo ? (btnW_play + gap + btnW_chat) : btnW_chat;
       let currentX = width - totalW - margin;
-      const btnY = height - btnH - margin;
+
+      // Positioned at the very top to avoid overlapping with the name content below
+      const btnY = height - btnH - 10;
 
       const context = pdfDoc.context;
+      const origin = window.location.origin;
 
-      const chatButtonRes = await fetch(`${window.location.origin}/images/chat_with_resume_button.png`);
-      if (chatButtonRes.ok) {
-        const chatBytes = await chatButtonRes.arrayBuffer();
+      // Helper to strip data URL prefix for pdf-lib embedPng if needed
+      const getBase64Data = (dataUrl: string) => dataUrl.split(',')[1];
+
+      // Draw Chat Button (Let's talk)
+      const chatButtonDataUrl = await generateButtonImage("Let's talk", `${origin}/Vector.svg`, btnW_chat, btnH, 15, 13);
+      if (chatButtonDataUrl) {
+        const chatBytes = Uint8Array.from(atob(getBase64Data(chatButtonDataUrl)), c => c.charCodeAt(0));
         const chatImg = await pdfDoc.embedPng(chatBytes);
         firstPage.drawImage(chatImg, { x: currentX, y: btnY, width: btnW_chat, height: btnH });
+
         const chatLink = context.obj({
-          Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
-          Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_chat), PDFNumber.of(btnY + btnH)]),
+          Type: PDFName.of("Annot"),
+          Subtype: PDFName.of("Link"),
+          Rect: context.obj([
+            PDFNumber.of(currentX),
+            PDFNumber.of(btnY),
+            PDFNumber.of(currentX + btnW_chat),
+            PDFNumber.of(btnY + btnH)
+          ]),
           Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
           A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(chatUrl) })
         });
+
         let annots = firstPage.node.lookup(PDFName.of("Annots"));
         if (annots instanceof PDFArray) annots.push(chatLink);
         else firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
+
         currentX += btnW_chat + gap;
       }
 
+      // Draw Play Intro Button ONLY if video is present
       if (hasVideo) {
-        const playButtonRes = await fetch(`${window.location.origin}/images/play_intro.png`);
-        if (playButtonRes.ok) {
-          const playBytes = await playButtonRes.arrayBuffer();
+        const playButtonDataUrl = await generateButtonImage("Play Intro", `${origin}/Frame%20215.svg`, btnW_play, btnH, 17, 17);
+        if (playButtonDataUrl) {
+          const playBytes = Uint8Array.from(atob(getBase64Data(playButtonDataUrl)), c => c.charCodeAt(0));
           const playImg = await pdfDoc.embedPng(playBytes);
           firstPage.drawImage(playImg, { x: currentX, y: btnY, width: btnW_play, height: btnH });
+
           const playLink = context.obj({
-            Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
-            Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_play), PDFNumber.of(btnY + btnH)]),
+            Type: PDFName.of("Annot"),
+            Subtype: PDFName.of("Link"),
+            Rect: context.obj([
+              PDFNumber.of(currentX),
+              PDFNumber.of(btnY),
+              PDFNumber.of(currentX + btnW_play),
+              PDFNumber.of(btnY + btnH)
+            ]),
             Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
             A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(playIntroUrl) })
           });
+
           let annots = firstPage.node.lookup(PDFName.of("Annots"));
           if (annots instanceof PDFArray) annots.push(playLink);
           else firstPage.node.set(PDFName.of("Annots"), context.obj([playLink]));
