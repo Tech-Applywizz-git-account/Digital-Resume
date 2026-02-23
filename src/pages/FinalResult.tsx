@@ -379,9 +379,9 @@ const FinalResult: React.FC = () => {
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
 
-      const btnW_play = 110;
-      const btnW_chat = 105;
-      const btnH = 36;
+      const btnW_play = 100;
+      const btnW_chat = 97;
+      const btnH = 28;
       const gap = 12;
       const margin = 20;
 
