@@ -310,7 +310,6 @@ const FinalResult: React.FC = () => {
 
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
     try {
-      const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}`;
       // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
       const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}`;
       // Play Intro button → this app's final-result page
@@ -459,8 +458,6 @@ const FinalResult: React.FC = () => {
             )}
             <button
               onClick={() => {
-                const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
-                window.open(`${window.location.origin}/chat?resumeId=${currentCastId}`, '_blank');
                 // ✅ CHAT WITH RESUME: Open this app's /chat page
                 // ChatPage.tsx embeds the portfolio iframe + chat panel side-by-side
                 const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
