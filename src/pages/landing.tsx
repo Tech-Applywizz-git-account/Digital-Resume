@@ -5967,7 +5967,7 @@ export default function Landing() {
           mode={panelMode}
           videoUrl={videoUrl}
           resumeUrl={resumeUrl}
-          onModeChange={setPanelMode}
+          onModeChange={(m) => setPanelMode(m)}
         />
       )}
 

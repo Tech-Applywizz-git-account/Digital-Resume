@@ -15,15 +15,15 @@ interface Message {
     timestamp: Date;
 }
 
-interface ResumeChatPanelProps {
+export interface ResumeChatPanelProps {
     isOpen: boolean;
     onClose: () => void;
     mode: 'chat' | 'video' | 'resume';
     videoUrl: string | null;
     resumeUrl?: string | null;
     onModeChange: (mode: 'chat' | 'video' | 'resume') => void;
-    onDownload?: () => void;
-    isParentLoading?: boolean;
+    onDownload?: () => void | Promise<void>;
+    isDataLoading?: boolean;
     recruiterMode?: boolean;
 }
 
@@ -41,7 +41,7 @@ const RECRUITER_QUESTIONS = [
     "How can I contact you?"
 ];
 
-const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
+const ResumeChatPanel = ({
     isOpen,
     onClose,
     mode,
@@ -49,9 +49,9 @@ const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
     resumeUrl,
     onModeChange,
     onDownload,
-    isParentLoading,
+    isDataLoading,
     recruiterMode = false
-}) => {
+}: ResumeChatPanelProps) => {
     const [messages, setMessages] = useState<Message[]>([
         {
             id: '1',
@@ -297,7 +297,7 @@ const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
                                     className="w-full h-full border-none"
                                     title="Resume PDF"
                                 />
-                                {isParentLoading && (
+                                {isDataLoading && (
                                     <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-20">
                                         <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin" />
                                     </div>

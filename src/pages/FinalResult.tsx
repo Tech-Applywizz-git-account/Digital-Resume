@@ -7,6 +7,7 @@ import { PDFDocument, PDFName, PDFNumber, PDFArray, PDFString, rgb } from "pdf-l
 import { supabase } from "../integrations/supabase/client";
 import { showToast } from "../components/ui/toast";
 import ResumeChatPanel from "../components/ResumeChatPanel";
+import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 
 const FinalResult: React.FC = () => {
   const navigate = useNavigate();
@@ -497,9 +498,9 @@ const FinalResult: React.FC = () => {
           mode={panelMode}
           videoUrl={videoUrl}
           resumeUrl={resumeUrl}
-          onModeChange={setPanelMode}
+          onModeChange={(m) => setPanelMode(m)}
           onDownload={handleDownloadEnhanced}
-          isParentLoading={loading}
+          isDataLoading={loading}
         />
       )}
     </div>
