@@ -257,7 +257,6 @@ const ResumeChatPanel: React.FC<ResumeChatPanelProps> = ({
                                 playsInline
                                 className="w-full h-full object-contain"
                                 src={videoUrl}
-                                controlsList="nodownload"
                                 onLoadedMetadata={(e) => {
                                     e.currentTarget.currentTime = 0;
                                 }}

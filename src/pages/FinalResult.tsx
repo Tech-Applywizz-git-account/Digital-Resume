@@ -115,18 +115,17 @@ const FinalResult: React.FC = () => {
               data.resume_url.split('/').pop() || "Resume.pdf" :
               "Resume.pdf");
 
-            // Get video URL from crm_recordings
-            const { data: recordingData } = await supabase
+            // Get latest video URL from crm_recordings
+            const { data: recordings } = await supabase
               .from('crm_recordings')
               .select('video_url')
               .eq('job_request_id', currentJobRequestId)
-              .limit(1)
-              .single();
+              .order('created_at', { ascending: false })
+              .limit(1);
 
             let finalVideoUrl = null;
-            if (recordingData?.video_url) {
-              const path = recordingData.video_url;
-              // Convert relative storage path to public URL if needed
+            if (recordings && recordings.length > 0 && recordings[0].video_url) {
+              const path = recordings[0].video_url;
               finalVideoUrl = path.startsWith('http')
                 ? path
                 : supabase.storage.from('CRM_users_recordings').getPublicUrl(path).data.publicUrl;
@@ -178,18 +177,20 @@ const FinalResult: React.FC = () => {
               data.resume_path.split('/').pop() || "Resume.pdf" :
               "Resume.pdf"));
 
-            // Get video URL from recordings
+            // Get latest video URL from recordings
+            const { data: recs } = await supabase
+              .from('recordings')
+              .select('storage_path')
+              .eq('job_request_id', currentJobRequestId)
+              .order('created_at', { ascending: false })
+              .limit(1);
+
             let finalVideoUrl = null;
-            if (data.recordings && data.recordings.length > 0) {
-              const path = data.recordings[0].storage_path;
-              // ✅ Convert relative storage path to public URL if needed
-              if (path) {
-                finalVideoUrl = path.startsWith('http')
-                  ? path
-                  : supabase.storage.from('recordings').getPublicUrl(path).data.publicUrl;
-              } else {
-                finalVideoUrl = recordedVideoUrl || null;
-              }
+            if (recs && recs.length > 0 && recs[0].storage_path) {
+              const path = recs[0].storage_path;
+              finalVideoUrl = path.startsWith('http')
+                ? path
+                : supabase.storage.from('recordings').getPublicUrl(path).data.publicUrl;
             } else {
               finalVideoUrl = recordedVideoUrl || null;
             }
@@ -264,18 +265,22 @@ const FinalResult: React.FC = () => {
           crmData.resume_url.split('/').pop() || "Resume.pdf" :
           "Resume.pdf");
 
-        const { data: recordingData } = await supabase
+        const { data: recordings } = await supabase
           .from('crm_recordings')
           .select('video_url')
           .eq('job_request_id', id)
-          .maybeSingle();
+          .order('created_at', { ascending: false })
+          .limit(1);
 
         let finalVideoUrl = null;
-        if (recordingData?.video_url) {
-          const path = recordingData.video_url;
+        if (recordings && recordings.length > 0 && recordings[0].video_url) {
+          const path = recordings[0].video_url;
           finalVideoUrl = path.startsWith('http')
             ? path
             : supabase.storage.from('CRM_users_recordings').getPublicUrl(path).data.publicUrl;
+        } else {
+          // Fallback to localStorage if this is the owner
+          finalVideoUrl = localStorage.getItem("recordedVideoUrl");
         }
         setVideoUrl(finalVideoUrl);
         // Fetch candidate name
@@ -307,14 +312,22 @@ const FinalResult: React.FC = () => {
           data.resume_path.split('/').pop() || "Resume.pdf" :
           "Resume.pdf"));
 
+        const { data: recordings } = await supabase
+          .from('recordings')
+          .select('storage_path')
+          .eq('job_request_id', id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
         let finalVideoUrl = null;
-        if (data.recordings && data.recordings.length > 0) {
-          const path = data.recordings[0].storage_path;
-          if (path) {
-            finalVideoUrl = path.startsWith('http')
-              ? path
-              : supabase.storage.from('recordings').getPublicUrl(path).data.publicUrl;
-          }
+        if (recordings && recordings.length > 0 && recordings[0].storage_path) {
+          const path = recordings[0].storage_path;
+          finalVideoUrl = path.startsWith('http')
+            ? path
+            : supabase.storage.from('recordings').getPublicUrl(path).data.publicUrl;
+        } else {
+          // Fallback to localStorage if this is the owner
+          finalVideoUrl = localStorage.getItem("recordedVideoUrl");
         }
         setVideoUrl(finalVideoUrl);
 
@@ -501,6 +514,7 @@ const FinalResult: React.FC = () => {
                 <span className="hidden sm:inline">Download Enhanced Resume</span>
                 <span className="sm:hidden">Download</span>
               </Button>
+
 
               <Button
                 variant="outline"

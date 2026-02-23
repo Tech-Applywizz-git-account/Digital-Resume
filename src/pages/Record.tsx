@@ -13,6 +13,7 @@ const Record: React.FC = () => {
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<HTMLSpanElement>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recorderReady, setRecorderReady] = useState(false);
@@ -41,7 +42,12 @@ const Record: React.FC = () => {
   // 🔹 Check user credits on mount (CRM Aware)
   useEffect(() => {
     const checkCredits = async () => {
-      if (!user) return;
+      let currentUser = user;
+      if (!currentUser) {
+        const storedUser = localStorage.getItem("userData");
+        if (storedUser) currentUser = JSON.parse(storedUser);
+      }
+      if (!currentUser) return;
 
       setCheckingCredits(true);
       try {
@@ -69,7 +75,7 @@ const Record: React.FC = () => {
           const { data, error } = await supabase
             .from('profiles')
             .select('credits_remaining')
-            .eq('id', user.id)
+            .eq('id', currentUser.id)
             .single();
 
           if (error) {
@@ -112,6 +118,7 @@ const Record: React.FC = () => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.onloadedmetadata = () => videoRef.current?.play();
+          streamRef.current = stream; // Keep track of stream for cleanup
           // Ensure camera is on initially
           stream.getVideoTracks().forEach((track) => (track.enabled = true));
         }
@@ -126,7 +133,6 @@ const Record: React.FC = () => {
 
         let recorder: MediaRecorder;
 
-        // Try higher bitrate for better clarity (5Mbps)
         try {
           recorder = new MediaRecorder(stream, {
             mimeType,
@@ -164,10 +170,10 @@ const Record: React.FC = () => {
       if (scrollInterval) clearInterval(scrollInterval);
       if (timerInterval) clearInterval(timerInterval);
 
-      // stop camera tracks on unmount
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach((t) => t.stop());
+      // stop camera tracks on unmount using ref for reliability
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -265,10 +271,13 @@ const Record: React.FC = () => {
     resetTimer();
     resetTeleprompterPosition();
 
-    // Turn camera off 
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getVideoTracks().forEach((track) => (track.enabled = false));
+    // Turn camera off completely
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
 
     console.log("📹 Finalizing recording...");
@@ -305,40 +314,24 @@ const Record: React.FC = () => {
 
     await uploadVideo(blob, durationSeconds);
 
-    // ✅ Reinitialize Recorder for next recording
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      const mimeType = MediaRecorder.isTypeSupported(
-        "video/webm;codecs=vp8,opus"
-      )
-        ? "video/webm;codecs=vp8,opus"
-        : "video/webm";
-      let newRecorder: MediaRecorder;
-      try {
-        newRecorder = new MediaRecorder(stream, {
-          mimeType,
-          videoBitsPerSecond: 5000000,
-          audioBitsPerSecond: 128_000,
-        });
-      } catch {
-        newRecorder = new MediaRecorder(stream, { mimeType });
-      }
-      newRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
-      };
-      newRecorder.onstop = handleRecordingStop;
-      newRecorder.onerror = (err) => console.error("⚠️ Recorder error:", err);
-      setMediaRecorder(newRecorder);
-      setRecorderReady(true);
-      console.log("🔁 MediaRecorder reinitialized");
-    }
+    // Removed reinitialization as we are redirecting
+    setRecorderReady(false);
   };
 
   // 🔹 Upload to Supabase (CRM Aware)
   const uploadVideo = async (blob: Blob, durationSeconds: number) => {
     setIsUploading(true);
     try {
-      if (!user) throw new Error("User not signed in");
+      // Robust user check with fallback to localStorage
+      let currentUser = user;
+      if (!currentUser) {
+        const storedUser = localStorage.getItem("userData");
+        if (storedUser) {
+          currentUser = JSON.parse(storedUser);
+        }
+      }
+
+      if (!currentUser) throw new Error("User session not found. Please sign in again.");
 
       const jobRequestId = localStorage.getItem("current_job_request_id");
       if (!jobRequestId) throw new Error("Missing job request ID");
@@ -349,10 +342,10 @@ const Record: React.FC = () => {
       const fileName = `${Date.now()}.webm`;
       let publicUrl: string | null = null;
 
-      // Ensure upload limit is high for unlimited recording
-      const maxUploadSize = 1024 * 1024 * 1024; // 1GB
+      // Higher limit for Pro users (500MB)
+      const maxUploadSize = 500 * 1024 * 1024; // 500MB
       if (blob.size > maxUploadSize) {
-        throw new Error("Video too large! Maximum 1GB allowed.");
+        throw new Error("Video too large! Maximum 500MB allowed. If this fails on Pro, check your Supabase Storage bucket 'Max File Size' setting.");
       }
 
       if (isCRMUser && crmEmail) {
@@ -374,7 +367,7 @@ const Record: React.FC = () => {
 
         await supabase.from("crm_recordings").insert({
           email: crmEmail,
-          user_id: user.id,
+          user_id: currentUser.id,
           job_request_id: jobRequestId,
           video_url: publicUrl,
           duration: durationSeconds,
@@ -396,7 +389,7 @@ const Record: React.FC = () => {
           setCreditsRemaining(creditsRemaining - 1);
         }
       } else {
-        const filePath = `${user.id}/${fileName}`;
+        const filePath = `${currentUser.id}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from("recordings")
@@ -414,7 +407,7 @@ const Record: React.FC = () => {
 
         await supabase.from("recordings").insert({
           job_request_id: jobRequestId,
-          email: user.email,
+          email: currentUser.email,
           storage_path: publicUrl,
           duration_seconds: durationSeconds,
           size_bytes: blob.size,
@@ -427,7 +420,7 @@ const Record: React.FC = () => {
         if (creditsRemaining !== null && creditsRemaining > 0) {
           await supabase.from('profiles')
             .update({ credits_remaining: creditsRemaining - 1 })
-            .eq('id', user.id);
+            .eq('id', currentUser.id);
           setCreditsRemaining(creditsRemaining - 1);
         }
       }
