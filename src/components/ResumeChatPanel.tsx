@@ -52,16 +52,16 @@ const ResumeChatPanel = ({
     isDataLoading,
     recruiterMode = false
 }: ResumeChatPanelProps) => {
-    const getInitialMessage = () => ({
-        id: '1',
-        text: recruiterMode
-            ? "Hi there! 👋 I'm glad you're here. Feel free to ask me anything — about my experience, skills, projects, or how I can add value to your team. I'm happy to chat!"
-            : "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
-        sender: 'bot' as const,
-        timestamp: new Date()
-    });
-
-    const [messages, setMessages] = useState<Message[]>([getInitialMessage()]);
+    const [messages, setMessages] = useState<Message[]>([
+        {
+            id: '1',
+            text: recruiterMode
+                ? "Hi there! 👋 I'm glad you're here. Feel free to ask me anything — about my experience, skills, projects, or how I can add value to your team. I'm happy to chat!"
+                : "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
+            sender: 'bot',
+            timestamp: new Date()
+        }
+    ]);
     const [inputText, setInputText] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [resumeText, setResumeText] = useState<string>("");
@@ -70,23 +70,31 @@ const ResumeChatPanel = ({
     );
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // ✅ Reset chat state immediately when resumeUrl changes
-    useEffect(() => {
-        console.log("🔄 Resume changed or initialized:", resumeUrl);
-        setMessages([getInitialMessage()]);
-        setResumeText("");
-        setSuggestedQuestions(recruiterMode ? RECRUITER_QUESTIONS : DEFAULT_QUESTIONS);
-    }, [resumeUrl, recruiterMode]);
-
     useEffect(() => {
         const loadResumeText = async () => {
-            // ✅ ALWAYS fetch fresh - never use global cache from localStorage
-            if (resumeUrl && isOpen) {
+            // ✅ Reset state when a new resume is selected
+            setMessages([
+                {
+                    id: '1',
+                    text: recruiterMode
+                        ? "Hi there! 👋 I'm glad you're here. Feel free to ask me anything — about my experience, skills, projects, or how I can add value to your team. I'm happy to chat!"
+                        : "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
+                    sender: 'bot',
+                    timestamp: new Date()
+                }
+            ]);
+            setSuggestedQuestions(recruiterMode ? RECRUITER_QUESTIONS : DEFAULT_QUESTIONS);
+            setResumeText(""); // Clear old content
+
+            // ❌ DO NOT use localStorage. Fetch and parse fresh every time.
+            if (resumeUrl) {
                 try {
-                    console.log("Fetching resume PDF from:", resumeUrl);
+                    console.log("🚀 Switching Resume. Fetching fresh PDF from:", resumeUrl);
                     setIsLoading(true);
 
                     const response = await fetch(resumeUrl);
+                    if (!response.ok) throw new Error(`Failed to fetch PDF: ${response.statusText}`);
+
                     const blob = await response.blob();
                     const arrayBuffer = await blob.arrayBuffer();
 
@@ -104,13 +112,14 @@ const ResumeChatPanel = ({
                     }
 
                     const extractedText = text.replace(/\n\s*\n/g, "\n").trim().slice(0, 25000);
-                    console.log("✅ Extracted fresh PDF text length:", extractedText.length);
+                    console.log("✅ Extracted PDF text length:", extractedText.length);
+                    console.log("📄 Resume Preview:", extractedText.slice(0, 100));
 
                     setResumeText(extractedText);
 
                 } catch (err: any) {
-                    console.error("Failed to parse PDF from URL:", err);
-                    setMessages((prev: Message[]) => [...prev, {
+                    console.error("❌ Failed to parse PDF from URL:", err);
+                    setMessages(prev => [...prev, {
                         id: Date.now().toString(),
                         text: "I was unable to read the resume file. Please ensure it is accessible.",
                         sender: 'bot',
@@ -122,8 +131,10 @@ const ResumeChatPanel = ({
             }
         };
 
-        loadResumeText();
-    }, [isOpen, resumeUrl]);
+        if (isOpen) {
+            loadResumeText();
+        }
+    }, [isOpen, resumeUrl, recruiterMode]); // Reset when isOpen or resumeUrl changes
 
     useEffect(() => {
         scrollToBottom();
@@ -143,7 +154,7 @@ const ResumeChatPanel = ({
             timestamp: new Date()
         };
 
-        setMessages((prev: Message[]) => [...prev, newMessage]);
+        setMessages(prev => [...prev, newMessage]);
         setInputText("");
         setIsLoading(true);
 
@@ -152,14 +163,14 @@ const ResumeChatPanel = ({
                 throw new Error("Resume content is still loading. Please wait a moment.");
             }
 
-            // ✅ Verification logs before sending
-            console.log("📤 Sending resume for chat:", resumeUrl);
-            console.log("📄 Resume preview:", resumeText.slice(0, 100).replace(/\n/g, ' '));
+            console.log("📤 Sending Resume Chat Request...");
+            console.log("📄 Source URL:", resumeUrl);
+            console.log("📄 Content Sample:", resumeText.slice(0, 100));
 
             const { data, error } = await supabase.functions.invoke('resume-chat', {
                 body: {
                     resumeText: resumeText,
-                    messages: messages.map((m: Message) => ({ role: m.sender === 'bot' ? 'assistant' : 'user', content: m.text })),
+                    messages: messages.map(m => ({ role: m.sender === 'bot' ? 'assistant' : 'user', content: m.text })),
                     question: text,
                     recruiterMode: recruiterMode
                 }
@@ -185,7 +196,7 @@ const ResumeChatPanel = ({
                 sender: 'bot',
                 timestamp: new Date()
             };
-            setMessages((prev: Message[]) => [...prev, botResponse]);
+            setMessages(prev => [...prev, botResponse]);
 
         } catch (error: any) {
             console.error("Chat error details:", error);
@@ -210,7 +221,7 @@ const ResumeChatPanel = ({
                 sender: 'bot',
                 timestamp: new Date()
             };
-            setMessages((prev: Message[]) => [...prev, errorResponse]);
+            setMessages(prev => [...prev, errorResponse]);
         } finally {
             setIsLoading(false);
         }
@@ -226,14 +237,14 @@ const ResumeChatPanel = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed top-20 right-6 w-full max-w-[420px] h-[calc(100vh-100px)] bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 z-[110] flex flex-col overflow-hidden transition-all duration-300">
+        <div className={`fixed top-20 right-6 w-full max-w-[420px] ${mode === 'video' ? 'h-auto' : 'h-[calc(100vh-100px)]'} bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 z-[110] flex flex-col overflow-hidden transition-all duration-300`}>
             {/* Header */}
-            <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-4 flex justify-between items-center text-white shrink-0">
+            <div className="bg-gradient-to-r from-[#0A66C2] to-[#0855a3] p-4 flex justify-between items-center text-white shrink-0">
                 <h3 className="font-semibold flex items-center gap-2">
                     {mode === 'chat' ? (
                         <>
                             <MessageSquare className="w-5 h-5" />
-                            Ask About Resume
+                            Let's talk
                         </>
                     ) : mode === 'video' ? (
                         <>
@@ -256,16 +267,16 @@ const ResumeChatPanel = ({
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-hidden relative bg-gray-50 flex flex-col">
+            <div className={`${mode === 'video' ? 'h-auto' : 'flex-1'} overflow-hidden relative bg-gray-50 flex flex-col`}>
                 {mode === 'video' ? (
                     // Video Mode
-                    <div className="h-full w-full flex items-center justify-center bg-black p-0 overflow-hidden">
+                    <div className="w-full bg-black p-0 overflow-hidden flex items-center justify-center">
                         {videoUrl ? (
                             <video
                                 controls
                                 preload="metadata"
                                 playsInline
-                                className="w-full h-full object-contain"
+                                className="w-full h-auto max-h-[70vh] block"
                                 src={videoUrl}
                                 onLoadedMetadata={(e) => {
                                     e.currentTarget.currentTime = 0;
@@ -276,7 +287,7 @@ const ResumeChatPanel = ({
                                 Your browser does not support the video tag.
                             </video>
                         ) : (
-                            <div className="text-white text-center p-4">
+                            <div className="text-white text-center p-8 w-full">
                                 <p>No video available for this candidate.</p>
                             </div>
                         )}
@@ -298,13 +309,13 @@ const ResumeChatPanel = ({
                                 )}
                                 {onDownload && (
                                     <div className="absolute bottom-6 right-6 z-10">
-                                        <Button
+                                        <button
                                             onClick={onDownload}
-                                            className="shadow-lg bg-[#0B4F6C] hover:bg-[#093d54] text-white flex items-center gap-2"
+                                            className="flex items-center justify-center gap-2 border-[#CEDFF9] bg-[#0A66C2] text-white h-[36px] rounded-[6px] text-[12px] font-bold px-4 hover:bg-[#0855a3] hover:text-white transition-all shadow-lg border-2"
                                         >
                                             <Download className="w-4 h-4" />
                                             Download Enhanced Copy
-                                        </Button>
+                                        </button>
                                     </div>
                                 )}
                             </>
@@ -324,14 +335,14 @@ const ResumeChatPanel = ({
                                     className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                                 >
                                     {msg.sender === 'bot' && (
-                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0B4F6C] to-[#0B4F6C]/80 flex items-center justify-center shrink-0 shadow-sm mt-1">
+                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0A66C2] to-[#0855a3] flex items-center justify-center shrink-0 shadow-sm mt-1">
                                             <Sparkles className="w-4 h-4 text-white" />
                                         </div>
                                     )}
 
                                     <div
-                                        className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm shadow-sm transition-all ${msg.sender === 'user'
-                                            ? 'bg-[#0B4F6C] text-white rounded-br-sm'
+                                        className={`max-w-[85%] rounded-[12px] px-5 py-3 text-sm shadow-sm transition-all ${msg.sender === 'user'
+                                            ? 'bg-[#0A66C2] text-white rounded-br-sm'
                                             : 'bg-white text-slate-700 border border-slate-100 rounded-bl-sm'
                                             }`}
                                     >
@@ -375,11 +386,11 @@ const ResumeChatPanel = ({
 
                             {isLoading && (
                                 <div className="flex gap-3 justify-start">
-                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0B4F6C] to-[#0B4F6C]/80 flex items-center justify-center shrink-0 shadow-sm mt-1">
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0A66C2] to-[#0855a3] flex items-center justify-center shrink-0 shadow-sm mt-1">
                                         <Sparkles className="w-4 h-4 text-white" />
                                     </div>
                                     <div className="bg-white border border-slate-100 rounded-2xl rounded-bl-sm px-5 py-3 shadow-sm flex items-center gap-2">
-                                        <Loader2 className="w-4 h-4 animate-spin text-[#0B4F6C]" />
+                                        <Loader2 className="w-4 h-4 animate-spin text-[#0A66C2]" />
                                         <span className="text-sm text-slate-500 font-medium">Thinking...</span>
                                     </div>
                                 </div>
@@ -393,7 +404,7 @@ const ResumeChatPanel = ({
                                 <button
                                     key={i}
                                     onClick={() => handleSendMessage(q)}
-                                    className="whitespace-nowrap px-4 py-2 bg-white border border-[#0B4F6C]/20 text-[#0B4F6C] text-xs font-medium rounded-xl hover:bg-[#0B4F6C] hover:text-white transition-all shadow-sm active:scale-95"
+                                    className="whitespace-nowrap px-4 py-2 bg-white border border-[#0A66C2]/20 text-[#0A66C2] text-xs font-bold rounded-[6px] hover:bg-[#0A66C2] hover:text-white transition-all shadow-sm active:scale-95"
                                 >
                                     {q}
                                 </button>
@@ -409,12 +420,12 @@ const ResumeChatPanel = ({
                                     onChange={(e) => setInputText(e.target.value)}
                                     onKeyDown={handleKeyDown}
                                     placeholder="Ask about detailed experience, skills..."
-                                    className="flex-1 pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0B4F6C]/20 focus:border-[#0B4F6C] transition-all text-sm placeholder:text-gray-400"
+                                    className="flex-1 pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-[6px] focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/20 focus:border-[#0A66C2] transition-all text-sm placeholder:text-gray-400"
                                 />
                                 <button
                                     onClick={() => handleSendMessage(inputText)}
                                     disabled={!inputText.trim() || isLoading}
-                                    className="absolute right-2 p-2 bg-[#0B4F6C] text-white rounded-lg hover:bg-[#093d54] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                                    className="absolute right-2 p-2 bg-[#0A66C2] text-white rounded-[6px] hover:bg-[#0855a3] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                                 >
                                     <Send className="w-4 h-4" />
                                 </button>
