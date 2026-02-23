@@ -484,13 +484,7 @@ const FinalResult: React.FC = () => {
         <div className="w-full max-w-7xl mx-auto px-4 pt-5">
           {resumeUrl ? (
             <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden">
-              <iframe
-                src={`${resumeUrl}${resumeUrl.includes('?') ? '&' : '?'}cache=${Date.now()}#zoom=100&view=FitH`}
-                title="Resume Preview"
-                className="w-full border-0 min-h-[1100px]"
-                style={{ display: 'block', width: '100%' }}
-                allowFullScreen
-              />
+              <iframe src={`${resumeUrl}#zoom=100&view=FitH`} title="Resume Preview" className="w-full border-0 min-h-[1100px]" style={{ display: 'block', width: '100%' }} allowFullScreen />
             </div>
           ) : loading ? (
             <div className="min-h-[400px] flex items-center justify-center">

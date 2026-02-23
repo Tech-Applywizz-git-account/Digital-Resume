@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../integrations/supabase/client";
 import { useAuth } from "../contexts/AuthContext";
 import { showToast } from "../components/ui/toast";
 import { getUserInfo } from "../utils/crmHelpers";
-import { FileText, MessageSquare } from "lucide-react";
 
 const Record: React.FC = () => {
   const navigate = useNavigate();
-  const { id: castId } = useParams<{ id: string }>();
   const { user } = useAuth();
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -16,7 +14,6 @@ const Record: React.FC = () => {
   const timerRef = useRef<HTMLSpanElement>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
-  const isIntentionalStop = useRef(false);
 
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recorderReady, setRecorderReady] = useState(false);
@@ -31,62 +28,16 @@ const Record: React.FC = () => {
   );
   const [isUploading, setIsUploading] = useState(false);
   const [teleprompterText, setTeleprompterText] = useState("");
-  const [resumeFullText, setResumeFullText] = useState("");
-  const [resumeUrl, setResumeUrl] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"teleprompter" | "resume">(castId ? "resume" : "teleprompter");
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
-  const creditsRef = useRef<number | null>(null);
   const [checkingCredits, setCheckingCredits] = useState(false);
 
-  // Sync ref with state
+  // 🔹 Load teleprompter text
   useEffect(() => {
-    creditsRef.current = creditsRemaining;
-  }, [creditsRemaining]);
-
-  // 🔹 Load teleprompter text & resume text
-  useEffect(() => {
-    const loadData = async () => {
-      // 1. Load defaults from localStorage
-      const text = localStorage.getItem("teleprompterText") || "Please complete Step 3 to generate your introduction script.";
-      setTeleprompterText(text);
-      setResumeFullText(localStorage.getItem("resumeFullText") || "");
-
-      // 2. If castId from URL, fetch latest from DB
-      if (castId) {
-        try {
-          // Check CRM job requests
-          const { data: crmData } = await supabase.from('crm_job_requests').select('job_title, resume_url').eq('id', castId).maybeSingle();
-          const { data: regData } = await supabase.from('job_requests').select('job_title, resume_path').eq('id', castId).maybeSingle();
-
-          const latestResumeUrl = crmData?.resume_url || regData?.resume_path;
-          if (latestResumeUrl) {
-            setResumeUrl(latestResumeUrl);
-            localStorage.setItem("uploadedResumeUrl", latestResumeUrl);
-            localStorage.setItem("current_job_request_id", castId);
-
-            // Also try to find a direct resume metadata record if available
-            const { data: resumeRecord } = await supabase
-              .from('crm_resumes')
-              .select('resume_url, resume_name')
-              .eq('email', localStorage.getItem('crm_user_email'))
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-
-            if (resumeRecord?.resume_url) {
-              setResumeUrl(resumeRecord.resume_url);
-              localStorage.setItem("uploadedResumeUrl", resumeRecord.resume_url);
-            }
-          }
-        } catch (err) {
-          console.error("Error loading cast data:", err);
-        }
-      } else {
-        setResumeUrl(localStorage.getItem("uploadedResumeUrl"));
-      }
-    };
-    loadData();
-  }, [castId]);
+    const text =
+      localStorage.getItem("teleprompterText") ||
+      "Please complete Step 3 to generate your introduction script.";
+    setTeleprompterText(text);
+  }, []);
 
   // 🔹 Check user credits on mount (CRM Aware)
   useEffect(() => {
@@ -196,7 +147,7 @@ const Record: React.FC = () => {
         recorder.ondataavailable = (event) => {
           if (event.data.size > 0) chunksRef.current.push(event.data);
         };
-        recorder.onstop = () => onStopRef.current?.();
+        recorder.onstop = handleRecordingStop;
         recorder.onerror = (err) => console.error("⚠️ Recorder error:", err);
 
         setMediaRecorder(recorder);
@@ -273,8 +224,7 @@ const Record: React.FC = () => {
 
     // START recording
     if (state === "idle") {
-      const currentCredits = creditsRef.current;
-      if (currentCredits !== null && currentCredits <= 0) {
+      if (creditsRemaining !== null && creditsRemaining <= 0) {
         showToast(
           "You have no recording credits. Please purchase more credits to continue.",
           "error"
@@ -289,7 +239,6 @@ const Record: React.FC = () => {
         }
 
         chunksRef.current = [];
-        isIntentionalStop.current = false;
         setStartTime(Date.now());
         mediaRecorder.start(250);
         console.log("🎥 Recording started");
@@ -306,7 +255,6 @@ const Record: React.FC = () => {
     if (state === "recording") {
       try {
         mediaRecorder.requestData();
-        isIntentionalStop.current = true;
         mediaRecorder.stop();
         console.log("🛑 Recording stopped:", Date.now());
         setState("idle");
@@ -316,24 +264,8 @@ const Record: React.FC = () => {
     }
   };
 
-  // 🔹 Stabilize handleRecordingStop for onstop callback
-  const onStopRef = useRef<() => void>();
-  useEffect(() => {
-    onStopRef.current = handleRecordingStop;
-  });
-
   // 🔹 When Recording Stops
   const handleRecordingStop = async () => {
-    console.log("🎬 onstop fired. isIntentionalStop:", isIntentionalStop.current);
-
-    if (!isIntentionalStop.current) {
-      console.log("🚫 Recording stop ignored (unintentional navigation or back click)");
-      return;
-    }
-
-    // Immediately reset intentional stop to prevent double calls
-    isIntentionalStop.current = false;
-
     if (scrollInterval) clearInterval(scrollInterval);
     if (timerInterval) clearInterval(timerInterval);
     resetTimer();
@@ -368,15 +300,6 @@ const Record: React.FC = () => {
       return;
     }
 
-    // Protection: don't deduct credits for extremely short accidental recordings
-    if (durationSeconds < 2) {
-      console.log("⚠️ Recording too short ( < 2s). Ignoring.");
-      showToast("Recording was too short. Please try again.", "warning");
-      setRecorderReady(false);
-      setTimeout(() => window.location.reload(), 1500);
-      return;
-    }
-
     if (videoRef.current) {
       videoRef.current.classList.add(
         "opacity-80",
@@ -390,6 +313,8 @@ const Record: React.FC = () => {
     }
 
     await uploadVideo(blob, durationSeconds);
+
+    // Removed reinitialization as we are redirecting
     setRecorderReady(false);
   };
 
@@ -397,10 +322,13 @@ const Record: React.FC = () => {
   const uploadVideo = async (blob: Blob, durationSeconds: number) => {
     setIsUploading(true);
     try {
+      // Robust user check with fallback to localStorage
       let currentUser = user;
       if (!currentUser) {
         const storedUser = localStorage.getItem("userData");
-        if (storedUser) currentUser = JSON.parse(storedUser);
+        if (storedUser) {
+          currentUser = JSON.parse(storedUser);
+        }
       }
 
       if (!currentUser) throw new Error("User session not found. Please sign in again.");
@@ -413,16 +341,22 @@ const Record: React.FC = () => {
 
       const fileName = `${Date.now()}.webm`;
       let publicUrl: string | null = null;
-      const maxUploadSize = 500 * 1024 * 1024;
+
+      // Higher limit for Pro users (500MB)
+      const maxUploadSize = 500 * 1024 * 1024; // 500MB
       if (blob.size > maxUploadSize) {
-        throw new Error("Video too large!");
+        throw new Error("Video too large! Maximum 500MB allowed. If this fails on Pro, check your Supabase Storage bucket 'Max File Size' setting.");
       }
 
       if (isCRMUser && crmEmail) {
         const filePath = `${crmEmail}/${fileName}`;
+
         const { error: uploadError } = await supabase.storage
           .from("CRM_users_recordings")
-          .upload(filePath, blob, { upsert: true, contentType: "video/webm" });
+          .upload(filePath, blob, {
+            upsert: true,
+            contentType: "video/webm",
+          });
 
         if (uploadError) throw uploadError;
 
@@ -442,21 +376,27 @@ const Record: React.FC = () => {
         });
 
         await supabase.from("crm_job_requests")
-          .update({ application_status: "recorded", updated_at: new Date().toISOString() })
+          .update({
+            application_status: "recorded",
+            updated_at: new Date().toISOString()
+          })
           .eq("id", jobRequestId);
 
-        const currentCredits = creditsRef.current;
-        if (currentCredits !== null && currentCredits > 0) {
+        if (creditsRemaining !== null && creditsRemaining > 0) {
           await supabase.from('digital_resume_by_crm')
-            .update({ credits_remaining: currentCredits - 1 })
+            .update({ credits_remaining: creditsRemaining - 1 })
             .eq('email', crmEmail);
-          setCreditsRemaining(currentCredits - 1);
+          setCreditsRemaining(creditsRemaining - 1);
         }
       } else {
         const filePath = `${currentUser.id}/${fileName}`;
+
         const { error: uploadError } = await supabase.storage
           .from("recordings")
-          .upload(filePath, blob, { upsert: true, contentType: "video/webm" });
+          .upload(filePath, blob, {
+            upsert: true,
+            contentType: "video/webm",
+          });
 
         if (uploadError) throw uploadError;
 
@@ -477,12 +417,11 @@ const Record: React.FC = () => {
           .update({ status: "recorded", updated_at: new Date().toISOString() })
           .eq("id", jobRequestId);
 
-        const currentCredits = creditsRef.current;
-        if (currentCredits !== null && currentCredits > 0) {
+        if (creditsRemaining !== null && creditsRemaining > 0) {
           await supabase.from('profiles')
-            .update({ credits_remaining: currentCredits - 1 })
+            .update({ credits_remaining: creditsRemaining - 1 })
             .eq('id', currentUser.id);
-          setCreditsRemaining(currentCredits - 1);
+          setCreditsRemaining(creditsRemaining - 1);
         }
       }
 
@@ -499,119 +438,76 @@ const Record: React.FC = () => {
 
   const recordingDisabled = !recorderReady || isUploading;
 
-  const handleBack = () => {
-    isIntentionalStop.current = false;
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    const isAdmin = sessionStorage.getItem('digital_resume_admin_access') === 'true';
-    navigate(isAdmin ? "/digital-resume-dashboard" : "/dashboard");
-  };
-
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <button
-        onClick={handleBack}
-        className="absolute top-6 left-6 z-50 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl backdrop-blur-md border border-white/20 transition-all flex items-center gap-2 group"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        Back
-      </button>
       <div className="relative w-full max-w-[480px] h-[640px] bg-black rounded-2xl overflow-hidden shadow-2xl">
-        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="w-full h-full object-cover"
+        />
+
         <div className="absolute top-[44%] left-0 right-0 h-0.5 bg-blue-400 bg-opacity-60" />
+
         {creditsRemaining !== null && (
           <div className="absolute top-3 left-4 bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20 flex items-center gap-2">
             <span className="text-white text-sm font-medium">
               {creditsRemaining > 0 ? (
-                <><span className="text-green-400">●</span> {creditsRemaining} credits</>
+                <>
+                  <span className="text-green-400">●</span> {creditsRemaining} {creditsRemaining === 1 ? 'credit' : 'credits'}
+                </>
               ) : (
-                <><span className="text-red-400">●</span> No credits</>
+                <>
+                  <span className="text-red-400">●</span> No credits
+                </>
               )}
             </span>
           </div>
         )}
-        <div className="absolute top-3 right-4 text-white font-semibold text-xl flex items-center bg-black/40 px-2 py-1 rounded-lg backdrop-blur-sm border border-white/10">
-          <span className={`w-2 h-2 rounded-full mr-2 ${state === "recording" ? "bg-red-500 animate-pulse" : "bg-gray-400"}`} />
+
+        <div className="absolute top-3 right-4 text-white font-semibold text-xl flex items-center">
+          <span
+            className={`w-2 h-2 rounded-full mr-2 ${state === "recording" ? "bg-red-500" : "bg-gray-400"
+              }`}
+          />
           <span ref={timerRef}>{isUploading ? "Uploading..." : timer}</span>
         </div>
 
-        {/* View Mode Toggle */}
-        <div className="absolute top-16 right-4 flex flex-col gap-2 z-50">
-          <button
-            onClick={() => setViewMode(viewMode === 'teleprompter' ? 'resume' : 'teleprompter')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all border shadow-lg ${viewMode === 'resume'
-              ? 'bg-blue-600 border-blue-400 text-white'
-              : 'bg-white/10 border-white/20 text-white hover:bg-white/20 backdrop-blur-md'
-              }`}
-          >
-            {viewMode === 'teleprompter' ? <FileText className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
-            {viewMode === 'teleprompter' ? 'Show Resume' : 'Show Script'}
-          </button>
-        </div>
-
-        <div className="absolute bottom-[8rem] left-1/2 transform -translate-x-1/2 w-[100%] max-h-[40%] overflow-hidden">
-          <div
-            ref={teleprompterRef}
-            className={`w-full text-white font-sans text-xl md:text-2xl leading-relaxed font-medium text-center bg-gradient-to-b from-black/80 to-black/40 px-6 py-8 rounded-lg pointer-events-none transition-all duration-500 ${viewMode === 'resume' ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'
-              }`}
-          >
-            <div className="flex flex-col gap-6 pb-10">
-              {teleprompterText.split(/\n\s*\n/).map((para, i) => (
-                <p key={i} className="whitespace-pre-line">{para}</p>
-              ))}
-            </div>
+        <div
+          ref={teleprompterRef}
+          className="absolute bottom-[8rem] left-1/2 transform -translate-x-1/2 
+             w-[100%] text-white font-sans text-xl md:text-2xl leading-relaxed 
+             font-medium text-center bg-gradient-to-b from-black/80 to-black/40 
+             px-6 py-8 rounded-lg pointer-events-none overflow-hidden"
+        >
+          <div className="flex flex-col gap-6 pb-10">
+            {teleprompterText.split(/\n\s*\n/).map((para, i) => (
+              <p key={i} className="whitespace-pre-line">
+                {para}
+              </p>
+            ))}
           </div>
-
-          {/* Resume Content View - Improved with PDF Iframe */}
-          {viewMode === 'resume' && (
-            <div className="absolute inset-0 bg-white text-black p-0 overflow-hidden animate-in fade-in zoom-in-95 duration-300 pointer-events-auto rounded-t-2xl shadow-2xl flex flex-col">
-              <div className="bg-slate-900 text-white p-3 flex justify-between items-center shrink-0">
-                <h4 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-blue-400" />
-                  Resume Content Reference
-                </h4>
-                <button
-                  onClick={() => setViewMode('teleprompter')}
-                  className="bg-white/10 hover:bg-white/20 px-2 py-1 rounded text-[10px] uppercase font-bold"
-                >
-                  Switch to Script
-                </button>
-              </div>
-              <div className="flex-1 w-full bg-gray-100 relative">
-                {resumeUrl ? (
-                  <iframe
-                    src={`${resumeUrl}#toolbar=0&navpanes=0&view=FitH`}
-                    className="w-full h-full border-0"
-                    title="Resume Preview"
-                  />
-                ) : (
-                  <div className="p-6 text-sm text-gray-500 text-center flex flex-col items-center justify-center h-full">
-                    <p className="mb-2">No resume PDF available.</p>
-                    <div className="text-[11px] bg-gray-50 p-3 rounded border whitespace-pre-wrap text-left max-h-[80%] overflow-y-auto">
-                      {resumeFullText || "No resume text found."}
-                    </div>
-                  </div>
-                )}
-                <div className="absolute bottom-4 left-0 right-0 pointer-events-none flex justify-center">
-                  <div className="bg-black/80 text-white text-[10px] px-3 py-1 rounded-full backdrop-blur-sm border border-white/20">
-                    Scroll inside to view full resume
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
+
         <button
           onClick={handleRecordClick}
           disabled={recordingDisabled}
-          className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 w-20 h-20 rounded-full border-4 border-white/85 cursor-pointer transition-all duration-200 flex items-center justify-center ${recordingDisabled ? "opacity-40 cursor-not-allowed" : state === "recording" ? "bg-red-500 shadow-[0_0_0_6px_rgba(255,59,48,0.35),0_0_24px_rgba(255,59,48,0.8)]" : "bg-red-500 hover:scale-105 active:scale-95"
+          className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 w-20 h-20 rounded-full 
+            border-4 border-white/85 cursor-pointer transition-all duration-200 
+            flex items-center justify-center
+            ${recordingDisabled
+              ? "opacity-40 cursor-not-allowed"
+              : state === "recording"
+                ? "bg-red-500 shadow-[0_0_0_6px_rgba(255,59,48,0.35),0_0_24px_rgba(255,59,48,0.8)]"
+                : "bg-red-500 hover:scale-105 active:scale-95"
             }`}
         >
-          <div className={`w-8 h-8 rounded-full ${state === "recording" ? "bg-red-700" : "bg-red-400"}`} />
+          <div
+            className={`w-8 h-8 rounded-full ${state === "recording" ? "bg-red-700" : "bg-red-400"
+              }`}
+          />
         </button>
       </div>
     </div>
