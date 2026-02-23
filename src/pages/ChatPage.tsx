@@ -195,8 +195,8 @@ const ChatPage: React.FC = () => {
                             mode={panelMode}
                             videoUrl={videoUrl}
                             resumeUrl={resumeUrl}
-                            onModeChange={setPanelMode}
-                            isParentLoading={loading}
+                            onModeChange={(m) => setPanelMode(m)}
+                            isDataLoading={loading}
                             recruiterMode={true}
                         />
                     </div>
