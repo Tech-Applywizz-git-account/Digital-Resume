@@ -379,9 +379,9 @@ const FinalResult: React.FC = () => {
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
 
-      const btnW_play = 100;
-      const btnW_chat = 97;
-      const btnH = 28;
+      const btnW_play = 110;
+      const btnW_chat = 105;
+      const btnH = 36;
       const gap = 12;
       const margin = 20;
 
@@ -505,9 +505,9 @@ const FinalResult: React.FC = () => {
             {videoUrl && (
               <button
                 onClick={() => { setPanelMode('video'); setIsPanelOpen(true); }}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-blue-600 text-white shadow-md hover:scale-105 transition-all h-10 px-4"
+                className="flex items-center justify-center gap-[6px] h-[36px] w-[110px] rounded-[6px] text-[12px] font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 transition-all shadow-sm shrink-0"
               >
-                <Play className="h-4 w-4" />
+                <img src="/Frame 215.svg" alt="" className="w-[17px] h-[17px]" />
                 <span className="hidden sm:inline">Play Intro</span>
                 <span className="sm:hidden">Intro</span>
               </button>
@@ -518,10 +518,10 @@ const FinalResult: React.FC = () => {
                 const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}`;
                 window.open(chatPageUrl, '_blank');
               }}
-              className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-[#159A9C] text-white shadow-md hover:scale-105 transition-all h-10 px-4"
+              className="flex items-center justify-center gap-[6px] h-[36px] w-[105px] rounded-[6px] text-[12px] font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 transition-all shadow-sm shrink-0"
             >
-              <MessageSquare className="h-4 w-4" />
-              Chat with Resume
+              <img src="/Vector.svg" alt="" className="w-[15px] h-[13px]" />
+              <span>Let's talk</span>
             </button>
           </div>
 
