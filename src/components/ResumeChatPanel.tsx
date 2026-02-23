@@ -52,16 +52,16 @@ const ResumeChatPanel = ({
     isDataLoading,
     recruiterMode = false
 }: ResumeChatPanelProps) => {
-    const [messages, setMessages] = useState<Message[]>([
-        {
-            id: '1',
-            text: recruiterMode
-                ? "Hi there! 👋 I'm glad you're here. Feel free to ask me anything — about my experience, skills, projects, or how I can add value to your team. I'm happy to chat!"
-                : "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
-            sender: 'bot',
-            timestamp: new Date()
-        }
-    ]);
+    const getInitialMessage = () => ({
+        id: '1',
+        text: recruiterMode
+            ? "Hi there! 👋 I'm glad you're here. Feel free to ask me anything — about my experience, skills, projects, or how I can add value to your team. I'm happy to chat!"
+            : "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
+        sender: 'bot' as const,
+        timestamp: new Date()
+    });
+
+    const [messages, setMessages] = useState<Message[]>([getInitialMessage()]);
     const [inputText, setInputText] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [resumeText, setResumeText] = useState<string>("");
@@ -70,20 +70,21 @@ const ResumeChatPanel = ({
     );
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // ✅ Reset chat state immediately when resumeUrl changes
+    useEffect(() => {
+        console.log("🔄 Resume changed or initialized:", resumeUrl);
+        setMessages([getInitialMessage()]);
+        setResumeText("");
+        setSuggestedQuestions(recruiterMode ? RECRUITER_QUESTIONS : DEFAULT_QUESTIONS);
+    }, [resumeUrl, recruiterMode]);
+
     useEffect(() => {
         const loadResumeText = async () => {
-            // 1. Try to load from localStorage first
-            const storedText = localStorage.getItem('resumeFullText');
-            if (storedText) {
-                setResumeText(storedText);
-                return;
-            }
-
-            // 2. If not in localStorage, but we have URL, fetch and parse it
-            if (resumeUrl) {
+            // ✅ ALWAYS fetch fresh - never use global cache from localStorage
+            if (resumeUrl && isOpen) {
                 try {
                     console.log("Fetching resume PDF from:", resumeUrl);
-                    setIsLoading(true); // Show loading while parsing
+                    setIsLoading(true);
 
                     const response = await fetch(resumeUrl);
                     const blob = await response.blob();
@@ -102,17 +103,14 @@ const ResumeChatPanel = ({
                         text += pageText + "\n\n";
                     }
 
-                    // Clean up multiple newlines but preserve structure
                     const extractedText = text.replace(/\n\s*\n/g, "\n").trim().slice(0, 25000);
-                    console.log("Extracted PDF text length:", extractedText.length);
+                    console.log("✅ Extracted fresh PDF text length:", extractedText.length);
 
                     setResumeText(extractedText);
-                    // Optionally save to localStorage for cache
-                    localStorage.setItem('resumeFullText', extractedText);
 
                 } catch (err: any) {
                     console.error("Failed to parse PDF from URL:", err);
-                    setMessages(prev => [...prev, {
+                    setMessages((prev: Message[]) => [...prev, {
                         id: Date.now().toString(),
                         text: "I was unable to read the resume file. Please ensure it is accessible.",
                         sender: 'bot',
@@ -124,9 +122,7 @@ const ResumeChatPanel = ({
             }
         };
 
-        if (isOpen) {
-            loadResumeText();
-        }
+        loadResumeText();
     }, [isOpen, resumeUrl]);
 
     useEffect(() => {
@@ -147,25 +143,23 @@ const ResumeChatPanel = ({
             timestamp: new Date()
         };
 
-        setMessages(prev => [...prev, newMessage]);
+        setMessages((prev: Message[]) => [...prev, newMessage]);
         setInputText("");
         setIsLoading(true);
 
         try {
             if (!resumeText) {
-                // Try one last check in case it just finished loading
-                const currentStored = localStorage.getItem('resumeFullText');
-                if (currentStored) {
-                    setResumeText(currentStored);
-                } else {
-                    throw new Error("Resume content not available. Please wait for the resume to load or refresh the page.");
-                }
+                throw new Error("Resume content is still loading. Please wait a moment.");
             }
+
+            // ✅ Verification logs before sending
+            console.log("📤 Sending resume for chat:", resumeUrl);
+            console.log("📄 Resume preview:", resumeText.slice(0, 100).replace(/\n/g, ' '));
 
             const { data, error } = await supabase.functions.invoke('resume-chat', {
                 body: {
                     resumeText: resumeText,
-                    messages: messages.map(m => ({ role: m.sender === 'bot' ? 'assistant' : 'user', content: m.text })),
+                    messages: messages.map((m: Message) => ({ role: m.sender === 'bot' ? 'assistant' : 'user', content: m.text })),
                     question: text,
                     recruiterMode: recruiterMode
                 }
@@ -191,7 +185,7 @@ const ResumeChatPanel = ({
                 sender: 'bot',
                 timestamp: new Date()
             };
-            setMessages(prev => [...prev, botResponse]);
+            setMessages((prev: Message[]) => [...prev, botResponse]);
 
         } catch (error: any) {
             console.error("Chat error details:", error);
@@ -216,7 +210,7 @@ const ResumeChatPanel = ({
                 sender: 'bot',
                 timestamp: new Date()
             };
-            setMessages(prev => [...prev, errorResponse]);
+            setMessages((prev: Message[]) => [...prev, errorResponse]);
         } finally {
             setIsLoading(false);
         }

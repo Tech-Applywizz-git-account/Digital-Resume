@@ -9,6 +9,59 @@ import { showToast } from "../components/ui/toast";
 import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 
+const generateButtonImage = async (text: string, iconSrc: string, width: number, height: number, iconWidth: number, iconHeight: number): Promise<string | null> => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    const dpr = 4;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) { resolve(null); return; }
+    ctx.scale(dpr, dpr);
+
+    // Background
+    ctx.fillStyle = '#0A66C2';
+    const radius = 6;
+    ctx.beginPath();
+    ctx.moveTo(radius, 0);
+    ctx.lineTo(width - radius, 0);
+    ctx.quadraticCurveTo(width, 0, width, radius);
+    ctx.lineTo(width, height - radius);
+    ctx.quadraticCurveTo(width, height, width - radius, height);
+    ctx.lineTo(radius, height);
+    ctx.quadraticCurveTo(0, height, 0, height - radius);
+    ctx.lineTo(0, radius);
+    ctx.quadraticCurveTo(0, 0, radius, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = '#CEDFF9';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      ctx.font = 'bold 12px Arial';
+      const textMetrics = ctx.measureText(text);
+      const gap = 6;
+      const totalContentW = iconWidth + gap + textMetrics.width;
+      const startX = (width - totalContentW) / 2;
+
+      ctx.drawImage(img, startX, (height - iconHeight) / 2, iconWidth, iconHeight);
+
+      ctx.fillStyle = 'white';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, startX + iconWidth + gap, height / 2 + 1);
+
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(null);
+    img.src = iconSrc;
+  });
+};
+
 const FinalResult: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -326,9 +379,9 @@ const FinalResult: React.FC = () => {
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
 
-      const btnW_play = 110;
-      const btnW_chat = 125;
-      const btnH = 32;
+      const btnW_play = 100;
+      const btnW_chat = 97;
+      const btnH = 28;
       const gap = 12;
       const margin = 20;
 
@@ -338,9 +391,10 @@ const FinalResult: React.FC = () => {
 
       const context = pdfDoc.context;
 
-      const chatButtonRes = await fetch(`${window.location.origin}/images/chat_with_resume_button.png`);
-      if (chatButtonRes.ok) {
-        const chatBytes = await chatButtonRes.arrayBuffer();
+      // Draw Chat Button (Let's talk)
+      const chatButtonDataUrl = await generateButtonImage("Let's talk", "/Vector.svg", btnW_chat, btnH, 15, 13);
+      if (chatButtonDataUrl) {
+        const chatBytes = await fetch(chatButtonDataUrl).then(r => r.arrayBuffer());
         const chatImg = await pdfDoc.embedPng(chatBytes);
         firstPage.drawImage(chatImg, { x: currentX, y: btnY, width: btnW_chat, height: btnH });
         const chatLink = context.obj({
@@ -355,10 +409,11 @@ const FinalResult: React.FC = () => {
         currentX += btnW_chat + gap;
       }
 
+      // Draw Play Intro Button
       if (hasVideo) {
-        const playButtonRes = await fetch(`${window.location.origin}/images/play_intro.png`);
-        if (playButtonRes.ok) {
-          const playBytes = await playButtonRes.arrayBuffer();
+        const playButtonDataUrl = await generateButtonImage("Play Intro", "/Frame 215.svg", btnW_play, btnH, 17, 17);
+        if (playButtonDataUrl) {
+          const playBytes = await fetch(playButtonDataUrl).then(r => r.arrayBuffer());
           const playImg = await pdfDoc.embedPng(playBytes);
           firstPage.drawImage(playImg, { x: currentX, y: btnY, width: btnW_play, height: btnH });
           const playLink = context.obj({
@@ -450,21 +505,20 @@ const FinalResult: React.FC = () => {
             {videoUrl && (
               <button
                 onClick={() => { setPanelMode('video'); setIsPanelOpen(true); }}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-blue-600 text-white shadow-md hover:scale-105 transition-all"
+                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-blue-600 text-white shadow-md hover:scale-105 transition-all h-10 px-4"
               >
                 <Play className="h-4 w-4" />
-                Play Intro
+                <span className="hidden sm:inline">Play Intro</span>
+                <span className="sm:hidden">Intro</span>
               </button>
             )}
             <button
               onClick={() => {
-                // ✅ CHAT WITH RESUME: Open this app's /chat page
-                // ChatPage.tsx embeds the portfolio iframe + chat panel side-by-side
                 const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
                 const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}`;
                 window.open(chatPageUrl, '_blank');
               }}
-              className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-[#159A9C] text-white shadow-md hover:scale-105 transition-all"
+              className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-[#159A9C] text-white shadow-md hover:scale-105 transition-all h-10 px-4"
             >
               <MessageSquare className="h-4 w-4" />
               Chat with Resume
@@ -484,7 +538,13 @@ const FinalResult: React.FC = () => {
         <div className="w-full max-w-7xl mx-auto px-4 pt-5">
           {resumeUrl ? (
             <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden">
-              <iframe src={`${resumeUrl}#zoom=100&view=FitH`} title="Resume Preview" className="w-full border-0 min-h-[1100px]" style={{ display: 'block', width: '100%' }} allowFullScreen />
+              <iframe
+                src={`${resumeUrl}#zoom=100&view=FitH`}
+                title="Resume Preview"
+                className="w-full border-0 min-h-[1100px]"
+                style={{ display: 'block', width: '100%' }}
+                allowFullScreen
+              />
             </div>
           ) : loading ? (
             <div className="min-h-[400px] flex items-center justify-center">
@@ -503,7 +563,7 @@ const FinalResult: React.FC = () => {
           mode={panelMode}
           videoUrl={videoUrl}
           resumeUrl={resumeUrl}
-          onModeChange={(m) => setPanelMode(m)}
+          onModeChange={(m: 'chat' | 'video' | 'resume') => setPanelMode(m)}
           onDownload={handleDownloadEnhanced}
           isDataLoading={loading}
         />
