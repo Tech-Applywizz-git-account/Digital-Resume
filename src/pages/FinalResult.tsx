@@ -9,6 +9,59 @@ import { showToast } from "../components/ui/toast";
 import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 
+const generateButtonImage = async (text: string, iconSrc: string, width: number, height: number, iconWidth: number, iconHeight: number): Promise<string | null> => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    const dpr = 4;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) { resolve(null); return; }
+    ctx.scale(dpr, dpr);
+
+    // Background
+    ctx.fillStyle = '#0A66C2';
+    const radius = 6;
+    ctx.beginPath();
+    ctx.moveTo(radius, 0);
+    ctx.lineTo(width - radius, 0);
+    ctx.quadraticCurveTo(width, 0, width, radius);
+    ctx.lineTo(width, height - radius);
+    ctx.quadraticCurveTo(width, height, width - radius, height);
+    ctx.lineTo(radius, height);
+    ctx.quadraticCurveTo(0, height, 0, height - radius);
+    ctx.lineTo(0, radius);
+    ctx.quadraticCurveTo(0, 0, radius, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = '#CEDFF9';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      ctx.font = 'bold 12px Arial';
+      const textMetrics = ctx.measureText(text);
+      const gap = 6;
+      const totalContentW = iconWidth + gap + textMetrics.width;
+      const startX = (width - totalContentW) / 2;
+
+      ctx.drawImage(img, startX, (height - iconHeight) / 2, iconWidth, iconHeight);
+
+      ctx.fillStyle = 'white';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, startX + iconWidth + gap, height / 2 + 1);
+
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(null);
+    img.src = iconSrc;
+  });
+};
+
 const FinalResult: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -314,12 +367,7 @@ const FinalResult: React.FC = () => {
       const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}`;
       // Play Intro button → this app's final-result page
       const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video`;
-
-      // Improved video detection
-      const hasVideo = !!videoUrl &&
-        videoUrl !== "null" &&
-        videoUrl !== "undefined" &&
-        (videoUrl.startsWith('http') || videoUrl.startsWith('blob:'));
+      const hasVideo = !!videoUrl;
 
       let response = await fetch(resumeUrlStr);
       if (!response.ok) response = await fetch(resumeUrlStr, { credentials: 'include' });
@@ -332,72 +380,48 @@ const FinalResult: React.FC = () => {
       const { width, height } = firstPage.getSize();
 
       const btnW_play = 100;
-      const btnW_chat = 100;
+      const btnW_chat = 97;
       const btnH = 28;
       const gap = 12;
       const margin = 20;
 
-      // Calculate positions - Right-aligned at the top
       const totalW = hasVideo ? (btnW_play + gap + btnW_chat) : btnW_chat;
       let currentX = width - totalW - margin;
-
-      // Positioned at the very top to avoid overlapping with the name content below
-      const btnY = height - btnH - 10;
+      const btnY = height - btnH - margin;
 
       const context = pdfDoc.context;
-      const origin = window.location.origin;
-
-      // Helper to strip data URL prefix for pdf-lib embedPng if needed
-      const getBase64Data = (dataUrl: string) => dataUrl.split(',')[1];
 
       // Draw Chat Button (Let's talk)
-      const chatButtonDataUrl = await generateButtonImage("Let's talk", `${origin}/Vector.svg`, btnW_chat, btnH, 15, 13);
+      const chatButtonDataUrl = await generateButtonImage("Let's talk", "/Vector.svg", btnW_chat, btnH, 15, 13);
       if (chatButtonDataUrl) {
-        const chatBytes = Uint8Array.from(atob(getBase64Data(chatButtonDataUrl)), c => c.charCodeAt(0));
+        const chatBytes = await fetch(chatButtonDataUrl).then(r => r.arrayBuffer());
         const chatImg = await pdfDoc.embedPng(chatBytes);
         firstPage.drawImage(chatImg, { x: currentX, y: btnY, width: btnW_chat, height: btnH });
-
         const chatLink = context.obj({
-          Type: PDFName.of("Annot"),
-          Subtype: PDFName.of("Link"),
-          Rect: context.obj([
-            PDFNumber.of(currentX),
-            PDFNumber.of(btnY),
-            PDFNumber.of(currentX + btnW_chat),
-            PDFNumber.of(btnY + btnH)
-          ]),
+          Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
+          Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_chat), PDFNumber.of(btnY + btnH)]),
           Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
           A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(chatUrl) })
         });
-
         let annots = firstPage.node.lookup(PDFName.of("Annots"));
         if (annots instanceof PDFArray) annots.push(chatLink);
         else firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
-
         currentX += btnW_chat + gap;
       }
 
-      // Draw Play Intro Button ONLY if video is present
+      // Draw Play Intro Button
       if (hasVideo) {
-        const playButtonDataUrl = await generateButtonImage("Play Intro", `${origin}/Frame%20215.svg`, btnW_play, btnH, 17, 17);
+        const playButtonDataUrl = await generateButtonImage("Play Intro", "/Frame 215.svg", btnW_play, btnH, 17, 17);
         if (playButtonDataUrl) {
-          const playBytes = Uint8Array.from(atob(getBase64Data(playButtonDataUrl)), c => c.charCodeAt(0));
+          const playBytes = await fetch(playButtonDataUrl).then(r => r.arrayBuffer());
           const playImg = await pdfDoc.embedPng(playBytes);
           firstPage.drawImage(playImg, { x: currentX, y: btnY, width: btnW_play, height: btnH });
-
           const playLink = context.obj({
-            Type: PDFName.of("Annot"),
-            Subtype: PDFName.of("Link"),
-            Rect: context.obj([
-              PDFNumber.of(currentX),
-              PDFNumber.of(btnY),
-              PDFNumber.of(currentX + btnW_play),
-              PDFNumber.of(btnY + btnH)
-            ]),
+            Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
+            Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_play), PDFNumber.of(btnY + btnH)]),
             Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
             A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(playIntroUrl) })
           });
-
           let annots = firstPage.node.lookup(PDFName.of("Annots"));
           if (annots instanceof PDFArray) annots.push(playLink);
           else firstPage.node.set(PDFName.of("Annots"), context.obj([playLink]));
@@ -481,24 +505,22 @@ const FinalResult: React.FC = () => {
             {videoUrl && (
               <button
                 onClick={() => { setPanelMode('video'); setIsPanelOpen(true); }}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-blue-600 text-white shadow-md hover:scale-105 transition-all"
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] shadow-sm hover:bg-[#084d91] transition-all h-10"
               >
-                <Play className="h-4 w-4" />
+                <img src="/Frame 215.svg" alt="" className="h-4 w-4" />
                 Play Intro
               </button>
             )}
             <button
               onClick={() => {
-                // ✅ CHAT WITH RESUME: Open this app's /chat page
-                // ChatPage.tsx embeds the portfolio iframe + chat panel side-by-side
                 const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
                 const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}`;
                 window.open(chatPageUrl, '_blank');
               }}
-              className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-[#159A9C] text-white shadow-md hover:scale-105 transition-all"
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] shadow-sm hover:bg-[#084d91] transition-all h-10"
             >
-              <MessageSquare className="h-4 w-4" />
-              Chat with Resume
+              <img src="/Vector.svg" alt="" className="h-3 w-3" />
+              Let's talk
             </button>
           </div>
 
@@ -516,7 +538,7 @@ const FinalResult: React.FC = () => {
           {resumeUrl ? (
             <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden">
               <iframe
-                src={`${resumeUrl}${resumeUrl.includes('?') ? '&' : '?'}cache=${Date.now()}#zoom=100&view=FitH`}
+                src={`${resumeUrl}#zoom=100&view=FitH`}
                 title="Resume Preview"
                 className="w-full border-0 min-h-[1100px]"
                 style={{ display: 'block', width: '100%' }}
@@ -540,7 +562,7 @@ const FinalResult: React.FC = () => {
           mode={panelMode}
           videoUrl={videoUrl}
           resumeUrl={resumeUrl}
-          onModeChange={(m) => setPanelMode(m)}
+          onModeChange={(m: 'chat' | 'video' | 'resume') => setPanelMode(m)}
           onDownload={handleDownloadEnhanced}
           isDataLoading={loading}
         />

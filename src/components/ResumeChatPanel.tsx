@@ -72,20 +72,29 @@ const ResumeChatPanel = ({
 
     useEffect(() => {
         const loadResumeText = async () => {
-            // 1. Try to load from localStorage first
-            const storedText = localStorage.getItem('resumeFullText');
-            if (storedText) {
-                setResumeText(storedText);
-                return;
-            }
+            // ✅ Reset state when a new resume is selected
+            setMessages([
+                {
+                    id: '1',
+                    text: recruiterMode
+                        ? "Hi there! 👋 I'm glad you're here. Feel free to ask me anything — about my experience, skills, projects, or how I can add value to your team. I'm happy to chat!"
+                        : "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
+                    sender: 'bot',
+                    timestamp: new Date()
+                }
+            ]);
+            setSuggestedQuestions(recruiterMode ? RECRUITER_QUESTIONS : DEFAULT_QUESTIONS);
+            setResumeText(""); // Clear old content
 
-            // 2. If not in localStorage, but we have URL, fetch and parse it
+            // ❌ DO NOT use localStorage. Fetch and parse fresh every time.
             if (resumeUrl) {
                 try {
-                    console.log("Fetching resume PDF from:", resumeUrl);
-                    setIsLoading(true); // Show loading while parsing
+                    console.log("🚀 Switching Resume. Fetching fresh PDF from:", resumeUrl);
+                    setIsLoading(true);
 
                     const response = await fetch(resumeUrl);
+                    if (!response.ok) throw new Error(`Failed to fetch PDF: ${response.statusText}`);
+
                     const blob = await response.blob();
                     const arrayBuffer = await blob.arrayBuffer();
 
@@ -102,16 +111,14 @@ const ResumeChatPanel = ({
                         text += pageText + "\n\n";
                     }
 
-                    // Clean up multiple newlines but preserve structure
                     const extractedText = text.replace(/\n\s*\n/g, "\n").trim().slice(0, 25000);
-                    console.log("Extracted PDF text length:", extractedText.length);
+                    console.log("✅ Extracted PDF text length:", extractedText.length);
+                    console.log("📄 Resume Preview:", extractedText.slice(0, 100));
 
                     setResumeText(extractedText);
-                    // Optionally save to localStorage for cache
-                    localStorage.setItem('resumeFullText', extractedText);
 
                 } catch (err: any) {
-                    console.error("Failed to parse PDF from URL:", err);
+                    console.error("❌ Failed to parse PDF from URL:", err);
                     setMessages(prev => [...prev, {
                         id: Date.now().toString(),
                         text: "I was unable to read the resume file. Please ensure it is accessible.",
@@ -127,7 +134,7 @@ const ResumeChatPanel = ({
         if (isOpen) {
             loadResumeText();
         }
-    }, [isOpen, resumeUrl]);
+    }, [isOpen, resumeUrl, recruiterMode]); // Reset when isOpen or resumeUrl changes
 
     useEffect(() => {
         scrollToBottom();
@@ -153,14 +160,12 @@ const ResumeChatPanel = ({
 
         try {
             if (!resumeText) {
-                // Try one last check in case it just finished loading
-                const currentStored = localStorage.getItem('resumeFullText');
-                if (currentStored) {
-                    setResumeText(currentStored);
-                } else {
-                    throw new Error("Resume content not available. Please wait for the resume to load or refresh the page.");
-                }
+                throw new Error("Resume content is still loading. Please wait a moment.");
             }
+
+            console.log("📤 Sending Resume Chat Request...");
+            console.log("📄 Source URL:", resumeUrl);
+            console.log("📄 Content Sample:", resumeText.slice(0, 100));
 
             const { data, error } = await supabase.functions.invoke('resume-chat', {
                 body: {
