@@ -23,12 +23,24 @@ import AdminSync from "./pages/AdminSync";
 
 import DigitalResumeDashboard from "./pages/DigitalResumeDashboard";
 import DigitalResumeLogin from "./pages/DigitalResumeLogin";
+import ChatPage from "./pages/ChatPage";
+
+const RootRoute = () => {
+  const query = new URLSearchParams(window.location.search);
+  const id = query.get('id');
+  const fromPdf = query.get('from') === 'pdf';
+
+  if (id || fromPdf) {
+    return <FinalResult />;
+  }
+  return <Landing />;
+};
 
 function App() {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<RootRoute />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
@@ -49,6 +61,7 @@ function App() {
         <Route path="/hr-email" element={<HrEmail />} />
         <Route path="/hr-email-details" element={<HrEmailDetails />} />
         <Route path="/admin-sync" element={<AdminSync />} />
+        <Route path="/chat" element={<ChatPage />} />
       </Routes>
     </AuthProvider>
   );
