@@ -131,14 +131,14 @@ const ResumeChatPanel = ({
             }
         };
 
-        if (isOpen) {
+        if (resumeUrl) {
             loadResumeText();
         }
-    }, [isOpen, resumeUrl, recruiterMode]); // Reset when isOpen or resumeUrl changes
+    }, [resumeUrl, recruiterMode]); // Reset only when resumeUrl or mode changes
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages, isOpen, mode, isLoading]);
+    }, [messages, mode, isLoading]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -234,17 +234,15 @@ const ResumeChatPanel = ({
         }
     };
 
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed top-20 right-6 w-full max-w-[420px] h-[calc(100vh-100px)] bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 z-[110] flex flex-col overflow-hidden transition-all duration-300">
+        <div className={`fixed top-20 right-6 w-full max-w-[420px] ${mode === 'video' ? 'h-auto' : 'h-[calc(100vh-100px)]'} bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 z-[110] flex flex-col overflow-hidden transition-all duration-300`}>
             {/* Header */}
             <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-4 flex justify-between items-center text-white shrink-0">
                 <h3 className="font-semibold flex items-center gap-2">
                     {mode === 'chat' ? (
                         <>
                             <MessageSquare className="w-5 h-5" />
-                            Ask About Resume
+                            Let's talk
                         </>
                     ) : mode === 'video' ? (
                         <>
@@ -267,16 +265,16 @@ const ResumeChatPanel = ({
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-hidden relative bg-gray-50 flex flex-col">
+            <div className={`${mode === 'video' ? 'h-auto' : 'flex-1'} overflow-hidden relative bg-gray-50 flex flex-col`}>
                 {mode === 'video' ? (
                     // Video Mode
-                    <div className="h-full w-full flex items-center justify-center bg-black p-0 overflow-hidden">
+                    <div className="w-full bg-black p-0 overflow-hidden flex items-center justify-center">
                         {videoUrl ? (
                             <video
                                 controls
                                 preload="metadata"
                                 playsInline
-                                className="w-full h-full object-contain"
+                                className="w-full h-auto max-h-[85vh] block"
                                 src={videoUrl}
                                 onLoadedMetadata={(e) => {
                                     e.currentTarget.currentTime = 0;
@@ -287,7 +285,7 @@ const ResumeChatPanel = ({
                                 Your browser does not support the video tag.
                             </video>
                         ) : (
-                            <div className="text-white text-center p-4">
+                            <div className="text-white text-center p-8 w-full">
                                 <p>No video available for this candidate.</p>
                             </div>
                         )}

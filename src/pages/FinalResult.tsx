@@ -364,9 +364,9 @@ const FinalResult: React.FC = () => {
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
     try {
       // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
-      const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}`;
+      const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}&source=pdf`;
       // Play Intro button → this app's final-result page
-      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video`;
+      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf`;
       const hasVideo = !!videoUrl;
 
       let response = await fetch(resumeUrlStr);
@@ -505,22 +505,23 @@ const FinalResult: React.FC = () => {
             {videoUrl && (
               <button
                 onClick={() => { setPanelMode('video'); setIsPanelOpen(true); }}
-                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] shadow-sm hover:bg-[#084d91] transition-all h-10"
+                className="flex items-center justify-center gap-[6px] h-[36px] w-[110px] rounded-[6px] text-[12px] font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 transition-all shadow-sm shrink-0"
               >
-                <img src="/Frame 215.svg" alt="" className="h-4 w-4" />
-                Play Intro
+                <img src="/Frame 215.svg" alt="" className="w-[17px] h-[17px]" />
+                <span className="hidden sm:inline">Play Intro</span>
+                <span className="sm:hidden">Intro</span>
               </button>
             )}
             <button
               onClick={() => {
                 const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
-                const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}`;
+                const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&source=pdf`;
                 window.open(chatPageUrl, '_blank');
               }}
-              className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] shadow-sm hover:bg-[#084d91] transition-all h-10"
+              className="flex items-center justify-center gap-[6px] h-[36px] w-[105px] rounded-[6px] text-[12px] font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 transition-all shadow-sm shrink-0"
             >
-              <img src="/Vector.svg" alt="" className="h-3 w-3" />
-              Let's talk
+              <img src="/Vector.svg" alt="" className="w-[15px] h-[13px]" />
+              <span>Let's talk</span>
             </button>
           </div>
 
