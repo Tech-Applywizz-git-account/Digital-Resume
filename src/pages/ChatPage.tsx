@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../integrations/supabase/client";
 import ResumeChatPanel from "../components/ResumeChatPanel";
+import { trackEvent, trackSessionEnd } from "../utils/tracking";
 
 const PORTFOLIO_URL = "https://digital-resume-sample-portfolio.vercel.app";
 
@@ -19,76 +20,33 @@ const ChatPage: React.FC = () => {
     );
 
     const hasTracked = React.useRef(false);
-
     const [isPanelOpen, setIsPanelOpen] = useState(true);
 
+    // ✅ Centralized Tracking Implementation
     useEffect(() => {
-        console.log("ChatPage mounted. Params:", { resumeId, source });
+        if (!resumeId || hasTracked.current) return;
 
-        if (!resumeId || hasTracked.current) {
-            console.warn("No resumeId found in URL or already tracked. Tracking skipped.");
-            return;
-        }
+        // 1. Initial Page Load Event
+        trackEvent('page_load', resumeId);
+        hasTracked.current = true;
 
-        // Prevent duplicate tracking in the same session
-        const sessionKey = `resume_tracked_${resumeId}`;
-        if (sessionStorage.getItem(sessionKey)) {
-            console.log("Resume already tracked in this session. Skipping API call.");
-            hasTracked.current = true; // Mark as done for this mount too
-            return;
-        }
-
-        const trackClick = async () => {
-            // Set flag immediately to prevent React StrictMode double-trigger
-            hasTracked.current = true;
-
-            console.log("%c[Tracking] Attempting to record resume click...", "color: #2dd4bf; font-weight: bold;");
-
-            const payload = {
-                resume_id: resumeId,
-                source: source || "direct"
-            };
-
-            try {
-                // Primary attempt: using supabase.functions.invoke
-                const { data, error } = await supabase.functions.invoke("track-resume-click", {
-                    body: payload,
-                });
-
-                if (error) {
-                    console.warn("Primary tracking (invoke) failed, trying fallback (fetch)...", error);
-
-                    // Fallback: standard fetch call
-                    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-resume-click`;
-                    const response = await fetch(functionUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-                        },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (response.ok) {
-                        console.log("%c[Tracking] Fallback successful!", "color: #22c55e;");
-                        sessionStorage.setItem(sessionKey, "true");
-                    } else {
-                        // Reset flag only on absolute failure so we can potentially retry if the component remounts
-                        hasTracked.current = false;
-                        console.error("[Tracking] Both tracking methods failed.", await response.text());
-                    }
-                } else {
-                    console.log("%c[Tracking] Primary tracking successful:", "color: #22c55e;", data);
-                    sessionStorage.setItem(sessionKey, "true");
-                }
-            } catch (error) {
-                hasTracked.current = false;
-                console.error("[Tracking] Critical tracking error:", error);
-            }
+        // 2. Session Duration Tracking
+        const handleUnload = () => {
+            trackSessionEnd(resumeId);
         };
 
-        trackClick();
-    }, [resumeId, source]);
+        window.addEventListener('beforeunload', handleUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleUnload);
+        };
+    }, [resumeId]);
+
+    // ✅ Track Portfolio Interaction
+    const handlePortfolioInteraction = () => {
+        if (resumeId) {
+            trackEvent('portfolio_click', resumeId);
+        }
+    };
 
     useEffect(() => {
         document.title = "Chat with Resume";
@@ -159,6 +117,7 @@ const ChatPage: React.FC = () => {
 
         loadData();
     }, [resumeId]);
+
     useEffect(() => {
         const iframe = iframeRef.current;
         if (!iframe) return;
@@ -168,13 +127,9 @@ const ChatPage: React.FC = () => {
                 const win = iframe.contentWindow;
                 if (!win) return;
 
-                // Set initial opacity to 0 to hide the reload/re-render
                 iframe.style.opacity = "0";
-
-                // Dispatch resize to let elements settle
                 win.dispatchEvent(new Event("resize"));
 
-                // Restore visibility after a delay to ensure internal state is ready
                 setTimeout(() => {
                     iframe.style.opacity = "1";
                 }, 500);
@@ -202,25 +157,16 @@ const ChatPage: React.FC = () => {
         >
             {/* ── LEFT: Portfolio Section ── */}
             <div
+                onClick={handlePortfolioInteraction}
                 style={{
                     flex: 1,
                     position: "relative",
-                    overflow: "hidden",   // ✅ important
+                    overflow: "hidden",
                     height: "100%",
                     minWidth: 0,
                     backgroundColor: "#000",
-                    /* 
-                       Note: We do NOT use a transition on the portfolio width. 
-                       Instant width changes are much more stable for internal 
-                       Canvas/GSAP scripts than a gradual sliding scale.
-                    */
                 }}
             >
-                {/* 
-                  Using 'key' ensures the iframe RE-MOUNTS whenever the layout shifts (split/full).
-                  This forces a complete reset of the 3D character and ScrollTrigger logic,
-                  which is the only way to perfectly sync the animation state to the new width.
-                */}
                 <iframe
                     key={isPanelOpen ? "split" : "full"}
                     ref={iframeRef}
@@ -236,7 +182,6 @@ const ChatPage: React.FC = () => {
                     allow="fullscreen"
                 />
 
-                {/* Spinner while data loads */}
                 {loading && (
                     <div
                         style={{
@@ -264,7 +209,6 @@ const ChatPage: React.FC = () => {
                     </div>
                 )}
 
-                {/* Floating Reopen Button - Only visible when panel is closed */}
                 {!isPanelOpen && (
                     <button
                         onClick={() => setIsPanelOpen(true)}
