@@ -3,6 +3,7 @@ import { Send, X, MessageSquare, User, Bot, Loader2, Sparkles, Play, FileText, D
 import { Button } from "../components/ui/button";
 import { supabase } from "../integrations/supabase/client";
 import * as pdfjsLib from "pdfjs-dist";
+import { trackEvent } from "../utils/tracking";
 
 // Configure PDF.js worker
 const pdfjsVersion = pdfjsLib.version || "5.4.296";
@@ -234,6 +235,16 @@ const ResumeChatPanel = ({
         }
     };
 
+    const handleDownloadClick = () => {
+        if (onDownload) {
+            // ✅ Track download event
+            const params = new URLSearchParams(window.location.search);
+            const rId = params.get('resumeId') || window.location.pathname.split('/').pop() || 'unknown';
+            trackEvent('pdf_download', rId);
+            onDownload();
+        }
+    };
+
     return (
         <div className={`fixed top-20 right-6 w-full max-w-[420px] ${mode === 'video' ? 'h-auto' : 'h-[calc(100vh-100px)]'} bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 z-[110] flex flex-col overflow-hidden transition-all duration-300`}>
             {/* Header */}
@@ -308,7 +319,7 @@ const ResumeChatPanel = ({
                                 {onDownload && (
                                     <div className="absolute bottom-6 right-6 z-10">
                                         <Button
-                                            onClick={onDownload}
+                                            onClick={handleDownloadClick}
                                             className="shadow-lg bg-[#0B4F6C] hover:bg-[#093d54] text-white flex items-center gap-2"
                                         >
                                             <Download className="w-4 h-4" />

@@ -8,6 +8,7 @@ import { supabase } from "../integrations/supabase/client";
 import { showToast } from "../components/ui/toast";
 import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
+import { trackEvent, trackSessionEnd } from "../utils/tracking";
 
 const generateButtonImage = async (text: string, iconSrc: string, width: number, height: number, iconWidth: number, iconHeight: number): Promise<string | null> => {
   return new Promise((resolve) => {
@@ -86,6 +87,25 @@ const FinalResult: React.FC = () => {
 
   const [isPanelOpen, setIsPanelOpen] = useState(initialFromPdf && !!initialMode);
   const [panelMode, setPanelMode] = useState<'chat' | 'video' | 'resume'>(initialMode || 'chat');
+
+  // ✅ Tracking Implementation
+  useEffect(() => {
+    const currentCastId = castId || searchParams.get('id');
+    if (currentCastId) {
+      // 1. Initial Page Load Event
+      trackEvent('page_load', currentCastId);
+
+      // 2. Session Duration Tracking
+      const handleUnload = () => {
+        trackSessionEnd(currentCastId);
+      };
+
+      window.addEventListener('beforeunload', handleUnload);
+      return () => {
+        window.removeEventListener('beforeunload', handleUnload);
+      };
+    }
+  }, [castId, location.search]);
 
   // ✅ Handle URL query parameters for mode
   useEffect(() => {
@@ -440,6 +460,10 @@ const FinalResult: React.FC = () => {
     try {
       if (!resumeUrl) return;
       const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
+
+      // ✅ Tracking PDF Download
+      trackEvent('pdf_download', currentCastId);
+
       const enhancedUrl = await enhancePDF(resumeUrl, currentCastId);
       const userName = candidateName !== "Candidate" ? candidateName : (user?.firstName || user?.name || "Candidate");
       const a = document.createElement("a");
@@ -504,7 +528,13 @@ const FinalResult: React.FC = () => {
           <div className="flex items-center gap-3">
             {videoUrl && (
               <button
-                onClick={() => { setPanelMode('video'); setIsPanelOpen(true); }}
+                onClick={() => {
+                  setPanelMode('video');
+                  setIsPanelOpen(true);
+                  // ✅ Tracking Play Intro Click
+                  const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
+                  trackEvent('play_intro', currentCastId);
+                }}
                 className="flex items-center justify-center gap-[6px] h-[36px] w-[110px] rounded-[6px] text-[12px] font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 transition-all shadow-sm shrink-0"
               >
                 <img src="/Frame 215.svg" alt="" className="w-[17px] h-[17px]" />
@@ -515,6 +545,8 @@ const FinalResult: React.FC = () => {
             <button
               onClick={() => {
                 const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
+                // ✅ Tracking Let's Talk Click
+                trackEvent('lets_talk', currentCastId);
                 const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&source=pdf`;
                 window.open(chatPageUrl, '_blank');
               }}
