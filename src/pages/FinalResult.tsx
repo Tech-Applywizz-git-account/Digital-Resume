@@ -364,9 +364,9 @@ const FinalResult: React.FC = () => {
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
     try {
       // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
-      const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}`;
+      const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}&source=pdf`;
       // Play Intro button → this app's final-result page
-      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video`;
+      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf`;
       const hasVideo = !!videoUrl;
 
       let response = await fetch(resumeUrlStr);
@@ -515,7 +515,7 @@ const FinalResult: React.FC = () => {
             <button
               onClick={() => {
                 const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
-                const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}`;
+                const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&source=pdf`;
                 window.open(chatPageUrl, '_blank');
               }}
               className="flex items-center justify-center gap-[6px] h-[36px] w-[105px] rounded-[6px] text-[12px] font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 transition-all shadow-sm shrink-0"

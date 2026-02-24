@@ -131,14 +131,15 @@ const ResumeChatPanel = ({
             }
         };
 
-        if (isOpen) {
+        if (resumeUrl) {
             loadResumeText();
         }
     }, [isOpen, resumeUrl, recruiterMode]); // Reset when isOpen or resumeUrl changes
+    }, [resumeUrl, recruiterMode]); // Reset only when resumeUrl or mode changes
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages, isOpen, mode, isLoading]);
+    }, [messages, mode, isLoading]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -233,8 +234,6 @@ const ResumeChatPanel = ({
             handleSendMessage(inputText);
         }
     };
-
-    if (!isOpen) return null;
 
     return (
         <div className={`fixed top-20 right-6 w-full max-w-[420px] ${mode === 'video' ? 'h-auto' : 'h-[calc(100vh-100px)]'} bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 z-[110] flex flex-col overflow-hidden transition-all duration-300`}>
