@@ -134,7 +134,6 @@ const ResumeChatPanel = ({
         if (resumeUrl) {
             loadResumeText();
         }
-    }, [isOpen, resumeUrl, recruiterMode]); // Reset when isOpen or resumeUrl changes
     }, [resumeUrl, recruiterMode]); // Reset only when resumeUrl or mode changes
 
     useEffect(() => {
