@@ -8,19 +8,31 @@ const PORTFOLIO_URL = "https://digital-resume-sample-portfolio.vercel.app";
 const ChatPage: React.FC = () => {
     const [resumeUrl, setResumeUrl] = useState<string | null>(null);
     const [videoUrl, setVideoUrl] = useState<string | null>(null);
+    const [dbPortfolioUrl, setDbPortfolioUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     const params = new URLSearchParams(window.location.search);
     const resumeId = params.get("resumeId");
     const source = params.get("source");
-    const openVideo = params.get("openVideo") === "true";
+    const modeParam = params.get("mode") as "chat" | "video" | "resume" | null;
+    const openVideo = params.get("openVideo") === "true" || modeParam === 'video';
+    const portfolioUrl = params.get("portfolio") || dbPortfolioUrl;
+
     const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
     const [panelMode, setPanelMode] = useState<"chat" | "video" | "resume">(
-        openVideo ? "video" : "chat"
+        modeParam || (openVideo ? "video" : "chat")
     );
 
     const hasTracked = React.useRef(false);
+    // ✅ Ensure panel is open if mode is explicitly requested
     const [isPanelOpen, setIsPanelOpen] = useState(true);
+
+    useEffect(() => {
+        if (modeParam) {
+            setIsPanelOpen(true);
+            setPanelMode(modeParam);
+        }
+    }, [modeParam]);
 
     // ✅ Centralized Tracking Implementation
     useEffect(() => {
@@ -58,7 +70,7 @@ const ChatPage: React.FC = () => {
             }
 
             try {
-                const [crmResult, regularResult] = await Promise.all([
+                const [crmResult, regularResult, portfolioResult] = await Promise.all([
                     supabase
                         .from("crm_job_requests")
                         .select("resume_url, user_id")
@@ -69,7 +81,16 @@ const ChatPage: React.FC = () => {
                         .select("resume_path, user_id, recordings(storage_path)")
                         .eq("id", resumeId)
                         .maybeSingle(),
+                    supabase
+                        .from("portfolio_settings")
+                        .select("url")
+                        .eq("request_id", resumeId)
+                        .maybeSingle(),
                 ]);
+
+                if (portfolioResult.data?.url) {
+                    setDbPortfolioUrl(portfolioResult.data.url);
+                }
 
                 if (crmResult.data) {
                     setResumeUrl(crmResult.data.resume_url || null);
@@ -118,29 +139,20 @@ const ChatPage: React.FC = () => {
         loadData();
     }, [resumeId]);
 
+    // ✅ Reload iframe when panel closes so Three.js reinitialises at full width
     useEffect(() => {
-        const iframe = iframeRef.current;
-        if (!iframe) return;
-
-        const syncLayout = () => {
-            try {
-                const win = iframe.contentWindow;
-                if (!win) return;
-
-                iframe.style.opacity = "0";
-                win.dispatchEvent(new Event("resize"));
-
-                setTimeout(() => {
-                    iframe.style.opacity = "1";
-                }, 500);
-
-            } catch (err) {
-                iframe.style.opacity = "1";
-            }
-        };
-
-        const timer = setTimeout(syncLayout, 100);
-        return () => clearTimeout(timer);
+        if (!isPanelOpen) {
+            const timer = setTimeout(() => {
+                if (iframeRef.current) {
+                    const src = iframeRef.current.src;
+                    iframeRef.current.src = "";
+                    requestAnimationFrame(() => {
+                        if (iframeRef.current) iframeRef.current.src = src;
+                    });
+                }
+            }, 320); // slightly after the 300ms width transition completes
+            return () => clearTimeout(timer);
+        }
     }, [isPanelOpen]);
 
 
@@ -168,19 +180,18 @@ const ChatPage: React.FC = () => {
                 }}
             >
                 <iframe
-                    key={isPanelOpen ? "split" : "full"}
                     ref={iframeRef}
-                    src={PORTFOLIO_URL}
+                    src={portfolioUrl || PORTFOLIO_URL}
                     title="Portfolio"
                     style={{
                         width: "100%",
                         height: "100%",
                         border: "none",
                         display: "block",
-                        transition: "opacity 0.3s ease",
                     }}
                     allow="fullscreen"
                 />
+
 
                 {loading && (
                     <div
@@ -255,7 +266,7 @@ const ChatPage: React.FC = () => {
                     flexDirection: "column",
                     boxShadow: isPanelOpen ? "-8px 0 32px rgba(0,0,0,0.15)" : "none",
                     zIndex: 20,
-                    transition: "none",
+                    transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                     overflow: "hidden",
                     backgroundColor: "white",
                 }}
@@ -263,25 +274,33 @@ const ChatPage: React.FC = () => {
                 <div
                     style={{
                         position: "relative",
-                        width: 430,
+                        width: "100%",
                         height: "100%",
                         overflow: "hidden",
                     }}
                 >
                     <style>{`
-                .chat-column-wrap .fixed {
+                .chat-column-wrap {
+                    width: 100% !important;
+                    height: 100% !important;
+                }
+                .chat-column-wrap > div {
                   position: absolute !important;
                   top: 0 !important;
                   right: 0 !important;
                   bottom: 0 !important;
                   left: 0 !important;
-                  max-width: 100% !important;
                   width: 100% !important;
+                  max-width: 100% !important;
                   height: 100% !important;
                   border-radius: 0 !important;
                   box-shadow: none !important;
-                  display: flex !important;
+                  margin: 0 !important;
                   visibility: visible !important;
+                  display: flex !important;
+                }
+                .chat-column-wrap > div > div:first-child {
+                   border-radius: 0 !important;
                 }
               `}</style>
                     <div className="chat-column-wrap" style={{ width: "100%", height: "100%" }}>
