@@ -99,7 +99,15 @@ const FinalResult: React.FC = () => {
       // 1. Initial Page Load Event
       trackEvent('page_load', currentCastId);
 
-      // 2. Session Duration Tracking
+      // 2. Detect if visitor arrived by clicking "Play Intro" button inside the PDF
+      //    URL shape: /final-result/XXX?from=pdf&mode=video&source=pdf
+      const fromPdfSource = searchParams.get('source') === 'pdf';
+      const modeIsVideo = searchParams.get('mode') === 'video';
+      if (fromPdfSource && modeIsVideo) {
+        trackEvent('play_intro', currentCastId);
+      }
+
+      // 3. Session Duration Tracking
       const handleUnload = () => {
         trackSessionEnd(currentCastId);
       };

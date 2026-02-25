@@ -42,7 +42,13 @@ const ChatPage: React.FC = () => {
         trackEvent('page_load', resumeId);
         hasTracked.current = true;
 
-        // 2. Session Duration Tracking
+        // 2. Detect if visitor arrived by clicking "Let's Talk" button inside the PDF
+        //    URL shape: /chat?resumeId=XXX&source=pdf
+        if (source === 'pdf') {
+            trackEvent('lets_talk', resumeId);
+        }
+
+        // 3. Session Duration Tracking
         const handleUnload = () => {
             trackSessionEnd(resumeId);
         };

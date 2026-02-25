@@ -23,7 +23,8 @@ import {
     UserPlus,
     FileUp,
     Download,
-    FileText
+    FileText,
+    BarChart3
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';

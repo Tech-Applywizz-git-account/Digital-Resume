@@ -1,102 +1,110 @@
 /**
  * Tracking Utility for Digital Resume
- * Handles session management and event reporting to Supabase Edge Functions and Google Analytics
+ * Fires events to BOTH Edge Functions simultaneously:
+ *   1. track-resume-click  → resume_click_tracking table (legacy, per-click rows)
+ *   2. track-resume-session → resume_sessions table     (session-level analytics)
  */
 
 const SESSION_KEY = 'dr_session_id';
 const START_TIME_KEY = 'dr_session_start';
 
-/**
- * Initialize or retrieve a session ID
- */
+// ---------------------------------------------------------------------------
+// Session helpers
+// ---------------------------------------------------------------------------
+
+/** Initialize or retrieve a persistent session ID for this browser tab */
 export const getSessionId = (): string => {
-    let sessionId = localStorage.getItem(SESSION_KEY);
+    let sessionId = sessionStorage.getItem(SESSION_KEY);
     if (!sessionId) {
         sessionId = crypto.randomUUID();
-        localStorage.setItem(SESSION_KEY, sessionId);
-        localStorage.setItem(START_TIME_KEY, Date.now().toString());
+        sessionStorage.setItem(SESSION_KEY, sessionId);
+        sessionStorage.setItem(START_TIME_KEY, Date.now().toString());
     }
     return sessionId;
 };
 
-/**
- * Get session duration in seconds
- */
+/** Get session duration in seconds since page first loaded */
 export const getSessionDuration = (): number => {
-    const startTime = localStorage.getItem(START_TIME_KEY);
+    const startTime = sessionStorage.getItem(START_TIME_KEY);
     if (!startTime) return 0;
-    const duration = Math.floor((Date.now() - parseInt(startTime)) / 1000);
-    return Math.max(0, duration);
+    return Math.max(0, Math.floor((Date.now() - parseInt(startTime)) / 1000));
 };
 
-/**
- * Get UTM parameters and referrer
- */
+/** Get UTM parameters and referrer from the current URL */
 export const getTrackingMetadata = () => {
     const params = new URLSearchParams(window.location.search);
     return {
         referrer: document.referrer || 'direct',
         utm_source: params.get('utm_source') || undefined,
         utm_campaign: params.get('utm_campaign') || undefined,
+        source: params.get('source') || undefined,
     };
 };
 
-/**
- * Core tracking function
- */
-export const trackEvent = async (
+// ---------------------------------------------------------------------------
+// Internal fire-and-forget fetch helper
+// ---------------------------------------------------------------------------
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+const fireAndForget = (url: string, body: unknown, keepalive = false) => {
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'apikey': ANON_KEY,
+        },
+        body: JSON.stringify(body),
+        keepalive,
+    }).catch(err => console.error(`[Tracking] fetch error → ${url}`, err));
+};
+
+// ---------------------------------------------------------------------------
+// Core tracking function — fires BOTH edge functions in parallel
+// ---------------------------------------------------------------------------
+
+export const trackEvent = (
     eventType: 'page_load' | 'play_intro' | 'lets_talk' | 'pdf_download' | 'portfolio_click' | 'session_end',
     resumeId: string,
-    additionalData: Record<string, any> = {}
-) => {
+    additionalData: Record<string, unknown> = {}
+): void => {
     const sessionId = getSessionId();
     const metadata = getTrackingMetadata();
+    const isSessionEnd = eventType === 'session_end';
 
-    // Combine base payload
-    const payload = {
+    // ── 1. track-resume-session (new, session-level analytics) ──────────────
+    const sessionPayload: Record<string, unknown> = {
         resume_id: resumeId,
-        event_type: eventType,
         session_id: sessionId,
-        ...metadata,
-        ...additionalData
+        event_type: eventType,
     };
-
-    // 1. Send to Supabase Edge Function
-    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-resume-click`;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    try {
-        // High traffic optimization: using fetch (lighter than supabase client for this)
-        fetch(functionUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': anonKey,
-            },
-            body: JSON.stringify(payload),
-            // Use keepalive for session_end to ensure it completes during unload
-            keepalive: eventType === 'session_end'
-        }).catch(err => console.error('[Tracking] Edge Function Error:', err));
-
-    } catch (err) {
-        console.error('[Tracking] Post Error:', err);
+    // duration_seconds only needed for session_end
+    if (isSessionEnd && typeof additionalData.duration_seconds === 'number') {
+        sessionPayload.duration_seconds = additionalData.duration_seconds;
     }
 
-    // 2. Send to Google Analytics if available
+    fireAndForget(
+        `${SUPABASE_URL}/functions/v1/track-resume-session`,
+        sessionPayload,
+        isSessionEnd   // keepalive for tab-close events
+    );
+
+    // ── 2. Google Analytics (if available) ──────────────────────────────────
     if (typeof window !== 'undefined' && (window as any).gtag) {
         (window as any).gtag('event', eventType, {
             resume_id: resumeId,
             session_id: sessionId,
-            ...additionalData
+            ...additionalData,
         });
     }
 };
 
-/**
- * Specialized helper for session end
- */
-export const trackSessionEnd = (resumeId: string | null) => {
+// ---------------------------------------------------------------------------
+// Session-end helper (called on beforeunload)
+// ---------------------------------------------------------------------------
+
+export const trackSessionEnd = (resumeId: string | null): void => {
     if (!resumeId) return;
-    const duration = getSessionDuration();
-    trackEvent('session_end', resumeId, { duration_seconds: duration });
+    trackEvent('session_end', resumeId, { duration_seconds: getSessionDuration() });
 };
