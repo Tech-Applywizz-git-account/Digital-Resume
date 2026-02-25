@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button";
-import { Download, Play, ArrowLeft, LogOut, MessageSquare, Link, Copy, CheckCircle, Loader2 } from "lucide-react";
+import { Download, Play, ArrowLeft, LogOut, MessageSquare, Link, Copy, CheckCircle, Loader2, X, AlertCircle, Link2, Pencil } from "lucide-react";
 import { useAuthContext } from "../contexts/AuthContext";
 import { PDFDocument, PDFName, PDFNumber, PDFArray, PDFString, rgb } from "pdf-lib";
 import { supabase } from "../integrations/supabase/client";
@@ -77,6 +77,10 @@ const FinalResult: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [candidateName, setCandidateName] = useState<string>("Candidate");
 
+  const [portfolioUrl, setPortfolioUrl] = useState(() => localStorage.getItem("custom_portfolio_url") || "");
+  const [isEditingPortfolio, setIsEditingPortfolio] = useState(false);
+  const [tempPortfolioUrl, setTempPortfolioUrl] = useState("");
+
   const searchParams = new URLSearchParams(location.search);
   const isFromPdf = searchParams.get('from') === 'pdf';
 
@@ -95,7 +99,15 @@ const FinalResult: React.FC = () => {
       // 1. Initial Page Load Event
       trackEvent('page_load', currentCastId);
 
-      // 2. Session Duration Tracking
+      // 2. Detect if visitor arrived by clicking "Play Intro" button inside the PDF
+      //    URL shape: /final-result/XXX?from=pdf&mode=video&source=pdf
+      const fromPdfSource = searchParams.get('source') === 'pdf';
+      const modeIsVideo = searchParams.get('mode') === 'video';
+      if (fromPdfSource && modeIsVideo) {
+        trackEvent('play_intro', currentCastId);
+      }
+
+      // 3. Session Duration Tracking
       const handleUnload = () => {
         trackSessionEnd(currentCastId);
       };
@@ -163,31 +175,33 @@ const FinalResult: React.FC = () => {
     const jobTitleValue = localStorage.getItem("careercast_jobTitle");
     const currentJobRequestId = localStorage.getItem("current_job_request_id");
     const isCRMUser = localStorage.getItem("is_crm_user") === "true";
+    const localPortfolio = localStorage.getItem("custom_portfolio_url");
 
-    console.log("Loading local data with:", {
-      uploadedResumeUrl,
-      recordedVideoUrl,
-      currentJobRequestId,
-      isCRMUser
-    });
+    if (localPortfolio) {
+      setPortfolioUrl(localPortfolio);
+    }
 
-    // If we have a job request ID, fetch the latest data from Supabase
+    // If we have a job request ID, fetch the portfolio from the new table
     if (currentJobRequestId) {
       try {
+        const { data: portData } = await supabase
+          .from('portfolio_settings')
+          .select('url')
+          .eq('request_id', currentJobRequestId)
+          .maybeSingle();
+
+        if (portData?.url) {
+          setPortfolioUrl(portData.url);
+          localStorage.setItem("custom_portfolio_url", portData.url);
+        }
+
         if (isCRMUser) {
           // CRM User - Query crm_job_requests table
           const { data, error } = await supabase
             .from('crm_job_requests')
-            .select(`
-              job_title,
-              resume_url,
-              application_status,
-              user_id
-            `)
+            .select('*')
             .eq('id', currentJobRequestId)
             .single();
-
-          console.log("CRM Supabase data:", { data, error });
 
           if (!error && data) {
             setJobTitle(data.job_title || jobTitleValue || "");
@@ -228,12 +242,7 @@ const FinalResult: React.FC = () => {
           // Regular User - Query job_requests table
           const { data, error } = await supabase
             .from('job_requests')
-            .select(`
-              job_title,
-              resume_path,
-              resume_original_name,
-              user_id
-            `)
+            .select('*')
             .eq('id', currentJobRequestId)
             .single();
 
@@ -299,11 +308,16 @@ const FinalResult: React.FC = () => {
 
   const loadExternalData = async (id: string) => {
     try {
-      // Parallelize checking CRM and regular tables
-      const [crmResult, regularResult] = await Promise.all([
-        supabase.from('crm_job_requests').select('job_title, resume_url, application_status, user_id').eq('id', id).maybeSingle(),
-        supabase.from('job_requests').select('job_title, resume_path, resume_original_name, user_id').eq('id', id).maybeSingle()
+      // Parallelize checking CRM, regular tables and new portfolio table
+      const [crmResult, regularResult, portfolioResult] = await Promise.all([
+        supabase.from('crm_job_requests').select('*').eq('id', id).maybeSingle(),
+        supabase.from('job_requests').select('*').eq('id', id).maybeSingle(),
+        supabase.from('portfolio_settings').select('url').eq('request_id', id).maybeSingle()
       ]);
+
+      if (portfolioResult.data?.url) {
+        setPortfolioUrl(portfolioResult.data.url);
+      }
 
       if (crmResult.data) {
         const crmData = crmResult.data;
@@ -371,6 +385,39 @@ const FinalResult: React.FC = () => {
       }
     } catch (error) {
       console.error("❌ Error loading external data:", error);
+    }
+  };
+
+
+  const handleSavePortfolio = async () => {
+    const trimmedUrl = tempPortfolioUrl.trim();
+
+    if (trimmedUrl && !trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://")) {
+      showToast("URL must start with http:// or https://", "error");
+      return;
+    }
+
+    try {
+      setPortfolioUrl(trimmedUrl);
+      if (trimmedUrl) {
+        localStorage.setItem("custom_portfolio_url", trimmedUrl);
+      } else {
+        localStorage.removeItem("custom_portfolio_url");
+      }
+
+      const currentJobRequestId = castId || localStorage.getItem("current_job_request_id");
+      if (currentJobRequestId) {
+        await supabase.from('portfolio_settings').upsert({
+          request_id: currentJobRequestId,
+          url: trimmedUrl
+        });
+      }
+
+      setIsEditingPortfolio(false);
+      showToast(trimmedUrl ? "Portfolio link updated" : "Portfolio link removed", "success");
+    } catch (err) {
+      console.error("Error saving portfolio:", err);
+      showToast("Failed to save portfolio link", "error");
     }
   };
 
@@ -481,32 +528,101 @@ const FinalResult: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b shadow-sm z-[100]">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center px-4 py-3 gap-4">
-          {user && !isFromPdf ? (
+        <div className="max-w-max mx-auto flex flex-row flex-nowrap items-center px-4 pt-3 pb-1.5 gap-3 overflow-x-auto no-scrollbar">
+          {user && !isFromPdf && (
             <Button
               variant="outline"
               onClick={() => {
                 const isAdmin = sessionStorage.getItem('digital_resume_admin_access') === 'true';
                 navigate(isAdmin ? "/digital-resume-dashboard" : "/dashboard");
               }}
-              className="flex items-center gap-2 border-gray-300 text-gray-700"
+              className="flex items-center gap-2 border-gray-300 text-gray-700 h-10 shrink-0 px-3"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back to Dashboard
+              <span className="text-sm font-medium">Back to Dashboard</span>
             </Button>
-          ) : <div />}
+          )}
+
+          {user && !isFromPdf && (
+            <div className="flex items-center shrink-0">
+              {isEditingPortfolio ? (
+                <div className="flex items-center gap-2 bg-white border border-blue-400 rounded-xl p-1 pr-2 shadow-md animate-in fade-in zoom-in duration-200 h-11">
+                  <input
+                    type="text"
+                    placeholder="https://yourportfolio.com"
+                    value={tempPortfolioUrl}
+                    onChange={(e) => setTempPortfolioUrl(e.target.value)}
+                    className="h-full px-3 bg-transparent border-none text-sm focus:outline-none w-48 xl:w-64"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSavePortfolio();
+                      if (e.key === 'Escape') setIsEditingPortfolio(false);
+                    }}
+                  />
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleSavePortfolio}
+                      className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                      title="Save"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setIsEditingPortfolio(false)}
+                      className="p-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors shadow-sm"
+                      title="Cancel"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="group relative rounded-xl p-[1px] bg-gradient-to-r from-blue-400 via-indigo-400 to-blue-400 shadow-sm transition-all duration-300 cursor-pointer shrink-0"
+                  onClick={() => {
+                    setTempPortfolioUrl(portfolioUrl);
+                    setIsEditingPortfolio(true);
+                  }}
+                >
+                  <div className="bg-white rounded-[11px] h-11 px-4 flex items-center gap-3 transition-colors">
+                    <div className="flex items-center justify-center w-8 h-8 bg-gray-50 rounded-lg transition-all duration-300">
+                      <Link2 className="h-4 w-4 text-gray-400 transition-all duration-300" />
+                    </div>
+
+                    <div className="flex flex-col justify-center min-w-0">
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-gray-400 leading-tight">
+                        Portfolio
+                      </span>
+                      {portfolioUrl ? (
+                        <div className="text-sm font-bold text-gray-800 truncate max-w-[120px] xl:max-w-[220px] leading-tight">
+                          {portfolioUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                        </div>
+                      ) : (
+                        <span className="text-sm font-semibold text-gray-300 leading-tight">
+                          No portfolio added
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="ml-1 p-1.5 text-gray-400 rounded-lg transition-all">
+                      {portfolioUrl ? <Pencil className="h-3.5 w-3.5" /> : <span className="text-xs font-bold px-1 text-blue-600 uppercase">Add</span>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {!isFromPdf && user && (
-            <div className="flex flex-wrap items-center gap-3">
+            <>
               <Button
                 variant="outline"
                 onClick={handleDownloadEnhanced}
-                className="flex items-center gap-2 border-blue-500 text-blue-600 h-10 px-4"
+                className="flex items-center gap-2 border-blue-500 text-blue-600 h-10 px-4 shrink-0"
                 disabled={!resumeUrl}
               >
                 <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Download Enhanced Resume</span>
-                <span className="sm:hidden">Download</span>
+                <span className="text-sm font-semibold">Download Enhanced Resume</span>
               </Button>
 
               <Button
@@ -516,55 +632,55 @@ const FinalResult: React.FC = () => {
                   const shareableLink = `${window.location.origin}/final-result/${currentCastId || ""}`;
                   navigator.clipboard.writeText(shareableLink).then(() => showToast('Link copied!', 'success'));
                 }}
-                className="flex items-center gap-2 border-green-500 text-green-600 h-10 px-4"
+                className="flex items-center gap-2 border-green-500 text-green-600 h-10 px-4 shrink-0"
               >
                 <Link className="h-4 w-4" />
-                <span className="hidden sm:inline">Copy Link</span>
-                <span className="sm:hidden">Link</span>
+                <span className="text-sm font-semibold">Copy Link</span>
               </Button>
-            </div>
+            </>
           )}
 
-          <div className="flex items-center gap-3">
-            {videoUrl && (
-              <button
-                onClick={() => {
-                  setPanelMode('video');
-                  setIsPanelOpen(true);
-                  // ✅ Tracking Play Intro Click
-                  const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
-                  trackEvent('play_intro', currentCastId);
-                }}
-                className="flex items-center justify-center gap-[6px] h-[36px] w-[110px] rounded-[6px] text-[12px] font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 transition-all shadow-sm shrink-0"
-              >
-                <img src="/Frame 215.svg" alt="" className="w-[17px] h-[17px]" />
-                <span className="hidden sm:inline">Play Intro</span>
-                <span className="sm:hidden">Intro</span>
-              </button>
-            )}
+          {videoUrl && (
             <button
               onClick={() => {
-                const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
-                // ✅ Tracking Let's Talk Click
-                trackEvent('lets_talk', currentCastId);
-                const chatPageUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&source=pdf`;
-                window.open(chatPageUrl, '_blank');
+                setPanelMode('video');
+                setIsPanelOpen(true);
+                const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
+                trackEvent('play_intro', currentCastId);
               }}
-              className="flex items-center justify-center gap-[6px] h-[36px] w-[105px] rounded-[6px] text-[12px] font-bold bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 transition-all shadow-sm shrink-0"
+              className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
             >
-              <img src="/Vector.svg" alt="" className="w-[15px] h-[13px]" />
-              <span>Let's talk</span>
+              <img src="/Frame 215.svg" alt="" className="w-4 h-4" />
+              <span>Play Intro</span>
             </button>
-          </div>
+          )}
+
+          <button
+            onClick={() => {
+              const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
+              trackEvent('lets_talk', currentCastId);
+              const storedPortfolio = localStorage.getItem("custom_portfolio_url") || portfolioUrl;
+              const redirectUrl =
+                storedPortfolio && storedPortfolio.startsWith("http")
+                  ? `${window.location.origin}/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`
+                  : `${window.location.origin}/chat?resumeId=${currentCastId}&source=pdf&mode=chat`;
+              window.open(redirectUrl, '_blank');
+            }}
+            className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
+          >
+            <img src="/Vector.svg" alt="" className="w-4 h-4" />
+            <span>Let's talk</span>
+          </button>
 
           {user && !isFromPdf && (
-            <Button variant="outline" onClick={handleLogout} className="hidden md:flex">
-              <LogOut className="h-4 w-4 mr-1" />
-              Logout
+            <Button variant="outline" onClick={handleLogout} className="h-10 px-4 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
+              <LogOut className="h-4 w-4 mr-2" />
+              <span className="text-sm font-medium">Logout</span>
             </Button>
           )}
         </div>
       </header>
+
 
       <div className="relative pt-32 pb-10 min-h-screen scrollbar-hide">
         <div className="w-full max-w-7xl mx-auto px-4 pt-5">

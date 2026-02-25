@@ -14,11 +14,13 @@ import {
   X,
   Menu,
   FileUp,
+  BarChart3,
 } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserInfo } from '../utils/crmHelpers';
 import { showToast } from "../components/ui/toast";
+import AnalyticsPanel from '../components/AnalyticsPanel';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -30,6 +32,11 @@ export default function Dashboard() {
   const [showPricingPopup, setShowPricingPopup] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userCountry, setUserCountry] = useState<"US" | "GB" | "OTHER">("OTHER");
+
+  // Analytics Panel State
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [analyticsId, setAnalyticsId] = useState<string | null>(null);
+  const [analyticsTitle, setAnalyticsTitle] = useState('');
 
   // New: Premium plan tracking
   const [isPremiumActive, setIsPremiumActive] = useState(false);
@@ -158,25 +165,29 @@ export default function Dashboard() {
 
         if (error) throw error;
 
-        // Fetch recordings for each job request
-        const jobsWithRecordings = await Promise.all(
+        // Fetch recordings and session details for each job request
+        const jobsWithDetails = await Promise.all(
           (data || []).map(async (item) => {
-            const { data: recordings } = await supabase
-              .from('crm_recordings')
-              .select('video_url')
-              .eq('job_request_id', item.id)
-              .limit(1);
+            const [recRes, sessionRes, engagedRes] = await Promise.all([
+              supabase.from('crm_recordings').select('video_url').eq('job_request_id', item.id).limit(1),
+              supabase.from('resume_sessions').select('id', { count: 'exact', head: true }).eq('resume_id', item.id),
+              supabase.from('resume_sessions').select('id', { count: 'exact', head: true })
+                .eq('resume_id', item.id)
+                .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true')
+            ]);
 
             return {
               ...item,
               resume_path: item.resume_url,
               status: item.application_status || 'draft',
-              recordings: recordings?.map(r => ({ storage_path: r.video_url })) || []
+              recordings: recRes.data?.map(r => ({ storage_path: r.video_url })) || [],
+              view_count: sessionRes.count || 0,
+              engaged_count: engagedRes.count || 0
             };
           })
         );
 
-        setcareercasts(jobsWithRecordings);
+        setcareercasts(jobsWithDetails);
       } else {
         // Fetch from regular tables
         const { data, error } = await supabase
@@ -194,7 +205,26 @@ export default function Dashboard() {
           .order('created_at', { ascending: false });
 
         if (error) throw error;
-        setcareercasts(data || []);
+
+        // Fetch session counts and engagement for regular user
+        const jobsWithViews = await Promise.all(
+          (data || []).map(async (item) => {
+            const [sessionRes, engagedRes] = await Promise.all([
+              supabase.from('resume_sessions').select('id', { count: 'exact', head: true }).eq('resume_id', item.id),
+              supabase.from('resume_sessions').select('id', { count: 'exact', head: true })
+                .eq('resume_id', item.id)
+                .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true')
+            ]);
+
+            return {
+              ...item,
+              view_count: sessionRes.count || 0,
+              engaged_count: engagedRes.count || 0
+            };
+          })
+        );
+
+        setcareercasts(jobsWithViews);
       }
     } catch (error) {
       console.error('Error fetching Network Notes:', error);
@@ -432,6 +462,17 @@ export default function Dashboard() {
                   </span>
                 )}
                 <button
+                  onClick={() => {
+                    setAnalyticsId('');
+                    setAnalyticsTitle('Overall Performance');
+                    setAnalyticsOpen(true);
+                  }}
+                  className="bg-[#0B4F6C] text-white px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold hover:bg-[#0B4F6C]/90 transition-all shadow-md flex items-center justify-center gap-2 text-sm sm:text-base w-full sm:w-auto"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  Analytics
+                </button>
+                <button
                   onClick={handleNewCast}
                   className="bg-white text-[#0B4F6C] px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold hover:bg-white/90 transition-all shadow-md flex items-center justify-center gap-2 text-sm sm:text-base w-full sm:w-auto"
                 >
@@ -471,6 +512,7 @@ export default function Dashboard() {
                       <th className="py-3 px-4">Job Title</th>
                       <th className="py-3 px-4">Resume</th>
                       <th className="py-3 px-4">Video</th>
+                      <th className="py-3 px-4">Views</th>
                       <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4">Created</th>
                       <th className="py-3 px-4 text-center">Actions</th>
@@ -522,10 +564,27 @@ export default function Dashboard() {
                                 <span className="text-gray-400 text-xs italic">No video</span>
                               )}
                             </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1.5 font-bold text-[#0B4F6C]">
+                                <Eye className="w-4 h-4 text-slate-400" />
+                                {cast.view_count || 0}
+                              </div>
+                            </td>
                             <td className="py-3 px-4">{getBadge(cast.status)}</td>
                             <td className="py-3 px-4">{formatDate(cast.created_at)}</td>
                             <td className="py-3 px-4 text-center">
                               <div className="flex justify-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setAnalyticsId(cast.id);
+                                    setAnalyticsTitle(cast.job_title || 'Untitled');
+                                    setAnalyticsOpen(true);
+                                  }}
+                                  className="bg-blue-50 text-[#0B4F6C] border-2 border-[#0B4F6C]/20 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white transition-all flex items-center gap-1"
+                                >
+                                  <BarChart3 className="w-3.5 h-3.5" />
+                                  Analytics
+                                </button>
                                 <button
                                   onClick={() => both && handleViewDetails(cast.id)}
                                   disabled={!both}
@@ -625,6 +684,17 @@ export default function Dashboard() {
                                       } px-3 py-2 rounded-lg font-medium text-sm transition-colors`}
                                   >
                                     View Details
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setAnalyticsId(cast.id);
+                                      setAnalyticsTitle(cast.job_title || 'Untitled');
+                                      setAnalyticsOpen(true);
+                                    }}
+                                    className="flex-1 bg-blue-50 text-[#0B4F6C] border border-[#0B4F6C]/30 px-3 py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-1"
+                                  >
+                                    <BarChart3 className="w-4 h-4" />
+                                    Stats
                                   </button>
                                   <button
                                     onClick={() => handleReplaceClick(cast.id)}
@@ -764,6 +834,14 @@ export default function Dashboard() {
           onChange={handleFileChange}
           accept=".pdf,.doc,.docx"
           className="hidden"
+        />
+
+        {/* Analytics Slide-over Panel */}
+        <AnalyticsPanel
+          isOpen={analyticsOpen}
+          onClose={() => setAnalyticsOpen(false)}
+          castId={analyticsId || ''}
+          resumeTitle={analyticsTitle}
         />
       </div>
     </div>
