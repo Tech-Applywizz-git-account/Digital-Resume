@@ -279,9 +279,15 @@ const ResumeChatPanel = ({
             <div className={`${mode === 'video' ? 'h-auto' : 'flex-1'} overflow-hidden relative bg-gray-50 flex flex-col`}>
                 {mode === 'video' ? (
                     // Video Mode
-                    <div className="w-full bg-black p-0 overflow-hidden flex items-center justify-center">
-                        {videoUrl ? (
+                    <div className="w-full bg-black p-0 overflow-hidden flex items-center justify-center min-h-[240px] relative">
+                        {isDataLoading ? (
+                            <div className="flex flex-col items-center gap-3">
+                                <Loader2 className="w-8 h-8 text-white animate-spin" />
+                                <p className="text-white/70 text-sm">Loading video...</p>
+                            </div>
+                        ) : videoUrl ? (
                             <video
+                                key={videoUrl}
                                 controls
                                 preload="metadata"
                                 playsInline

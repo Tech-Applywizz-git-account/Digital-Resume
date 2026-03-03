@@ -27,8 +27,8 @@ import ChatPage from "./pages/ChatPage";
 
 const RootRoute = () => {
   const query = new URLSearchParams(window.location.search);
-  const id = query.get('id');
-  const fromPdf = query.get('from') === 'pdf';
+  const id = query.get('id') || query.get('resumeId');
+  const fromPdf = query.get('from') === 'pdf' || query.get('source') === 'pdf';
 
   if (id || fromPdf) {
     return <FinalResult />;
