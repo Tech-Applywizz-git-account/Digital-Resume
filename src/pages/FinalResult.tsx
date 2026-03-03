@@ -127,12 +127,18 @@ const FinalResult: React.FC = () => {
 
     // Update panel state if URL changes after mount
     if (fromPdf && (mode === 'video' || mode === 'chat' || mode === 'resume')) {
+      // PREVENT auto-opening chat if no portfolio exists
+      if (mode === 'chat' && !portfolioUrl) {
+        console.log("🚫 Blocking chat auto-open: No portfolio available.");
+        return;
+      }
+
       if (!isPanelOpen || panelMode !== mode) {
         setPanelMode(mode as 'chat' | 'video' | 'resume');
         setIsPanelOpen(true);
       }
     }
-  }, [location.search, isPanelOpen, panelMode]);
+  }, [location.search, isPanelOpen, panelMode, portfolioUrl]);
 
   // ✅ Load data from localStorage or Supabase
   useEffect(() => {
@@ -425,12 +431,12 @@ const FinalResult: React.FC = () => {
     logout();
     navigate("/");
   };
-
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
     try {
       // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
       const storedPortfolio = localStorage.getItem("custom_portfolio_url") || portfolioUrl;
-      const chatUrl = storedPortfolio
+      const hasPortfolio = !!storedPortfolio;
+      const chatUrl = hasPortfolio
         ? `${window.location.origin}/chat?resumeId=${currentRequestId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`
         : `${window.location.origin}/chat?resumeId=${currentRequestId}&source=pdf&mode=chat`;
 
@@ -455,28 +461,30 @@ const FinalResult: React.FC = () => {
       const gap = 12;
       const margin = 20;
 
-      const totalW = hasVideo ? (btnW_play + gap + btnW_chat) : btnW_chat;
+      const totalW = (hasVideo ? (btnW_play + gap) : 0) + (hasPortfolio ? btnW_chat : 0);
       let currentX = width - totalW - margin;
       const btnY = height - btnH - margin;
 
       const context = pdfDoc.context;
 
       // Draw Chat Button (Let's talk)
-      const chatButtonDataUrl = await generateButtonImage("Let's talk", "/Vector.svg", btnW_chat, btnH, 15, 13);
-      if (chatButtonDataUrl) {
-        const chatBytes = await fetch(chatButtonDataUrl).then(r => r.arrayBuffer());
-        const chatImg = await pdfDoc.embedPng(chatBytes);
-        firstPage.drawImage(chatImg, { x: currentX, y: btnY, width: btnW_chat, height: btnH });
-        const chatLink = context.obj({
-          Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
-          Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_chat), PDFNumber.of(btnY + btnH)]),
-          Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
-          A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(chatUrl) })
-        });
-        let annots = firstPage.node.lookup(PDFName.of("Annots"));
-        if (annots instanceof PDFArray) annots.push(chatLink);
-        else firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
-        currentX += btnW_chat + gap;
+      if (hasPortfolio) {
+        const chatButtonDataUrl = await generateButtonImage("Let's talk", "/Vector.svg", btnW_chat, btnH, 15, 13);
+        if (chatButtonDataUrl) {
+          const chatBytes = await fetch(chatButtonDataUrl).then(r => r.arrayBuffer());
+          const chatImg = await pdfDoc.embedPng(chatBytes);
+          firstPage.drawImage(chatImg, { x: currentX, y: btnY, width: btnW_chat, height: btnH });
+          const chatLink = context.obj({
+            Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
+            Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_chat), PDFNumber.of(btnY + btnH)]),
+            Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
+            A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(chatUrl) })
+          });
+          let annots = firstPage.node.lookup(PDFName.of("Annots"));
+          if (annots instanceof PDFArray) annots.push(chatLink);
+          else firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
+          currentX += btnW_chat + gap;
+        }
       }
 
       // Draw Play Intro Button
@@ -660,30 +668,34 @@ const FinalResult: React.FC = () => {
             <span>Play Intro</span>
           </button>
 
-          <button
-            onClick={() => {
-              const currentCastId = castId || searchParams.get('id') || "123";
-              trackEvent('lets_talk', currentCastId);
-              const storedPortfolio = localStorage.getItem("custom_portfolio_url") || portfolioUrl;
+          {/* Only show Let's Talk if we have a portfolio URL. 
+              External visitors only see it if it's in the DB. 
+              Logged-in users see it if in DB OR their own localStorage. */}
+          {(isExternalVisitor ? !!portfolioUrl : (!!portfolioUrl || !!localStorage.getItem("custom_portfolio_url"))) && (
+            <button
+              onClick={() => {
+                const currentCastId = castId || searchParams.get('id') || "123";
+                trackEvent('lets_talk', currentCastId);
+                const storedPortfolio = isExternalVisitor ? portfolioUrl : (localStorage.getItem("custom_portfolio_url") || portfolioUrl);
 
-              if (storedPortfolio && storedPortfolio.startsWith("http")) {
-                const redirectUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`;
-                window.open(redirectUrl, '_blank');
-              } else {
-                const params = new URLSearchParams(location.search);
-                params.set('mode', 'chat');
-                navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-
-                // If no portfolio, just open the local chat panel
-                setPanelMode('chat');
-                setIsPanelOpen(true);
-              }
-            }}
-            className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
-          >
-            <img src="/Vector.svg" alt="" className="w-4 h-4" />
-            <span>Let's talk</span>
-          </button>
+                if (storedPortfolio && storedPortfolio.startsWith("http")) {
+                  const redirectUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`;
+                  window.open(redirectUrl, '_blank');
+                } else {
+                  // Fallback to local chat only if for some reason we still don't have a URL
+                  const params = new URLSearchParams(location.search);
+                  params.set('mode', 'chat');
+                  navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+                  setPanelMode('chat');
+                  setIsPanelOpen(true);
+                }
+              }}
+              className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
+            >
+              <img src="/Vector.svg" alt="" className="w-4 h-4" />
+              <span>Let's talk</span>
+            </button>
+          )}
 
           {user && !isFromPdf && (
             <Button variant="outline" onClick={handleLogout} className="h-10 px-4 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
