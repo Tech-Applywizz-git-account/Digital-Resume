@@ -82,14 +82,11 @@ const FinalResult: React.FC = () => {
   const [tempPortfolioUrl, setTempPortfolioUrl] = useState("");
 
   const searchParams = new URLSearchParams(location.search);
-  const isFromPdf = searchParams.get('from') === 'pdf';
+  const isFromPdf = searchParams.get('from') === 'pdf' || searchParams.get('source') === 'pdf';
 
   // Panel State
-  const initialParams = new URLSearchParams(window.location.search);
-  const initialMode = initialParams.get('mode') as 'chat' | 'video' | 'resume' | null;
-  const initialFromPdf = initialParams.get('from') === 'pdf';
-
-  const [isPanelOpen, setIsPanelOpen] = useState(initialFromPdf && !!initialMode);
+  const initialMode = searchParams.get('mode') as 'chat' | 'video' | 'resume' | null;
+  const [isPanelOpen, setIsPanelOpen] = useState(isFromPdf && !!initialMode);
   const [panelMode, setPanelMode] = useState<'chat' | 'video' | 'resume'>(initialMode || 'chat');
 
   // ✅ Tracking Implementation
@@ -126,26 +123,34 @@ const FinalResult: React.FC = () => {
 
     const params = new URLSearchParams(location.search);
     const mode = params.get('mode');
-    const fromPdf = params.get('from') === 'pdf';
+    const fromPdf = params.get('from') === 'pdf' || params.get('source') === 'pdf';
 
     // Update panel state if URL changes after mount
     if (fromPdf && (mode === 'video' || mode === 'chat' || mode === 'resume')) {
+      // PREVENT auto-opening chat if no portfolio exists
+      if (mode === 'chat' && !portfolioUrl) {
+        console.log("🚫 Blocking chat auto-open: No portfolio available.");
+        return;
+      }
+
       if (!isPanelOpen || panelMode !== mode) {
         setPanelMode(mode as 'chat' | 'video' | 'resume');
         setIsPanelOpen(true);
       }
     }
-  }, [location.search, isPanelOpen, panelMode]);
+  }, [location.search, isPanelOpen, panelMode, portfolioUrl]);
 
   // ✅ Load data from localStorage or Supabase
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const idFromQuery = new URLSearchParams(location.search).get('id');
+        const params = new URLSearchParams(location.search);
+        const idFromQuery = params.get('id') || params.get('resumeId');
         const effectiveId = castId || idFromQuery;
 
-        console.log("Loading data with:", { user, castId, idFromQuery });
+        console.log("🚀 Loading data with:", { user, castId, idFromQuery, effectiveId });
+
         // Check if this is an external visitor (no user but has an ID)
         const isExternal = !user && effectiveId;
         setIsExternalVisitor(!!isExternal);
@@ -165,7 +170,7 @@ const FinalResult: React.FC = () => {
     };
 
     loadData();
-  }, [user, castId]);
+  }, [user, castId, location.search]);
 
   const loadLocalData = async () => {
     // First try to get data from localStorage
@@ -308,6 +313,7 @@ const FinalResult: React.FC = () => {
 
   const loadExternalData = async (id: string) => {
     try {
+      console.log("🚀 loadExternalData fetching with ID:", id);
       // Parallelize checking CRM, regular tables and new portfolio table
       const [crmResult, regularResult, portfolioResult] = await Promise.all([
         supabase.from('crm_job_requests').select('*').eq('id', id).maybeSingle(),
@@ -319,69 +325,61 @@ const FinalResult: React.FC = () => {
         setPortfolioUrl(portfolioResult.data.url);
       }
 
-      if (crmResult.data) {
-        const crmData = crmResult.data;
-        setJobTitle(crmData.job_title || "");
-        setResumeUrl(crmData.resume_url || null);
-        setResumeFileName(crmData.resume_url ?
-          crmData.resume_url.split('/').pop() || "Resume.pdf" :
-          "Resume.pdf");
+      // Consolidate data from whichever table matched
+      const data = crmResult.data || regularResult.data;
+      if (data) {
+        console.log("✅ Request record found:", data);
+        setJobTitle(data.job_title || "");
 
-        const { data: recordings } = await supabase
+        // Handle resume URL
+        const rawResumeUrl = (data as any).resume_url || (data as any).resume_path;
+        setResumeUrl(rawResumeUrl || null);
+        setResumeFileName(rawResumeUrl ? rawResumeUrl.split('/').pop() : "Resume.pdf");
+
+        // Handle Candidate Name
+        if (data.user_id) {
+          const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', data.user_id).maybeSingle();
+          if (profile) setCandidateName(profile.first_name || "Candidate");
+        }
+
+        // --- Fetch Video URL (Checking both tables for robustness) ---
+        let finalVideoUrl = null;
+
+        // 1. Try CRM recordings
+        const { data: crmVideo } = await supabase
           .from('crm_recordings')
           .select('video_url')
           .eq('job_request_id', id)
           .order('created_at', { ascending: false })
           .limit(1);
 
-        let finalVideoUrl = null;
-        if (recordings && recordings.length > 0 && recordings[0].video_url) {
-          const path = recordings[0].video_url;
+        if (crmVideo && crmVideo.length > 0 && crmVideo[0].video_url) {
+          const path = crmVideo[0].video_url;
           finalVideoUrl = path.startsWith('http')
             ? path
             : supabase.storage.from('CRM_users_recordings').getPublicUrl(path).data.publicUrl;
+          console.log("🎞️ Found CRM video:", finalVideoUrl);
         } else {
-          finalVideoUrl = localStorage.getItem("recordedVideoUrl");
+          // 2. Try Regular recordings
+          const { data: regVideo } = await supabase
+            .from('recordings')
+            .select('storage_path')
+            .eq('job_request_id', id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (regVideo && regVideo.length > 0 && regVideo[0].storage_path) {
+            const path = regVideo[0].storage_path;
+            finalVideoUrl = path.startsWith('http')
+              ? path
+              : supabase.storage.from('recordings').getPublicUrl(path).data.publicUrl;
+            console.log("🎞️ Found Regular video:", finalVideoUrl);
+          }
         }
+
         setVideoUrl(finalVideoUrl);
-
-        if (crmData.user_id) {
-          const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', crmData.user_id).maybeSingle();
-          if (profile) setCandidateName(profile.first_name || "Candidate");
-        }
-        return;
-      }
-
-      if (regularResult.data) {
-        const data = regularResult.data;
-        setJobTitle(data.job_title || "");
-        setResumeUrl(data.resume_path || null);
-        setResumeFileName(data.resume_original_name || (data.resume_path ?
-          data.resume_path.split('/').pop() || "Resume.pdf" :
-          "Resume.pdf"));
-
-        const { data: recordings } = await supabase
-          .from('recordings')
-          .select('storage_path')
-          .eq('job_request_id', id)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        let finalVideoUrl = null;
-        if (recordings && recordings.length > 0 && recordings[0].storage_path) {
-          const path = recordings[0].storage_path;
-          finalVideoUrl = path.startsWith('http')
-            ? path
-            : supabase.storage.from('recordings').getPublicUrl(path).data.publicUrl;
-        } else {
-          finalVideoUrl = localStorage.getItem("recordedVideoUrl");
-        }
-        setVideoUrl(finalVideoUrl);
-
-        if (data.user_id) {
-          const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', data.user_id).maybeSingle();
-          if (profile) setCandidateName(profile.first_name || "Candidate");
-        }
+      } else {
+        console.log("❌ No matching record found for ID:", id);
       }
     } catch (error) {
       console.error("❌ Error loading external data:", error);
@@ -421,18 +419,24 @@ const FinalResult: React.FC = () => {
     }
   };
 
-  const closePanel = () => setIsPanelOpen(false);
+  const closePanel = () => {
+    setIsPanelOpen(false);
+    // When closing, remove the mode from URL to prevent auto-opening on refresh
+    const params = new URLSearchParams(location.search);
+    params.delete('mode');
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+  };
 
   const handleLogout = () => {
     logout();
     navigate("/");
   };
-
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
     try {
       // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
       const storedPortfolio = localStorage.getItem("custom_portfolio_url") || portfolioUrl;
-      const chatUrl = storedPortfolio
+      const hasPortfolio = !!storedPortfolio;
+      const chatUrl = hasPortfolio
         ? `${window.location.origin}/chat?resumeId=${currentRequestId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`
         : `${window.location.origin}/chat?resumeId=${currentRequestId}&source=pdf&mode=chat`;
 
@@ -457,28 +461,30 @@ const FinalResult: React.FC = () => {
       const gap = 12;
       const margin = 20;
 
-      const totalW = hasVideo ? (btnW_play + gap + btnW_chat) : btnW_chat;
+      const totalW = (hasVideo ? (btnW_play + gap) : 0) + (hasPortfolio ? btnW_chat : 0);
       let currentX = width - totalW - margin;
       const btnY = height - btnH - margin;
 
       const context = pdfDoc.context;
 
       // Draw Chat Button (Let's talk)
-      const chatButtonDataUrl = await generateButtonImage("Let's talk", "/Vector.svg", btnW_chat, btnH, 15, 13);
-      if (chatButtonDataUrl) {
-        const chatBytes = await fetch(chatButtonDataUrl).then(r => r.arrayBuffer());
-        const chatImg = await pdfDoc.embedPng(chatBytes);
-        firstPage.drawImage(chatImg, { x: currentX, y: btnY, width: btnW_chat, height: btnH });
-        const chatLink = context.obj({
-          Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
-          Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_chat), PDFNumber.of(btnY + btnH)]),
-          Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
-          A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(chatUrl) })
-        });
-        let annots = firstPage.node.lookup(PDFName.of("Annots"));
-        if (annots instanceof PDFArray) annots.push(chatLink);
-        else firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
-        currentX += btnW_chat + gap;
+      if (hasPortfolio) {
+        const chatButtonDataUrl = await generateButtonImage("Let's talk", "/Vector.svg", btnW_chat, btnH, 15, 13);
+        if (chatButtonDataUrl) {
+          const chatBytes = await fetch(chatButtonDataUrl).then(r => r.arrayBuffer());
+          const chatImg = await pdfDoc.embedPng(chatBytes);
+          firstPage.drawImage(chatImg, { x: currentX, y: btnY, width: btnW_chat, height: btnH });
+          const chatLink = context.obj({
+            Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
+            Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_chat), PDFNumber.of(btnY + btnH)]),
+            Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
+            A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(chatUrl) })
+          });
+          let annots = firstPage.node.lookup(PDFName.of("Annots"));
+          if (annots instanceof PDFArray) annots.push(chatLink);
+          else firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
+          currentX += btnW_chat + gap;
+        }
       }
 
       // Draw Play Intro Button
@@ -645,41 +651,51 @@ const FinalResult: React.FC = () => {
             </>
           )}
 
-          {videoUrl && (
-            <button
-              onClick={() => {
-                setPanelMode('video');
-                setIsPanelOpen(true);
-                const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
-                trackEvent('play_intro', currentCastId);
-              }}
-              className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
-            >
-              <img src="/Frame 215.svg" alt="" className="w-4 h-4" />
-              <span>Play Intro</span>
-            </button>
-          )}
-
           <button
             onClick={() => {
-              const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
-              trackEvent('lets_talk', currentCastId);
-              const storedPortfolio = localStorage.getItem("custom_portfolio_url") || portfolioUrl;
+              const params = new URLSearchParams(location.search);
+              params.set('mode', 'video');
+              navigate(`${location.pathname}?${params.toString()}`, { replace: true });
 
-              if (storedPortfolio && storedPortfolio.startsWith("http")) {
-                const redirectUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`;
-                window.open(redirectUrl, '_blank');
-              } else {
-                // If no portfolio, just open the local chat panel
-                setPanelMode('chat');
-                setIsPanelOpen(true);
-              }
+              setPanelMode('video');
+              setIsPanelOpen(true);
+              const currentCastId = castId || searchParams.get('id') || "profile";
+              trackEvent('play_intro', currentCastId);
             }}
             className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
           >
-            <img src="/Vector.svg" alt="" className="w-4 h-4" />
-            <span>Let's talk</span>
+            <img src="/Frame 215.svg" alt="" className="w-4 h-4" />
+            <span>Play Intro</span>
           </button>
+
+          {/* Only show Let's Talk if we have a portfolio URL. 
+              External visitors only see it if it's in the DB. 
+              Logged-in users see it if in DB OR their own localStorage. */}
+          {(isExternalVisitor ? !!portfolioUrl : (!!portfolioUrl || !!localStorage.getItem("custom_portfolio_url"))) && (
+            <button
+              onClick={() => {
+                const currentCastId = castId || searchParams.get('id') || "123";
+                trackEvent('lets_talk', currentCastId);
+                const storedPortfolio = isExternalVisitor ? portfolioUrl : (localStorage.getItem("custom_portfolio_url") || portfolioUrl);
+
+                if (storedPortfolio && storedPortfolio.startsWith("http")) {
+                  const redirectUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`;
+                  window.open(redirectUrl, '_blank');
+                } else {
+                  // Fallback to local chat only if for some reason we still don't have a URL
+                  const params = new URLSearchParams(location.search);
+                  params.set('mode', 'chat');
+                  navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+                  setPanelMode('chat');
+                  setIsPanelOpen(true);
+                }
+              }}
+              className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
+            >
+              <img src="/Vector.svg" alt="" className="w-4 h-4" />
+              <span>Let's talk</span>
+            </button>
+          )}
 
           {user && !isFromPdf && (
             <Button variant="outline" onClick={handleLogout} className="h-10 px-4 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
@@ -723,6 +739,7 @@ const FinalResult: React.FC = () => {
           onModeChange={(m: 'chat' | 'video' | 'resume') => setPanelMode(m)}
           onDownload={handleDownloadEnhanced}
           isDataLoading={loading}
+          recruiterMode={true}
         />
       )}
     </div>

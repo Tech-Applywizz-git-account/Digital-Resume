@@ -96,10 +96,16 @@ const ChatPage: React.FC = () => {
 
                 if (portfolioResult.data?.url) {
                     setDbPortfolioUrl(portfolioResult.data.url);
-                } else if (!params.get("portfolio") && resumeId) {
+                } else if (!portfolioResult.data?.url && !params.get("portfolio") && resumeId) {
                     // Fix for old/existing resumes: If no portfolio exists, redirect to the main result page
-                    // This ensures recruiters see the resume + chat instead of a blank portfolio space.
-                    window.location.replace(`${window.location.origin}/final-result/${resumeId}?from=pdf&mode=chat&id=${resumeId}`);
+                    const sourceParam = params.get("source") || "pdf";
+                    const originalMode = params.get("mode");
+
+                    // IF there's no portfolio, do NOT auto-open the chat mode for recruiters
+                    const finalMode = (originalMode === "chat") ? "" : originalMode;
+                    const modeParam = finalMode ? `&mode=${finalMode}` : "";
+
+                    window.location.replace(`${window.location.origin}/final-result/${resumeId}?from=pdf&source=${sourceParam}${modeParam}&id=${resumeId}`);
                     return;
                 }
 
