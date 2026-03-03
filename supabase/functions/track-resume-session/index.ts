@@ -23,40 +23,95 @@ function detectDevice(userAgent: string): string {
     return /Mobile/i.test(userAgent) ? "Mobile" : "Desktop";
 }
 
-async function getCountry(ip: string): Promise<string> {
+async function getCountry(req: Request, ip: string): Promise<string> {
     try {
-        if (!ip || ip === "unknown" || ip.startsWith("127.") || ip.startsWith("::1")) {
-            return "Unknown";
+        // 1. Try Supabase/Cloudflare geolocation headers first (fast & reliable)
+        // cf-ipcountry is provided by Cloudflare/Supabase and contains the 2-letter ISO code
+        const cfCountry = req.headers.get("cf-ipcountry");
+        if (cfCountry && cfCountry.length === 2 && !["XX", "T1"].includes(cfCountry.toUpperCase())) {
+            const iso = cfCountry.toUpperCase();
+            try {
+                const displayNames = new Intl.DisplayNames(['en'], { type: 'region' });
+                const name = displayNames.of(iso);
+                if (name) {
+                    console.log(`[Geo] Header match: ${iso} -> ${name}`);
+                    return name.toUpperCase();
+                }
+            } catch (e) {
+                // Fallback for environments where Intl.DisplayNames might lack data
+                const backupMap: Record<string, string> = {
+                    'US': 'UNITED STATES', 'IN': 'INDIA', 'GB': 'UNITED KINGDOM',
+                    'CA': 'CANADA', 'AU': 'AUSTRALIA', 'DE': 'GERMANY',
+                    'FR': 'FRANCE', 'BR': 'BRAZIL', 'CN': 'CHINA', 'JP': 'JAPAN',
+                    'AE': 'UNITED ARAB EMIRATES', 'SG': 'SINGAPORE', 'IE': 'IRELAND'
+                };
+                if (backupMap[iso]) {
+                    console.log(`[Geo] Backup map match: ${iso} -> ${backupMap[iso]}`);
+                    return backupMap[iso];
+                }
+            }
+            return iso; // Return raw code if we can't translate but it's a valid code
         }
+
+        // 2. Clean up IP and check for local addresses
+        if (!ip || ip === "unknown") return "Unknown";
         const cleanIp = ip.split(",")[0].trim();
 
+        const isLocal = cleanIp === "127.0.0.1" ||
+            cleanIp === "::1" ||
+            cleanIp === "localhost" ||
+            cleanIp.startsWith("::ffff:127.0.0.1");
+
+        if (isLocal) {
+            console.log(`[Geo] Local IP detected: ${cleanIp}`);
+            return "Local (Dev)";
+        }
+
+        // 3. Fallback to external providers
         const providers = [
+            `https://ip-api.com/json/${cleanIp}`,
             `https://ipapi.co/${cleanIp}/json/`,
-            `https://ip-api.com/json/${cleanIp}`
+            `https://freeipapi.com/api/json/${cleanIp}`
         ];
 
         for (const url of providers) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                const timeoutId = setTimeout(() => controller.abort(), 4000);
 
                 const res = await fetch(url, { signal: controller.signal });
                 clearTimeout(timeoutId);
 
                 if (!res.ok) continue;
                 const data = await res.json();
-                const country = data.country_name || data.country;
 
-                if (country && country !== "Unknown") return country;
-            } catch {
+                // Handle different provider response shapes
+                let country = data.country || data.country_name || data.countryName;
+
+                if (country && country.length === 2) {
+                    try {
+                        const displayNames = new Intl.DisplayNames(['en'], { type: 'region' });
+                        country = displayNames.of(country.toUpperCase()) || country;
+                    } catch (e) { }
+                }
+
+                if (country && !["UNKNOWN", "RESERVED"].includes(country.toUpperCase())) {
+                    console.log(`[Geo] Provider match (${url}): ${country.toUpperCase()}`);
+                    return country.toUpperCase();
+                }
+            } catch (err) {
+                console.log(`[Geo] Failed ${url}:`, err);
                 continue;
             }
         }
         return "Unknown";
-    } catch {
+    } catch (err) {
+        console.error("[Geo] General error:", err);
         return "Unknown";
     }
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Main handler
@@ -141,25 +196,22 @@ serve(async (req: Request) => {
             const ip_address = rawIp.split(",")[0].trim();
             const userAgent = req.headers.get("user-agent") || "";
             const device = detectDevice(userAgent);
-            const country = await getCountry(ip_address);
+            const country = await getCountry(req, ip_address);
 
             console.log(`page_load | session=${session_id} | ip=${ip_address} | country=${country} | device=${device}`);
 
             // Check if session already exists — avoids duplicate rows and 42P10 upsert errors
             const { data: existing, error: selectError } = await supabase
                 .from("resume_sessions")
-                .select("id")
+                .select("id, country")
                 .eq("session_id", session_id.trim())
                 .maybeSingle();
 
-            if (selectError) {
-                console.error("Supabase select error (page_load):", selectError);
-                throw selectError;
-            }
+            if (selectError) throw selectError;
 
             if (!existing) {
-                // Only insert if this session_id doesn't already exist
-                const { error: insertError } = await supabase.from("resume_sessions").insert({
+                // New session insert
+                await supabase.from("resume_sessions").insert({
                     resume_id: resume_id.trim(),
                     session_id: session_id.trim(),
                     ip_address,
@@ -171,21 +223,15 @@ serve(async (req: Request) => {
                     pdf_downloaded: false,
                     duration_seconds: 0,
                     started_at: new Date().toISOString(),
-                    ended_at: null,
                 });
-
-                if (insertError) {
-                    // Ignore duplicate key violations (race condition edge case)
-                    if (insertError.code === "23505") {
-                        console.log(`session_id already exists (race condition), skipping insert`);
-                    } else {
-                        console.error("Supabase insert error (page_load):", insertError);
-                        throw insertError;
-                    }
-                }
-            } else {
-                console.log(`session_id already exists, skipping insert`);
+            } else if (existing.country === "Unknown" && country !== "Unknown") {
+                // Fix "Unknown" if we now have real data
+                await supabase
+                    .from("resume_sessions")
+                    .update({ country })
+                    .eq("id", existing.id);
             }
+
 
             return jsonResponse({ success: true, event: "page_load", session_id });
         }

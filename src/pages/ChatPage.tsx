@@ -3,7 +3,7 @@ import { supabase } from "../integrations/supabase/client";
 import ResumeChatPanel from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
 
-const PORTFOLIO_URL = "https://digital-resume-sample-portfolio.vercel.app";
+// Removed default sample portfolio URL
 
 const ChatPage: React.FC = () => {
     const [resumeUrl, setResumeUrl] = useState<string | null>(null);
@@ -96,6 +96,11 @@ const ChatPage: React.FC = () => {
 
                 if (portfolioResult.data?.url) {
                     setDbPortfolioUrl(portfolioResult.data.url);
+                } else if (!params.get("portfolio") && resumeId) {
+                    // Fix for old/existing resumes: If no portfolio exists, redirect to the main result page
+                    // This ensures recruiters see the resume + chat instead of a blank portfolio space.
+                    window.location.replace(`${window.location.origin}/final-result/${resumeId}?from=pdf&mode=chat&id=${resumeId}`);
+                    return;
                 }
 
                 if (crmResult.data) {
@@ -187,7 +192,7 @@ const ChatPage: React.FC = () => {
             >
                 <iframe
                     ref={iframeRef}
-                    src={portfolioUrl || PORTFOLIO_URL}
+                    src={portfolioUrl || ""}
                     title="Portfolio"
                     style={{
                         width: "100%",

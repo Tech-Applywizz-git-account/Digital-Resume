@@ -575,17 +575,6 @@ export default function Dashboard() {
                             <td className="py-3 px-4 text-center">
                               <div className="flex justify-center gap-2">
                                 <button
-                                  onClick={() => {
-                                    setAnalyticsId(cast.id);
-                                    setAnalyticsTitle(cast.job_title || 'Untitled');
-                                    setAnalyticsOpen(true);
-                                  }}
-                                  className="bg-blue-50 text-[#0B4F6C] border-2 border-[#0B4F6C]/20 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white transition-all flex items-center gap-1"
-                                >
-                                  <BarChart3 className="w-3.5 h-3.5" />
-                                  Analytics
-                                </button>
-                                <button
                                   onClick={() => both && handleViewDetails(cast.id)}
                                   disabled={!both}
                                   className={`${both
@@ -684,17 +673,6 @@ export default function Dashboard() {
                                       } px-3 py-2 rounded-lg font-medium text-sm transition-colors`}
                                   >
                                     View Details
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setAnalyticsId(cast.id);
-                                      setAnalyticsTitle(cast.job_title || 'Untitled');
-                                      setAnalyticsOpen(true);
-                                    }}
-                                    className="flex-1 bg-blue-50 text-[#0B4F6C] border border-[#0B4F6C]/30 px-3 py-2 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-1"
-                                  >
-                                    <BarChart3 className="w-4 h-4" />
-                                    Stats
                                   </button>
                                   <button
                                     onClick={() => handleReplaceClick(cast.id)}

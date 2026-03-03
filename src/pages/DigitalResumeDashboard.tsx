@@ -29,6 +29,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import AnalyticsPanel from '../components/AnalyticsPanel';
 
 interface CRMUser {
     email: string;
@@ -78,6 +79,11 @@ export default function DigitalResumeDashboard() {
     const [replacingResumeEmail, setReplacingResumeEmail] = useState<string | null>(null);
     const [isReplacingResume, setIsReplacingResume] = useState(false);
     const resumeFileInputRef = React.useRef<HTMLInputElement>(null);
+
+    // Analytics state
+    const [analyticsOpen, setAnalyticsOpen] = useState(false);
+    const [analyticsId, setAnalyticsId] = useState('');
+    const [analyticsTitle, setAnalyticsTitle] = useState('');
 
     useEffect(() => {
         const checkAccess = async () => {
@@ -570,6 +576,7 @@ export default function DigitalResumeDashboard() {
                         <span className="hidden md:inline">Add Admin</span>
                     </button>
 
+
                     <div className="h-8 w-px bg-white/10 mx-1"></div>
 
                     <div className="relative">
@@ -714,6 +721,19 @@ export default function DigitalResumeDashboard() {
                                                                     )}
                                                                     Replace
                                                                 </button>
+                                                                {user_row.latest_job_request_id && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setAnalyticsId(user_row.latest_job_request_id || '');
+                                                                            setAnalyticsTitle(user_row.profiles?.full_name || user_row.email);
+                                                                            setAnalyticsOpen(true);
+                                                                        }}
+                                                                        className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                                                                    >
+                                                                        <BarChart3 className="w-3.5 h-3.5" />
+                                                                        Intel
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         ) : (
                                                             <button
@@ -809,6 +829,13 @@ export default function DigitalResumeDashboard() {
                     </div>
                 </div>
             </main>
+
+            <AnalyticsPanel
+                isOpen={analyticsOpen}
+                onClose={() => setAnalyticsOpen(false)}
+                castId={analyticsId}
+                resumeTitle={analyticsTitle}
+            />
 
             {/* Add User Modal */}
             {

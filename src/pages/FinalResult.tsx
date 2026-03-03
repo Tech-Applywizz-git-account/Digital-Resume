@@ -431,9 +431,14 @@ const FinalResult: React.FC = () => {
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
     try {
       // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
-      const chatUrl = `${window.location.origin}/chat?resumeId=${currentRequestId}&source=pdf`;
+      const storedPortfolio = localStorage.getItem("custom_portfolio_url") || portfolioUrl;
+      const chatUrl = storedPortfolio
+        ? `${window.location.origin}/chat?resumeId=${currentRequestId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`
+        : `${window.location.origin}/chat?resumeId=${currentRequestId}&source=pdf&mode=chat`;
+
       // Play Intro button → this app's final-result page
       const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf`;
+
       const hasVideo = !!videoUrl;
 
       let response = await fetch(resumeUrlStr);
@@ -660,11 +665,15 @@ const FinalResult: React.FC = () => {
               const currentCastId = castId || localStorage.getItem("current_job_request_id") || "123";
               trackEvent('lets_talk', currentCastId);
               const storedPortfolio = localStorage.getItem("custom_portfolio_url") || portfolioUrl;
-              const redirectUrl =
-                storedPortfolio && storedPortfolio.startsWith("http")
-                  ? `${window.location.origin}/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`
-                  : `${window.location.origin}/chat?resumeId=${currentCastId}&source=pdf&mode=chat`;
-              window.open(redirectUrl, '_blank');
+
+              if (storedPortfolio && storedPortfolio.startsWith("http")) {
+                const redirectUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`;
+                window.open(redirectUrl, '_blank');
+              } else {
+                // If no portfolio, just open the local chat panel
+                setPanelMode('chat');
+                setIsPanelOpen(true);
+              }
             }}
             className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
           >
