@@ -491,7 +491,10 @@ export default function DigitalResumeDashboard() {
             // 1. Upload to CRM bucket
             const { error: uploadError } = await supabase.storage
                 .from('CRM_users_resumes')
-                .upload(filePath, file, { upsert: true });
+                .upload(filePath, file, {
+                    upsert: true,
+                    contentType: file.type || 'application/pdf'
+                });
             if (uploadError) throw uploadError;
 
             const { data: publicData } = supabase.storage
@@ -499,10 +502,26 @@ export default function DigitalResumeDashboard() {
                 .getPublicUrl(filePath);
             const publicUrl = publicData?.publicUrl;
 
-            // 2. Update all CRM job requests for this user (to keep consistency)
-            await supabase.from('crm_job_requests')
-                .update({ resume_url: publicUrl })
-                .eq('email', replacingResumeEmail);
+            // 2. Update/Insert CRM job request for this user
+            const { data: existingJob } = await supabase.from('crm_job_requests')
+                .select('id')
+                .eq('email', replacingResumeEmail)
+                .maybeSingle();
+
+            if (existingJob) {
+                await supabase.from('crm_job_requests')
+                    .update({ resume_url: publicUrl, updated_at: new Date().toISOString() })
+                    .eq('id', existingJob.id);
+            } else {
+                // Create a default job request if none exists so the "Final Result" view works
+                await supabase.from('crm_job_requests').insert({
+                    email: replacingResumeEmail,
+                    resume_url: publicUrl,
+                    job_title: 'Digital Resume',
+                    application_status: 'ready',
+                    user_id: users.find(u => u.email === replacingResumeEmail)?.user_id || null
+                });
+            }
 
             // 3. Insert/Update crm_resumes record
             await supabase.from('crm_resumes').insert({
@@ -721,19 +740,6 @@ export default function DigitalResumeDashboard() {
                                                                     )}
                                                                     Replace
                                                                 </button>
-                                                                {user_row.latest_job_request_id && (
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setAnalyticsId(user_row.latest_job_request_id || '');
-                                                                            setAnalyticsTitle(user_row.profiles?.full_name || user_row.email);
-                                                                            setAnalyticsOpen(true);
-                                                                        }}
-                                                                        className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
-                                                                    >
-                                                                        <BarChart3 className="w-3.5 h-3.5" />
-                                                                        Intel
-                                                                    </button>
-                                                                )}
                                                             </div>
                                                         ) : (
                                                             <button

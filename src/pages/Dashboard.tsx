@@ -255,7 +255,10 @@ export default function Dashboard() {
         const filePath = `${crmEmail}/${fileName}`;
         const { error: uploadError } = await supabase.storage
           .from('CRM_users_resumes')
-          .upload(filePath, file, { upsert: true });
+          .upload(filePath, file, {
+            upsert: true,
+            contentType: file.type || 'application/pdf'
+          });
         if (uploadError) throw uploadError;
 
         const { data: publicData } = supabase.storage
@@ -288,7 +291,10 @@ export default function Dashboard() {
         const filePath = `${user.id}/${fileName}`;
         const { error: uploadError } = await supabase.storage
           .from('resumes')
-          .upload(filePath, file, { upsert: true });
+          .upload(filePath, file, {
+            upsert: true,
+            contentType: file.type || 'application/pdf'
+          });
         if (uploadError) throw uploadError;
 
         const { data: publicData } = supabase.storage
@@ -578,8 +584,8 @@ export default function Dashboard() {
                                   onClick={() => cast.resume_path && handleViewDetails(cast.id)}
                                   disabled={!cast.resume_path}
                                   className={`${cast.resume_path
-                                      ? 'bg-[#01796F] hover:bg-[#016761] text-white'
-                                      : 'bg-gray-200 text-gray-400'
+                                    ? 'bg-[#01796F] hover:bg-[#016761] text-white'
+                                    : 'bg-gray-200 text-gray-400'
                                     } px-3 py-1.5 rounded-md font-semibold text-xs transition-colors`}
                                 >
                                   View
@@ -668,8 +674,8 @@ export default function Dashboard() {
                                     onClick={() => cast.resume_path && handleViewDetails(cast.id)}
                                     disabled={!cast.resume_path}
                                     className={`flex-1 ${cast.resume_path
-                                        ? 'bg-[#01796F] hover:bg-[#016761] text-white'
-                                        : 'bg-gray-100 text-gray-400'
+                                      ? 'bg-[#01796F] hover:bg-[#016761] text-white'
+                                      : 'bg-gray-100 text-gray-400'
                                       } px-3 py-2 rounded-lg font-medium text-sm transition-colors`}
                                   >
                                     View Details

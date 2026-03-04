@@ -122,7 +122,10 @@ const Step2: React.FC = () => {
 
         const { error: uploadError } = await supabase.storage
           .from("CRM_users_resumes")
-          .upload(filePath, selectedFile, { upsert: true });
+          .upload(filePath, selectedFile, {
+            upsert: true,
+            contentType: selectedFile.type || 'application/pdf'
+          });
         if (uploadError) throw uploadError;
 
         const { data: publicData } = supabase.storage
@@ -155,7 +158,10 @@ const Step2: React.FC = () => {
 
         const { error: uploadError } = await supabase.storage
           .from("resumes")
-          .upload(filePath, selectedFile, { upsert: true });
+          .upload(filePath, selectedFile, {
+            upsert: true,
+            contentType: selectedFile.type || 'application/pdf'
+          });
         if (uploadError) throw uploadError;
 
         const { data: publicData } = supabase.storage

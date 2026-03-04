@@ -644,6 +644,19 @@ const FinalResult: React.FC = () => {
       if (!resumeUrl) return;
       const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
 
+      const isPdf = resumeUrl.toLowerCase().endsWith('.pdf');
+
+      if (!isPdf) {
+        showToast("Enhancement is only available for PDF files. Downloading original resume.", "warning");
+        const a = document.createElement("a");
+        a.href = resumeUrl;
+        a.download = resumeFileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+
       // ✅ Tracking PDF Download
       trackEvent('pdf_download', currentCastId);
 
@@ -830,9 +843,23 @@ const FinalResult: React.FC = () => {
       <div className="relative pt-32 pb-10 min-h-screen scrollbar-hide">
         <div className="w-full max-w-7xl mx-auto px-4 pt-5">
           {resumeUrl ? (
-            <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden">
+            <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden relative">
+              {/* Optional: Add a notice for Word docs */}
+              {(resumeUrl.toLowerCase().endsWith('.docx') || resumeUrl.toLowerCase().endsWith('.doc')) && (
+                <div className="bg-amber-50 border-b border-amber-100 px-4 py-2 flex items-center justify-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <p className="text-xs text-amber-800 font-medium">
+                    Viewing Word Document. For the best experience and to use the "Enhanced Resume" features, we recommend uploading a <strong>PDF</strong>.
+                  </p>
+                </div>
+              )}
+
               <iframe
-                src={`${resumeUrl}#zoom=100&view=FitH`}
+                src={
+                  resumeUrl.toLowerCase().endsWith('.docx') || resumeUrl.toLowerCase().endsWith('.doc')
+                    ? `https://docs.google.com/gview?url=${encodeURIComponent(resumeUrl)}&embedded=true`
+                    : `${resumeUrl}#zoom=100&view=FitH`
+                }
                 title="Resume Preview"
                 className="w-full border-0 min-h-[1100px]"
                 style={{ display: 'block', width: '100%' }}
