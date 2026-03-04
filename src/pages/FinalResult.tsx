@@ -77,9 +77,11 @@ const FinalResult: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [candidateName, setCandidateName] = useState<string>("Candidate");
 
-  const [portfolioUrl, setPortfolioUrl] = useState(() => localStorage.getItem("custom_portfolio_url") || "");
+  const [portfolioUrl, setPortfolioUrl] = useState("");
   const [isEditingPortfolio, setIsEditingPortfolio] = useState(false);
   const [tempPortfolioUrl, setTempPortfolioUrl] = useState("");
+  const [resumeOwnerEmail, setResumeOwnerEmail] = useState<string | null>(null);
+  const [resumeOwnerUserId, setResumeOwnerUserId] = useState<string | null>(null);
 
   const searchParams = new URLSearchParams(location.search);
   const isFromPdf = searchParams.get('from') === 'pdf' || searchParams.get('source') === 'pdf';
@@ -180,25 +182,12 @@ const FinalResult: React.FC = () => {
     const jobTitleValue = localStorage.getItem("careercast_jobTitle");
     const currentJobRequestId = localStorage.getItem("current_job_request_id");
     const isCRMUser = localStorage.getItem("is_crm_user") === "true";
-    const localPortfolio = localStorage.getItem("custom_portfolio_url");
 
-    if (localPortfolio) {
-      setPortfolioUrl(localPortfolio);
-    }
 
     // If we have a job request ID, fetch the portfolio from the new table
     if (currentJobRequestId) {
       try {
-        const { data: portData } = await supabase
-          .from('portfolio_settings')
-          .select('url')
-          .eq('request_id', currentJobRequestId)
-          .maybeSingle();
 
-        if (portData?.url) {
-          setPortfolioUrl(portData.url);
-          localStorage.setItem("custom_portfolio_url", portData.url);
-        }
 
         if (isCRMUser) {
           // CRM User - Query crm_job_requests table
@@ -214,6 +203,36 @@ const FinalResult: React.FC = () => {
             setResumeFileName(fileName || (data.resume_url ?
               data.resume_url.split('/').pop() || "Resume.pdf" :
               "Resume.pdf"));
+
+            // Portfolio lookup: Try user_id first, then request_id
+            if (data.user_id) {
+              const { data: userPortData } = await supabase
+                .from('portfolio_settings')
+                .select('url')
+                .eq('user_id', data.user_id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (userPortData?.url) {
+                setPortfolioUrl(userPortData.url);
+              } else {
+                // Fallback to request_id for old records
+                const { data: reqPortData } = await supabase
+                  .from('portfolio_settings')
+                  .select('url')
+                  .eq('request_id', currentJobRequestId)
+                  .maybeSingle();
+                if (reqPortData?.url) setPortfolioUrl(reqPortData.url);
+              }
+            } else {
+              // No user_id, must rely on request_id
+              const { data: reqPortData } = await supabase
+                .from('portfolio_settings')
+                .select('url')
+                .eq('request_id', currentJobRequestId)
+                .maybeSingle();
+              if (reqPortData?.url) setPortfolioUrl(reqPortData.url);
+            }
 
             // Get latest video URL from crm_recordings
             const { data: recordings } = await supabase
@@ -236,7 +255,10 @@ const FinalResult: React.FC = () => {
             setVideoUrl(finalVideoUrl);
 
             // Fetch owner's name for filename
-            if (data.user_id) {
+            // Fetch owner's name and email for mapping
+            if (data.user_id || data.email) {
+              setResumeOwnerEmail(data.email || null);
+              setResumeOwnerUserId(data.user_id || null);
               const { data: profile } = await supabase.from('profiles').select('first_name, last_name, full_name').eq('id', data.user_id).single();
               if (profile) setCandidateName(profile.first_name || profile.full_name?.split(' ')[0] || "Candidate");
             }
@@ -257,6 +279,36 @@ const FinalResult: React.FC = () => {
             setResumeFileName(fileName || data.resume_original_name || (data.resume_path ?
               data.resume_path.split('/').pop() || "Resume.pdf" :
               "Resume.pdf"));
+
+            // Portfolio lookup: Try user_id first, then request_id
+            if (data.user_id) {
+              const { data: userPortData } = await supabase
+                .from('portfolio_settings')
+                .select('url')
+                .eq('user_id', data.user_id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (userPortData?.url) {
+                setPortfolioUrl(userPortData.url);
+              } else {
+                // Fallback to request_id for old records
+                const { data: reqPortData } = await supabase
+                  .from('portfolio_settings')
+                  .select('url')
+                  .eq('request_id', currentJobRequestId)
+                  .maybeSingle();
+                if (reqPortData?.url) setPortfolioUrl(reqPortData.url);
+              }
+            } else {
+              // No user_id, must rely on request_id
+              const { data: reqPortData } = await supabase
+                .from('portfolio_settings')
+                .select('url')
+                .eq('request_id', currentJobRequestId)
+                .maybeSingle();
+              if (reqPortData?.url) setPortfolioUrl(reqPortData.url);
+            }
 
             // Get latest video URL from recordings
             const { data: recs } = await supabase
@@ -279,7 +331,11 @@ const FinalResult: React.FC = () => {
             setVideoUrl(finalVideoUrl);
 
             // Fetch owner's name for filename
+            // Fetch owner's name and email for mapping
             if (data.user_id) {
+              setResumeOwnerUserId(data.user_id);
+              // Regular job_requests might have email if we check the table schema
+              setResumeOwnerEmail((data as any).email || (data as any).candidate_email || null);
               const { data: profile } = await supabase.from('profiles').select('first_name, last_name, full_name').eq('id', data.user_id).single();
               if (profile) setCandidateName(profile.first_name || profile.full_name?.split(' ')[0] || "Candidate");
             }
@@ -314,19 +370,45 @@ const FinalResult: React.FC = () => {
   const loadExternalData = async (id: string) => {
     try {
       console.log("🚀 loadExternalData fetching with ID:", id);
-      // Parallelize checking CRM, regular tables and new portfolio table
-      const [crmResult, regularResult, portfolioResult] = await Promise.all([
+      // Parallelize checking CRM and regular tables
+      const [crmResult, regularResult] = await Promise.all([
         supabase.from('crm_job_requests').select('*').eq('id', id).maybeSingle(),
-        supabase.from('job_requests').select('*').eq('id', id).maybeSingle(),
-        supabase.from('portfolio_settings').select('url').eq('request_id', id).maybeSingle()
+        supabase.from('job_requests').select('*').eq('id', id).maybeSingle()
       ]);
-
-      if (portfolioResult.data?.url) {
-        setPortfolioUrl(portfolioResult.data.url);
-      }
 
       // Consolidate data from whichever table matched
       const data = crmResult.data || regularResult.data;
+
+      // Portfolio lookup: Try user_id first, then request_id
+      if (data?.user_id) {
+        const { data: userPortfolio } = await supabase
+          .from('portfolio_settings')
+          .select('url')
+          .eq('user_id', data.user_id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (userPortfolio?.url) {
+          setPortfolioUrl(userPortfolio.url);
+        } else {
+          // Fallback to request_id for old resumes
+          const { data: reqPortfolio } = await supabase
+            .from('portfolio_settings')
+            .select('url')
+            .eq('request_id', id)
+            .maybeSingle();
+          if (reqPortfolio?.url) setPortfolioUrl(reqPortfolio.url);
+        }
+      } else {
+        // Fallback for resumes without user_id
+        const { data: reqPortfolio } = await supabase
+          .from('portfolio_settings')
+          .select('url')
+          .eq('request_id', id)
+          .maybeSingle();
+        if (reqPortfolio?.url) setPortfolioUrl(reqPortfolio.url);
+      }
       if (data) {
         console.log("✅ Request record found:", data);
         setJobTitle(data.job_title || "");
@@ -338,6 +420,8 @@ const FinalResult: React.FC = () => {
 
         // Handle Candidate Name
         if (data.user_id) {
+          setResumeOwnerUserId(data.user_id);
+          setResumeOwnerEmail((data as any).email || (data as any).candidate_email || null);
           const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', data.user_id).maybeSingle();
           if (profile) setCandidateName(profile.first_name || "Candidate");
         }
@@ -396,26 +480,68 @@ const FinalResult: React.FC = () => {
     }
 
     try {
-      setPortfolioUrl(trimmedUrl);
-      if (trimmedUrl) {
-        localStorage.setItem("custom_portfolio_url", trimmedUrl);
-      } else {
-        localStorage.removeItem("custom_portfolio_url");
-      }
-
       const currentJobRequestId = castId || localStorage.getItem("current_job_request_id");
-      if (currentJobRequestId) {
-        await supabase.from('portfolio_settings').upsert({
-          request_id: currentJobRequestId,
-          url: trimmedUrl
-        });
+
+      if (!currentJobRequestId) {
+        console.error("❌ Save Aborted: currentJobRequestId is missing.");
+        showToast("Invalid request ID. Please refresh and try again.", "error");
+        return;
       }
 
+      console.log("🛠️ Saving portfolio. State:", { resumeOwnerEmail, resumeOwnerUserId, currentUser: user?.id, currentJobRequestId });
+
+      let targetUserId = null;
+
+      // 1. Try to map via the resume owner's email in the digital_resume_by_crm table
+      if (resumeOwnerEmail) {
+        const { data: crmMapping } = await supabase
+          .from('digital_resume_by_crm')
+          .select('user_id')
+          .eq('email', resumeOwnerEmail)
+          .maybeSingle();
+
+        if (crmMapping?.user_id) {
+          targetUserId = crmMapping.user_id;
+          console.log("📍 Mapped via email to CRM user_id:", targetUserId);
+        }
+      }
+
+      // 2. Fallback to the loaded resume's owner ID
+      if (!targetUserId) {
+        targetUserId = resumeOwnerUserId;
+        if (targetUserId) console.log("📍 Using loaded resumeOwnerUserId:", targetUserId);
+      }
+
+      // 3. Fallback to current authenticated user
+      if (!targetUserId && user?.id) {
+        targetUserId = user.id;
+        console.log("📍 Using current authenticated user.id:", targetUserId);
+      }
+
+      if (!targetUserId) {
+        console.error("❌ Save Aborted: targetUserId is missing.");
+        showToast("Invalid user session or resume owner not found", "error");
+        return;
+      }
+
+      console.log("💾 Executing upsert for request_id:", currentJobRequestId, "and user_id:", targetUserId);
+      const { error: upsertError } = await supabase.from("portfolio_settings").upsert({
+        request_id: currentJobRequestId,
+        user_id: targetUserId,
+        url: trimmedUrl
+      });
+
+      if (upsertError) {
+        console.error("❌ Supabase Upsert Error:", upsertError);
+        throw upsertError;
+      }
+
+      setPortfolioUrl(trimmedUrl);
       setIsEditingPortfolio(false);
-      showToast(trimmedUrl ? "Portfolio link updated" : "Portfolio link removed", "success");
-    } catch (err) {
+      showToast("Portfolio updated", "success");
+    } catch (err: any) {
       console.error("Error saving portfolio:", err);
-      showToast("Failed to save portfolio link", "error");
+      showToast(err.message || "Failed to save portfolio link", "error");
     }
   };
 
@@ -434,10 +560,9 @@ const FinalResult: React.FC = () => {
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
     try {
       // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
-      const storedPortfolio = localStorage.getItem("custom_portfolio_url") || portfolioUrl;
-      const hasPortfolio = !!storedPortfolio;
+      const hasPortfolio = !!portfolioUrl;
       const chatUrl = hasPortfolio
-        ? `${window.location.origin}/chat?resumeId=${currentRequestId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`
+        ? `${window.location.origin}/chat?resumeId=${currentRequestId}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`
         : `${window.location.origin}/chat?resumeId=${currentRequestId}&source=pdf&mode=chat`;
 
       // Play Intro button → this app's final-result page
@@ -671,23 +796,16 @@ const FinalResult: React.FC = () => {
           {/* Only show Let's Talk if we have a portfolio URL. 
               External visitors only see it if it's in the DB. 
               Logged-in users see it if in DB OR their own localStorage. */}
-          {(isExternalVisitor ? !!portfolioUrl : (!!portfolioUrl || !!localStorage.getItem("custom_portfolio_url"))) && (
+          {!!portfolioUrl && (
             <button
               onClick={() => {
-                const currentCastId = castId || searchParams.get('id') || "123";
+                const currentCastId = castId || searchParams.get('id') || searchParams.get('resumeId') || "";
                 trackEvent('lets_talk', currentCastId);
-                const storedPortfolio = isExternalVisitor ? portfolioUrl : (localStorage.getItem("custom_portfolio_url") || portfolioUrl);
 
-                if (storedPortfolio && storedPortfolio.startsWith("http")) {
-                  const redirectUrl = `${window.location.origin}/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(storedPortfolio)}&mode=chat`;
-                  window.open(redirectUrl, '_blank');
-                } else {
-                  // Fallback to local chat only if for some reason we still don't have a URL
-                  const params = new URLSearchParams(location.search);
-                  params.set('mode', 'chat');
-                  navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-                  setPanelMode('chat');
-                  setIsPanelOpen(true);
+                if (portfolioUrl) {
+                  // Navigate to the chat page which shows portfolio + chat panel side-by-side
+                  const chatUrl = `/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`;
+                  navigate(chatUrl);
                 }
               }}
               className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
