@@ -679,7 +679,7 @@ const FinalResult: React.FC = () => {
             </Button>
           )}
 
-          {user && !isFromPdf && (
+          {user && !isFromPdf && portfolioUrl && (
             <div className="flex items-center shrink-0">
               {isEditingPortfolio ? (
                 <div className="flex items-center gap-2 bg-white border border-blue-400 rounded-xl p-1 pr-2 shadow-md animate-in fade-in zoom-in duration-200 h-11">
@@ -776,22 +776,24 @@ const FinalResult: React.FC = () => {
             </>
           )}
 
-          <button
-            onClick={() => {
-              const params = new URLSearchParams(location.search);
-              params.set('mode', 'video');
-              navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+          {videoUrl && (
+            <button
+              onClick={() => {
+                const params = new URLSearchParams(location.search);
+                params.set('mode', 'video');
+                navigate(`${location.pathname}?${params.toString()}`, { replace: true });
 
-              setPanelMode('video');
-              setIsPanelOpen(true);
-              const currentCastId = castId || searchParams.get('id') || "profile";
-              trackEvent('play_intro', currentCastId);
-            }}
-            className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
-          >
-            <img src="/Frame 215.svg" alt="" className="w-4 h-4" />
-            <span>Play Intro</span>
-          </button>
+                setPanelMode('video');
+                setIsPanelOpen(true);
+                const currentCastId = castId || searchParams.get('id') || "profile";
+                trackEvent('play_intro', currentCastId);
+              }}
+              className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
+            >
+              <img src="/Frame 215.svg" alt="" className="w-4 h-4" />
+              <span>Play Intro</span>
+            </button>
+          )}
 
           {/* Only show Let's Talk if we have a portfolio URL. 
               External visitors only see it if it's in the DB. 
