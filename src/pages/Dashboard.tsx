@@ -575,11 +575,11 @@ export default function Dashboard() {
                             <td className="py-3 px-4 text-center">
                               <div className="flex justify-center gap-2">
                                 <button
-                                  onClick={() => both && handleViewDetails(cast.id)}
-                                  disabled={!both}
-                                  className={`${both
-                                    ? 'bg-[#01796F] hover:bg-[#016761] text-white'
-                                    : 'bg-gray-200 text-gray-400'
+                                  onClick={() => cast.resume_path && handleViewDetails(cast.id)}
+                                  disabled={!cast.resume_path}
+                                  className={`${cast.resume_path
+                                      ? 'bg-[#01796F] hover:bg-[#016761] text-white'
+                                      : 'bg-gray-200 text-gray-400'
                                     } px-3 py-1.5 rounded-md font-semibold text-xs transition-colors`}
                                 >
                                   View
@@ -665,11 +665,11 @@ export default function Dashboard() {
 
                                 <div className="flex gap-2 mt-2">
                                   <button
-                                    onClick={() => both && handleViewDetails(cast.id)}
-                                    disabled={!both}
-                                    className={`flex-1 ${both
-                                      ? 'bg-[#01796F] hover:bg-[#016761] text-white'
-                                      : 'bg-gray-100 text-gray-400'
+                                    onClick={() => cast.resume_path && handleViewDetails(cast.id)}
+                                    disabled={!cast.resume_path}
+                                    className={`flex-1 ${cast.resume_path
+                                        ? 'bg-[#01796F] hover:bg-[#016761] text-white'
+                                        : 'bg-gray-100 text-gray-400'
                                       } px-3 py-2 rounded-lg font-medium text-sm transition-colors`}
                                   >
                                     View Details
