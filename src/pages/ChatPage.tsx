@@ -12,11 +12,11 @@ const ChatPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     const params = new URLSearchParams(window.location.search);
-    const resumeId = params.get("resumeId");
+    const resumeId = params.get("resumeId") || params.get("id");
     const source = params.get("source");
     const modeParam = params.get("mode") as "chat" | "video" | "resume" | null;
     const openVideo = params.get("openVideo") === "true" || modeParam === 'video';
-    const portfolioUrl = params.get("portfolio") || dbPortfolioUrl;
+    const portfolioUrl = dbPortfolioUrl || params.get("portfolio");
 
     const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
     const [panelMode, setPanelMode] = useState<"chat" | "video" | "resume">(
@@ -94,17 +94,44 @@ const ChatPage: React.FC = () => {
                         .maybeSingle(),
                 ]);
 
-                if (portfolioResult.data?.url) {
-                    setDbPortfolioUrl(portfolioResult.data.url);
-                } else if (!portfolioResult.data?.url && !params.get("portfolio") && resumeId) {
-                    // Fix for old/existing resumes: If no portfolio exists, redirect to the main result page
+                const data = crmResult.data || regularResult.data
+                if (data?.user_id) {
+                    // Fetch portfolio strictly by owner's user_id, fallback to request_id
+                    const { data: userPortfolio } = await supabase
+                        .from('portfolio_settings')
+                        .select('url')
+                        .eq('user_id', data.user_id)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (userPortfolio?.url) {
+                        setDbPortfolioUrl(userPortfolio.url);
+                    } else {
+                        // Fallback to request_id for legacy records
+                        const { data: reqPortData } = await supabase
+                            .from('portfolio_settings')
+                            .select('url')
+                            .eq('request_id', resumeId)
+                            .maybeSingle();
+                        if (reqPortData?.url) setDbPortfolioUrl(reqPortData.url);
+                    }
+                } else if (resumeId) {
+                    // No user_id, rely on request_id
+                    const { data: reqPortData } = await supabase
+                        .from('portfolio_settings')
+                        .select('url')
+                        .eq('request_id', resumeId)
+                        .maybeSingle();
+                    if (reqPortData?.url) setDbPortfolioUrl(reqPortData.url);
+                }
+
+                // If still no portfolio after all checks, handle redirect
+                if (!dbPortfolioUrl && !params.get("portfolio") && resumeId) {
                     const sourceParam = params.get("source") || "pdf";
                     const originalMode = params.get("mode");
-
-                    // IF there's no portfolio, do NOT auto-open the chat mode for recruiters
                     const finalMode = (originalMode === "chat") ? "" : originalMode;
                     const modeParam = finalMode ? `&mode=${finalMode}` : "";
-
                     window.location.replace(`${window.location.origin}/final-result/${resumeId}?from=pdf&source=${sourceParam}${modeParam}&id=${resumeId}`);
                     return;
                 }
