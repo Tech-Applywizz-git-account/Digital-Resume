@@ -296,7 +296,7 @@ export default function DigitalResumeDashboard() {
 
             if (data) {
                 // Step 2: gather unique user_ids
-                const userIds = [...new Set(data.map((l: any) => l.user_id).filter(Boolean))] as string[];
+                const userIds = Array.from(new Set(data.map((l: any) => l.user_id).filter(Boolean))) as string[];
 
                 // Step 3: look up emails from crm_users, fallback to profiles
                 const emailMap: Record<string, string> = {};
