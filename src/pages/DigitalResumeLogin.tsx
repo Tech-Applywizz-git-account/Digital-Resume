@@ -34,15 +34,11 @@ export default function DigitalResumeLogin() {
                     .ilike('email', normalizedEmail)
                     .maybeSingle();
 
-                if ((adminCheckError || !adminData) && normalizedEmail !== 'dinesh@applywizz.com') {
+                if (adminCheckError || !adminData) {
                     throw new Error('Unauthorized access. Your email is not registered as a CRM Dashboard admin.');
                 }
             } catch (err: any) {
-                // If table doesn't exist, only allow dinesh@applywizz.com
-                if (normalizedEmail !== 'dinesh@applywizz.com') {
-                    throw new Error(err.message || 'Verification failed. Please ensure the admin table is set up.');
-                }
-                console.warn('Dashboard admin table check failed, but allowing primary admin fallback.');
+                throw new Error(err.message || 'Verification failed. Please ensure the admin table is set up.');
             }
 
             // 2. Perform regular Auth login

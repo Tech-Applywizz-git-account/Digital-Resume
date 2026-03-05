@@ -9,6 +9,7 @@ const ChatPage: React.FC = () => {
     const [resumeUrl, setResumeUrl] = useState<string | null>(null);
     const [videoUrl, setVideoUrl] = useState<string | null>(null);
     const [dbPortfolioUrl, setDbPortfolioUrl] = useState<string | null>(null);
+    const [ownerId, setOwnerId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     const params = new URLSearchParams(window.location.search);
@@ -138,6 +139,7 @@ const ChatPage: React.FC = () => {
 
                 if (crmResult.data) {
                     setResumeUrl(crmResult.data.resume_url || null);
+                    if (crmResult.data.user_id) setOwnerId(crmResult.data.user_id);
 
                     const { data: rec } = await supabase
                         .from("crm_recordings")
@@ -158,6 +160,7 @@ const ChatPage: React.FC = () => {
                 } else if (regularResult.data) {
                     const data = regularResult.data;
                     setResumeUrl(data.resume_path || null);
+                    if (data.user_id) setOwnerId(data.user_id);
 
                     const recordings = data.recordings as any;
                     if (recordings && recordings.length > 0) {
@@ -201,96 +204,32 @@ const ChatPage: React.FC = () => {
 
 
     return (
-        <div
-            style={{
-                display: "flex",
-                flexDirection: "row",
-                width: "100%",
-                height: "100vh",
-                overflow: "hidden",
-                position: "relative",
-            }}
-        >
-            {/* ── LEFT: Portfolio Section ── */}
+        <div className="flex flex-col md:flex-row w-full h-screen overflow-hidden relative bg-black">
+            {/* ── LEFT/TOP: Portfolio Section ── */}
             <div
                 onClick={handlePortfolioInteraction}
-                style={{
-                    flex: 1,
-                    position: "relative",
-                    overflow: "hidden",
-                    height: "100%",
-                    minWidth: 0,
-                    backgroundColor: "#000",
-                }}
+                className={`relative overflow-hidden min-w-0 bg-black transition-all duration-300 ease-in-out
+                    ${isPanelOpen ? 'h-[40vh] md:h-full flex-1' : 'h-full flex-1'}
+                `}
             >
                 <iframe
                     ref={iframeRef}
                     src={portfolioUrl || ""}
                     title="Portfolio"
-                    style={{
-                        width: "100%",
-                        height: "100%",
-                        border: "none",
-                        display: "block",
-                    }}
+                    className="w-full h-full border-none block"
                     allow="fullscreen"
                 />
 
-
                 {loading && (
-                    <div
-                        style={{
-                            position: "absolute",
-                            inset: 0,
-                            background: "rgba(0,0,0,0.15)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            pointerEvents: "none",
-                            zIndex: 10,
-                        }}
-                    >
-                        <div
-                            style={{
-                                width: 36,
-                                height: 36,
-                                border: "3px solid rgba(255,255,255,0.3)",
-                                borderTopColor: "#2dd4bf",
-                                borderRadius: "50%",
-                                animation: "spin 0.8s linear infinite",
-                            }}
-                        />
-                        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                    <div className="absolute inset-0 bg-black/15 flex items-center justify-center pointer-events-none z-10">
+                        <div className="w-9 h-9 border-3 border-white/30 border-t-teal-400 rounded-full animate-spin" />
                     </div>
                 )}
 
                 {!isPanelOpen && (
                     <button
                         onClick={() => setIsPanelOpen(true)}
-                        style={{
-                            position: "absolute",
-                            right: "24px",
-                            bottom: "24px",
-                            width: "60px",
-                            height: "60px",
-                            borderRadius: "50%",
-                            backgroundColor: "#0B4F6C",
-                            color: "white",
-                            border: "none",
-                            boxShadow: "0 6px 24px rgba(0,0,0,0.3)",
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            zIndex: 100,
-                            transition: "all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = "scale(1.1) translateY(-5px)";
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = "scale(1) translateY(0)";
-                        }}
+                        className="absolute right-6 bottom-6 w-15 h-15 rounded-full bg-[#0B4F6C] text-white border-none shadow-2xl cursor-pointer flex items-center justify-center z-[100] transition-all duration-300 hover:scale-110 hover:-translate-y-1 active:scale-95"
                     >
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z" />
@@ -299,61 +238,47 @@ const ChatPage: React.FC = () => {
                 )}
             </div>
 
-            {/* ── RIGHT: Chat Panel Section ── */}
+            {/* ── RIGHT/BOTTOM: Chat Panel Section ── */}
             <div
-                style={{
-                    width: isPanelOpen ? 430 : 0,
-                    flexShrink: 0,
-                    height: "100%",
-                    position: "relative",
-                    display: "flex",
-                    flexDirection: "column",
-                    boxShadow: isPanelOpen ? "-8px 0 32px rgba(0,0,0,0.15)" : "none",
-                    zIndex: 20,
-                    transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                    overflow: "hidden",
-                    backgroundColor: "white",
-                }}
+                className={`bg-white transition-all duration-300 ease-in-out z-20 overflow-hidden flex flex-col shadow-[-8px_0_32px_rgba(0,0,0,0.15)]
+                    ${isPanelOpen
+                        ? 'h-[60vh] md:h-full w-full md:w-[320px] lg:w-[430px] opacity-100'
+                        : 'h-0 md:h-full w-full md:w-0 opacity-0 md:opacity-100'}
+                `}
             >
-                <div
-                    style={{
-                        position: "relative",
-                        width: "100%",
-                        height: "100%",
-                        overflow: "hidden",
-                    }}
-                >
+                <div className="relative w-full h-full overflow-hidden">
                     <style>{`
-                .chat-column-wrap {
-                    width: 100% !important;
-                    height: 100% !important;
-                }
-                .chat-column-wrap > div {
-                  position: absolute !important;
-                  top: 0 !important;
-                  right: 0 !important;
-                  bottom: 0 !important;
-                  left: 0 !important;
-                  width: 100% !important;
-                  max-width: 100% !important;
-                  height: 100% !important;
-                  border-radius: 0 !important;
-                  box-shadow: none !important;
-                  margin: 0 !important;
-                  visibility: visible !important;
-                  display: flex !important;
-                }
-                .chat-column-wrap > div > div:first-child {
-                   border-radius: 0 !important;
-                }
-              `}</style>
-                    <div className="chat-column-wrap" style={{ width: "100%", height: "100%" }}>
+                        .chat-column-wrap {
+                            width: 100% !important;
+                            height: 100% !important;
+                        }
+                        .chat-column-wrap > div {
+                            position: absolute !important;
+                            top: 0 !important;
+                            right: 0 !important;
+                            bottom: 0 !important;
+                            left: 0 !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            height: 100% !important;
+                            border-radius: 0 !important;
+                            box-shadow: none !important;
+                            margin: 0 !important;
+                            visibility: visible !important;
+                            display: flex !important;
+                        }
+                        .chat-column-wrap > div > div:first-child {
+                            border-radius: 0 !important;
+                        }
+                    `}</style>
+                    <div className="chat-column-wrap w-full h-full">
                         <ResumeChatPanel
                             isOpen={isPanelOpen}
                             onClose={() => setIsPanelOpen(false)}
                             mode={panelMode}
                             videoUrl={videoUrl}
                             resumeUrl={resumeUrl}
+                            ownerId={ownerId}
                             onModeChange={(m) => setPanelMode(m)}
                             isDataLoading={loading}
                             recruiterMode={true}

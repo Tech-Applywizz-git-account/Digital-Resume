@@ -883,6 +883,7 @@ const FinalResult: React.FC = () => {
           mode={panelMode}
           videoUrl={videoUrl}
           resumeUrl={resumeUrl}
+          ownerId={resumeOwnerUserId}
           onModeChange={(m: 'chat' | 'video' | 'resume') => setPanelMode(m)}
           onDownload={handleDownloadEnhanced}
           isDataLoading={loading}
