@@ -26,6 +26,7 @@ export interface ResumeChatPanelProps {
     onDownload?: () => void | Promise<void>;
     isDataLoading?: boolean;
     recruiterMode?: boolean;
+    ownerId?: string | null;
 }
 
 const DEFAULT_QUESTIONS = [
@@ -51,7 +52,8 @@ const ResumeChatPanel = ({
     onModeChange,
     onDownload,
     isDataLoading,
-    recruiterMode = false
+    recruiterMode = false,
+    ownerId = null
 }: ResumeChatPanelProps) => {
     const [messages, setMessages] = useState<Message[]>([
         {
@@ -173,7 +175,8 @@ const ResumeChatPanel = ({
                     resumeText: resumeText,
                     messages: messages.map(m => ({ role: m.sender === 'bot' ? 'assistant' : 'user', content: m.text })),
                     question: text,
-                    recruiterMode: recruiterMode
+                    recruiterMode: recruiterMode,
+                    ownerId: ownerId
                 }
             });
 
@@ -246,7 +249,7 @@ const ResumeChatPanel = ({
     };
 
     return (
-        <div className={`fixed top-20 right-6 w-full max-w-[420px] ${mode === 'video' ? 'h-auto' : 'h-[calc(100vh-100px)]'} bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 z-[110] flex flex-col overflow-hidden transition-all duration-300`}>
+        <div className={`fixed bottom-0 md:bottom-auto md:top-24 right-0 md:right-6 w-full md:w-[420px] ${mode === 'video' ? 'h-auto max-h-[90vh]' : 'h-[85vh] md:h-[calc(100vh-110px)]'} bg-white rounded-t-3xl md:rounded-2xl shadow-[0_-8px_30px_rgba(0,0,0,0.1)] md:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 z-[110] flex flex-col overflow-hidden transition-all duration-300`}>
             {/* Header */}
             <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-4 flex justify-between items-center text-white shrink-0">
                 <h3 className="font-semibold flex items-center gap-2">

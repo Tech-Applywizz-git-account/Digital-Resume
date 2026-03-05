@@ -24,7 +24,10 @@ import {
     FileUp,
     Download,
     FileText,
-    BarChart3
+    BarChart3,
+    Sparkles,
+    Brain,
+    Coins
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
@@ -49,6 +52,18 @@ interface CRMUser {
 
 interface CRMAdmin {
     email: string;
+    created_at: string;
+}
+
+interface UsageLog {
+    id: string;
+    user_id: string | null;
+    email?: string | null; // Added for display
+    feature_name: string;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    cost: number;
     created_at: string;
 }
 
@@ -85,6 +100,12 @@ export default function DigitalResumeDashboard() {
     const [analyticsId, setAnalyticsId] = useState('');
     const [analyticsTitle, setAnalyticsTitle] = useState('');
 
+    // AI Usage state
+    const [activeTab, setActiveTab] = useState<'users' | 'ai-usage'>('users');
+    const [usageLogs, setUsageLogs] = useState<UsageLog[]>([]);
+    const [usageStats, setUsageStats] = useState({ totalCalls: 0, totalTokens: 0, totalCost: 0 });
+    const [isUsageLoading, setIsUsageLoading] = useState(false);
+
     useEffect(() => {
         const checkAccess = async () => {
             console.log('--- Admin Access Check ---');
@@ -101,13 +122,6 @@ export default function DigitalResumeDashboard() {
             if (!hasSessionAccess && !currentUserEmail) {
                 console.log('No credentials found, redirecting to login...');
                 navigate('/DigitalResumeLogin');
-                return;
-            }
-
-            // Primary Admin Bypass
-            if (currentUserEmail === 'dinesh@applywizz.com') {
-                console.log('Primary Admin detected, bypassing DB check.');
-                loadData();
                 return;
             }
 
@@ -151,7 +165,7 @@ export default function DigitalResumeDashboard() {
 
     const loadData = async () => {
         setLoading(true);
-        await Promise.all([fetchUsers(), fetchAdmins()]);
+        await Promise.all([fetchUsers(), fetchAdmins(), fetchUsageLogs()]);
         setLoading(false);
     };
 
@@ -260,6 +274,63 @@ export default function DigitalResumeDashboard() {
             setAdmins(data || []);
         } catch (error: any) {
             console.error('Error fetching admins:', error);
+        }
+    };
+
+    const fetchUsageLogs = async () => {
+        try {
+            setIsUsageLoading(true);
+            // Step 1: plain select, no join (avoids PostgREST FK issues)
+            const { data, error } = await supabase
+                .from('openai_usage_logs')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                if (error.code === 'PGRST116' || error.message.includes('not found')) {
+                    console.warn('openai_usage_logs table might not exist yet');
+                    return;
+                }
+                throw error;
+            }
+
+            if (data) {
+                // Step 2: gather unique user_ids
+                const userIds = [...new Set(data.map((l: any) => l.user_id).filter(Boolean))] as string[];
+
+                // Step 3: look up emails from crm_users, fallback to profiles
+                const emailMap: Record<string, string> = {};
+                if (userIds.length > 0) {
+                    const { data: crmUsers } = await supabase
+                        .from('crm_users').select('id, email').in('id', userIds);
+                    if (crmUsers) crmUsers.forEach((u: any) => { if (u.id && u.email) emailMap[u.id] = u.email; });
+
+                    const missing = userIds.filter(id => !emailMap[id]);
+                    if (missing.length > 0) {
+                        const { data: profUsers } = await supabase
+                            .from('profiles').select('id, email').in('id', missing);
+                        if (profUsers) profUsers.forEach((u: any) => { if (u.id && u.email) emailMap[u.id] = u.email; });
+                    }
+                }
+
+                // Step 4: map emails onto logs
+                const formattedLogs = data.map((log: any) => ({
+                    ...log,
+                    email: (log.user_id && emailMap[log.user_id]) ? emailMap[log.user_id] : 'Guest / Anonymous'
+                }));
+
+                setUsageLogs(formattedLogs);
+                const totals = formattedLogs.reduce((acc: any, curr: any) => ({
+                    totalCalls: acc.totalCalls + 1,
+                    totalTokens: acc.totalTokens + (curr.total_tokens || 0),
+                    totalCost: acc.totalCost + (Number(curr.cost) || 0)
+                }), { totalCalls: 0, totalTokens: 0, totalCost: 0 });
+                setUsageStats(totals);
+            }
+        } catch (error: any) {
+            console.error('Error fetching usage logs:', error);
+        } finally {
+            setIsUsageLoading(false);
         }
     };
 
@@ -631,208 +702,319 @@ export default function DigitalResumeDashboard() {
 
             <main className="flex-1 p-4 md:p-6 overflow-hidden flex flex-col">
                 <div className="max-w-[1600px] mx-auto w-full flex-1 flex flex-col overflow-hidden">
-                    {/* Top Search Area */}
-                    <div className="mb-8 shrink-0 flex items-center gap-4 w-full">
-                        <div className="relative flex-1">
-                            <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                            <input
-                                type="text"
-                                placeholder="Search leads, clients, or domains..."
-                                className="w-full pl-12 pr-32 py-4 rounded-xl bg-[#f8fafc] border border-slate-200 focus:ring-4 focus:ring-slate-100 focus:border-slate-300 outline-none transition-all placeholder:text-slate-400 text-[15px] font-medium"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm">
-                                <Users className="w-4 h-4 text-slate-500" />
-                                <span className="text-xs font-bold text-slate-700">
-                                    {users.length} <span className="text-[10px] text-slate-400 uppercase tracking-tight ml-0.5">Total Users</span>
-                                </span>
+                    {/* Tab Switcher */}
+                    <div className="flex items-center gap-1 mb-6 bg-slate-100/50 p-1 rounded-xl w-fit shrink-0">
+                        <button
+                            onClick={() => setActiveTab('users')}
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'users'
+                                ? 'bg-white text-[#0B4F6C] shadow-md border border-slate-200'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
+                        >
+                            <Users className="w-4 h-4" />
+                            CRM Users
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('ai-usage')}
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'ai-usage'
+                                ? 'bg-white text-[#0B4F6C] shadow-md border border-slate-200'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
+                        >
+                            <Sparkles className="w-4 h-4" />
+                            AI Usage
+                        </button>
+                    </div>
+
+                    {activeTab === 'users' ? (
+                        <>
+                            {/* Top Search Area */}
+                            <div className="mb-8 shrink-0 flex items-center gap-4 w-full">
+                                <div className="relative flex-1">
+                                    <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search leads, clients, or domains..."
+                                        className="w-full pl-12 pr-32 py-4 rounded-xl bg-[#f8fafc] border border-slate-200 focus:ring-4 focus:ring-slate-100 focus:border-slate-300 outline-none transition-all placeholder:text-slate-400 text-[15px] font-medium"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm">
+                                        <Users className="w-4 h-4 text-slate-500" />
+                                        <span className="text-xs font-bold text-slate-700">
+                                            {users.length} <span className="text-[10px] text-slate-400 uppercase tracking-tight ml-0.5">Total Users</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {message && (
+                                <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
+                                    }`}>
+                                    {message.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                                    <p className="font-medium text-sm">{message.text}</p>
+                                    <button onClick={() => setMessage(null)} className="ml-auto hover:bg-black/5 p-1 rounded-lg">
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Table container */}
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0">
+                                <div className="overflow-y-auto flex-1">
+                                    {loading ? (
+                                        <div className="flex flex-col items-center justify-center h-full">
+                                            <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin mb-3" />
+                                            <p className="text-slate-500 text-sm font-medium tracking-wide">Syncing CRM Database...</p>
+                                        </div>
+                                    ) : filteredUsers.length === 0 ? (
+                                        <div className="text-center py-20">
+                                            <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                <Search className="w-8 h-8 text-slate-300" />
+                                            </div>
+                                            <h3 className="text-base font-bold text-slate-900">No records found</h3>
+                                            <p className="text-slate-500 text-xs">Clear filters to see all users</p>
+                                        </div>
+                                    ) : (
+                                        <table className="w-full text-left border-collapse table-fixed">
+                                            <thead className="sticky top-0 bg-slate-50 z-10">
+                                                <tr className="border-b border-slate-200 bg-[#fbfcfd]">
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[35%]">Company Application Email</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[22%]">Personal Email</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Resume</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Credits</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%]">Joined</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-center">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {filteredUsers.map((user_row) => (
+                                                    <tr key={user_row.email} className="hover:bg-slate-50/80 transition-colors group">
+                                                        <td className="px-6 py-5 text-[14px] font-medium text-slate-800">
+                                                            <div className="flex flex-col">
+                                                                {user_row.profiles?.full_name && (
+                                                                    <span className="font-bold text-slate-900">{user_row.profiles.full_name}</span>
+                                                                )}
+                                                                {user_row.company_application_email ? (
+                                                                    <span className={user_row.profiles?.full_name ? "text-xs text-slate-500" : ""}>
+                                                                        {user_row.company_application_email}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-slate-400 font-normal">Dashboard Record</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-5">
+                                                            <p className="font-medium text-slate-600 text-[13px] truncate">{user_row.email}</p>
+                                                        </td>
+                                                        <td className="px-6 py-5 text-center">
+                                                            <div className="flex flex-col items-center gap-2">
+                                                                {user_row.resume_url ? (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (user_row.latest_job_request_id) {
+                                                                                    navigate(`/final-result/${user_row.latest_job_request_id}`);
+                                                                                } else if (user_row.resume_url) {
+                                                                                    window.open(user_row.resume_url, '_blank');
+                                                                                }
+                                                                            }}
+                                                                            className="flex items-center gap-1.5 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg hover:bg-[#0B4F6C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                                                                        >
+                                                                            <FileText className="w-3.5 h-3.5" />
+                                                                            View
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleReplaceResumeClick(user_row.email)}
+                                                                            disabled={isReplacingResume && replacingResumeEmail === user_row.email}
+                                                                            className="flex items-center gap-1.5 px-4 py-2 bg-[#159A9C] text-white rounded-lg hover:bg-[#159A9C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                                        >
+                                                                            {isReplacingResume && replacingResumeEmail === user_row.email ? (
+                                                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                            ) : (
+                                                                                <FileUp className="w-3.5 h-3.5" />
+                                                                            )}
+                                                                            Replace
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => handleReplaceResumeClick(user_row.email)}
+                                                                        disabled={isReplacingResume && replacingResumeEmail === user_row.email}
+                                                                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                                    >
+                                                                        {isReplacingResume && replacingResumeEmail === user_row.email ? (
+                                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                        ) : (
+                                                                            <Plus className="w-3.5 h-3.5" />
+                                                                        )}
+                                                                        Add Resume
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-5">
+                                                            {editingCredits === user_row.email ? (
+                                                                <div className="flex items-center gap-2 focus-within:z-20 justify-center">
+                                                                    <input
+                                                                        type="number"
+                                                                        className="w-16 px-2 py-1.5 text-base font-bold border-2 rounded-lg focus:ring-2 focus:ring-[#0B4F6C]/20 border-slate-300"
+                                                                        value={newCreditValue}
+                                                                        onChange={(e) => setNewCreditValue(parseInt(e.target.value))}
+                                                                        autoFocus
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => handleUpdateCredits(user_row.email)}
+                                                                        disabled={isUpdatingCredits}
+                                                                        className="bg-[#0B4F6C] text-white p-2 rounded-lg hover:opacity-90 disabled:opacity-50"
+                                                                    >
+                                                                        {isUpdatingCredits ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setEditingCredits(null)}
+                                                                        className="bg-slate-200 text-slate-600 p-2 rounded-lg hover:bg-slate-300"
+                                                                    >
+                                                                        <X className="w-5 h-5" />
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex items-center gap-3 group/credit justify-center">
+                                                                    <div className={`px-4 py-1.5 bg-white rounded-xl text-[16px] font-black border-2 ${user_row.credits_remaining > 0
+                                                                        ? 'text-emerald-700 border-emerald-200 bg-emerald-50/30'
+                                                                        : 'text-rose-700 border-rose-200 bg-rose-50/30'
+                                                                        }`}>
+                                                                        {user_row.credits_remaining}
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingCredits(user_row.email);
+                                                                            setNewCreditValue(user_row.credits_remaining);
+                                                                        }}
+                                                                        className="opacity-0 group-hover/credit:opacity-100 p-2 text-slate-500 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all"
+                                                                    >
+                                                                        <Edit className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-5">
+                                                            <p className="text-xs font-bold text-slate-500 tracking-tight">{formatDate(user_row.user_created_at)}</p>
+                                                        </td>
+                                                        <td className="px-6 py-5 text-center">
+                                                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${user_row.is_active ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                                                                <span className={`w-1.5 h-1.5 rounded-full ${user_row.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                                                                {user_row.is_active ? 'Active' : 'Offline'}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            {/* AI Stats Overview */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 shrink-0">
+                                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-5">
+                                    <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center border border-blue-100 shrink-0">
+                                        <Brain className="w-7 h-7 text-blue-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total API Calls</p>
+                                        <p className="text-3xl font-black text-slate-900 leading-none">{usageStats.totalCalls}</p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-5">
+                                    <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center border border-indigo-100 shrink-0">
+                                        <Sparkles className="w-7 h-7 text-indigo-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tokens Consumed</p>
+                                        <p className="text-3xl font-black text-slate-900 leading-none">{usageStats.totalTokens.toLocaleString()}</p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-5">
+                                    <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center border border-emerald-100 shrink-0">
+                                        <Coins className="w-7 h-7 text-emerald-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Estimated Cost</p>
+                                        <p className="text-3xl font-black text-emerald-600 leading-none">${usageStats.totalCost.toFixed(4)}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Usage Log Table */}
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0">
+                                <div className="p-4 border-b border-slate-100 bg-[#fbfcfd] flex justify-between items-center shrink-0">
+                                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                        <RefreshCcw className={`w-4 h-4 text-blue-600 ${isUsageLoading ? 'animate-spin' : ''}`} />
+                                        Recent AI Conversations
+                                    </h3>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">showing {usageLogs.length} entries</span>
+                                </div>
+                                <div className="overflow-y-auto flex-1">
+                                    {isUsageLoading && usageLogs.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center h-full py-20">
+                                            <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin mb-3" />
+                                            <p className="text-slate-500 text-sm">Fetching reports...</p>
+                                        </div>
+                                    ) : usageLogs.length === 0 ? (
+                                        <div className="text-center py-20">
+                                            <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                <Brain className="w-8 h-8 text-slate-300" />
+                                            </div>
+                                            <h3 className="text-base font-bold text-slate-900">No AI logs yet</h3>
+                                            <p className="text-slate-500 text-xs">Conversations will appear once visitors interact with AI</p>
+                                        </div>
+                                    ) : (
+                                        <table className="w-full text-left border-collapse table-fixed">
+                                            <thead className="sticky top-0 bg-slate-50 z-10">
+                                                <tr className="border-b border-slate-200 bg-[#fbfcfd]">
+                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[30%]">Candidate / User</th>
+                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%]">Feature</th>
+                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Tokens</th>
+                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Cost</th>
+                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[25%] text-right">Time</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {usageLogs.map((log) => (
+                                                    <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className={`w-2 h-2 rounded-full ${log.user_id ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
+                                                                <span className="text-xs font-bold text-slate-700 truncate" title={log.email || 'Anonymous'}>
+                                                                    {log.email || 'Anonymous/Guest'}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold uppercase border border-blue-100 leading-none">
+                                                                {log.feature_name.replace('_', ' ')}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-center font-medium text-slate-600 text-xs">
+                                                            {log.total_tokens.toLocaleString()}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-center">
+                                                            <span className="text-xs font-bold text-emerald-600 tracking-tight">${Number(log.cost).toFixed(5)}</span>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <span className="text-[10px] font-bold text-slate-400">{new Date(log.created_at).toLocaleString()}</span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-                    {message && (
-                        <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
-                            }`}>
-                            {message.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                            <p className="font-medium text-sm">{message.text}</p>
-                            <button onClick={() => setMessage(null)} className="ml-auto hover:bg-black/5 p-1 rounded-lg">
-                                <X className="w-4 h-4" />
-                            </button>
-                        </div>
                     )}
-
-                    {/* Table container */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0">
-                        <div className="overflow-y-auto flex-1">
-                            {loading ? (
-                                <div className="flex flex-col items-center justify-center h-full">
-                                    <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin mb-3" />
-                                    <p className="text-slate-500 text-sm font-medium tracking-wide">Syncing CRM Database...</p>
-                                </div>
-                            ) : filteredUsers.length === 0 ? (
-                                <div className="text-center py-20">
-                                    <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <Search className="w-8 h-8 text-slate-300" />
-                                    </div>
-                                    <h3 className="text-base font-bold text-slate-900">No records found</h3>
-                                    <p className="text-slate-500 text-xs">Clear filters to see all users</p>
-                                </div>
-                            ) : (
-                                <table className="w-full text-left border-collapse table-fixed">
-                                    <thead className="sticky top-0 bg-slate-50 z-10">
-                                        <tr className="border-b border-slate-200 bg-[#fbfcfd]">
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[30%]">Company Application Email</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[22%]">Personal Email</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Resume</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Credits</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%]">Joined</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-center">Status</th>
-                                            <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[5%] text-right">Audit</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {filteredUsers.map((user_row) => (
-                                            <tr key={user_row.email} className="hover:bg-slate-50/80 transition-colors group">
-                                                <td className="px-6 py-5 text-[14px] font-medium text-slate-800">
-                                                    <div className="flex flex-col">
-                                                        {user_row.profiles?.full_name && (
-                                                            <span className="font-bold text-slate-900">{user_row.profiles.full_name}</span>
-                                                        )}
-                                                        {user_row.company_application_email ? (
-                                                            <span className={user_row.profiles?.full_name ? "text-xs text-slate-500" : ""}>
-                                                                {user_row.company_application_email}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-slate-400 font-normal">Dashboard Record</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-5">
-                                                    <p className="font-medium text-slate-600 text-[13px] truncate">{user_row.email}</p>
-                                                </td>
-                                                <td className="px-6 py-5 text-center">
-                                                    <div className="flex flex-col items-center gap-2">
-                                                        {user_row.resume_url ? (
-                                                            <div className="flex items-center gap-2">
-                                                                <button
-                                                                    onClick={() => {
-                                                                        if (user_row.latest_job_request_id) {
-                                                                            navigate(`/final-result/${user_row.latest_job_request_id}`);
-                                                                        } else if (user_row.resume_url) {
-                                                                            window.open(user_row.resume_url, '_blank');
-                                                                        }
-                                                                    }}
-                                                                    className="flex items-center gap-1.5 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg hover:bg-[#0B4F6C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
-                                                                >
-                                                                    <FileText className="w-3.5 h-3.5" />
-                                                                    View
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleReplaceResumeClick(user_row.email)}
-                                                                    disabled={isReplacingResume && replacingResumeEmail === user_row.email}
-                                                                    className="flex items-center gap-1.5 px-4 py-2 bg-[#159A9C] text-white rounded-lg hover:bg-[#159A9C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
-                                                                >
-                                                                    {isReplacingResume && replacingResumeEmail === user_row.email ? (
-                                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                                    ) : (
-                                                                        <FileUp className="w-3.5 h-3.5" />
-                                                                    )}
-                                                                    Replace
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <button
-                                                                onClick={() => handleReplaceResumeClick(user_row.email)}
-                                                                disabled={isReplacingResume && replacingResumeEmail === user_row.email}
-                                                                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
-                                                            >
-                                                                {isReplacingResume && replacingResumeEmail === user_row.email ? (
-                                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                                ) : (
-                                                                    <Plus className="w-3.5 h-3.5" />
-                                                                )}
-                                                                Add Resume
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-5">
-                                                    {editingCredits === user_row.email ? (
-                                                        <div className="flex items-center gap-2 focus-within:z-20 justify-center">
-                                                            <input
-                                                                type="number"
-                                                                className="w-16 px-2 py-1.5 text-base font-bold border-2 rounded-lg focus:ring-2 focus:ring-[#0B4F6C]/20 border-slate-300"
-                                                                value={newCreditValue}
-                                                                onChange={(e) => setNewCreditValue(parseInt(e.target.value))}
-                                                                autoFocus
-                                                            />
-                                                            <button
-                                                                onClick={() => handleUpdateCredits(user_row.email)}
-                                                                disabled={isUpdatingCredits}
-                                                                className="bg-[#0B4F6C] text-white p-2 rounded-lg hover:opacity-90 disabled:opacity-50"
-                                                            >
-                                                                {isUpdatingCredits ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                                                            </button>
-                                                            <button
-                                                                onClick={() => setEditingCredits(null)}
-                                                                className="bg-slate-200 text-slate-600 p-2 rounded-lg hover:bg-slate-300"
-                                                            >
-                                                                <X className="w-5 h-5" />
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex items-center gap-3 group/credit justify-center">
-                                                            <div className={`px-4 py-1.5 bg-white rounded-xl text-[16px] font-black border-2 ${user_row.credits_remaining > 0
-                                                                ? 'text-emerald-700 border-emerald-200 bg-emerald-50/30'
-                                                                : 'text-rose-700 border-rose-200 bg-rose-50/30'
-                                                                }`}>
-                                                                {user_row.credits_remaining}
-                                                            </div>
-                                                            <button
-                                                                onClick={() => {
-                                                                    setEditingCredits(user_row.email);
-                                                                    setNewCreditValue(user_row.credits_remaining);
-                                                                }}
-                                                                className="opacity-0 group-hover/credit:opacity-100 p-2 text-slate-500 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all"
-                                                            >
-                                                                <Edit className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-5 text-slate-700 text-[14px] font-bold">
-                                                    {formatDate(user_row.user_created_at)}
-                                                </td>
-                                                <td className="px-6 py-5 text-center">
-                                                    <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider border-2 ${user_row.is_active
-                                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                                        : 'bg-slate-200 text-slate-700 border-slate-300'
-                                                        }`}>
-                                                        <div className={`w-2.5 h-2.5 rounded-full ${user_row.is_active ? 'bg-emerald-600' : 'bg-slate-500'}`} />
-                                                        {user_row.is_active ? 'Active' : 'Locked'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button
-                                                        onClick={async () => {
-                                                            await fetchUsers();
-                                                            setMessage({ type: 'success', text: 'User list refreshed successfully' });
-                                                        }}
-                                                        disabled={isRefreshingUsers}
-                                                        className="p-2 text-slate-400 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all disabled:opacity-50"
-                                                        title="Sync with database"
-                                                    >
-                                                        <RefreshCcw className={`w-4 h-4 ${isRefreshingUsers ? 'animate-spin text-[#0B4F6C]' : ''}`} />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-                    </div>
                 </div>
             </main>
 
