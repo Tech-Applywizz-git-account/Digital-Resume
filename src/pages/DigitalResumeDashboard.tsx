@@ -90,10 +90,13 @@ export default function DigitalResumeDashboard() {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
     const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
 
-    // New: Resume replacing state
     const [replacingResumeEmail, setReplacingResumeEmail] = useState<string | null>(null);
+    const [resumeToConfirmReplace, setResumeToConfirmReplace] = useState<string | null>(null);
     const [isReplacingResume, setIsReplacingResume] = useState(false);
     const resumeFileInputRef = React.useRef<HTMLInputElement>(null);
+
+    // Refresh row state
+    const [refreshingEmail, setRefreshingEmail] = useState<string | null>(null);
 
     // Analytics state
     const [analyticsOpen, setAnalyticsOpen] = useState(false);
@@ -544,7 +547,13 @@ export default function DigitalResumeDashboard() {
     };
 
     const handleReplaceResumeClick = (email: string) => {
-        setReplacingResumeEmail(email);
+        setResumeToConfirmReplace(email);
+    };
+
+    const handleConfirmReplace = () => {
+        if (!resumeToConfirmReplace) return;
+        setReplacingResumeEmail(resumeToConfirmReplace);
+        setResumeToConfirmReplace(null);
         resumeFileInputRef.current?.click();
     };
 
@@ -613,6 +622,19 @@ export default function DigitalResumeDashboard() {
             setIsReplacingResume(false);
             setReplacingResumeEmail(null);
             if (resumeFileInputRef.current) resumeFileInputRef.current.value = '';
+        }
+    };
+
+    const handleRefreshUser = async (email: string) => {
+        setRefreshingEmail(email);
+        try {
+            await fetchUsers(); // This re-fetches everything, which is safest to keep data in sync
+            setMessage({ type: 'success', text: `Data refreshed for ${email}` });
+        } catch (error) {
+            console.error('Failed to refresh data:', error);
+            setMessage({ type: 'error', text: 'Failed to refresh user data' });
+        } finally {
+            setRefreshingEmail(null);
         }
     };
 
@@ -729,18 +751,18 @@ export default function DigitalResumeDashboard() {
                             {/* Top Search Area */}
                             <div className="mb-8 shrink-0 flex items-center gap-4 w-full">
                                 <div className="relative flex-1">
-                                    <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                                    <Search className="w-5 h-5 text-[#0B4F6C]/60 absolute left-4 top-1/2 -translate-y-1/2" />
                                     <input
                                         type="text"
                                         placeholder="Search leads, clients, or domains..."
-                                        className="w-full pl-12 pr-32 py-4 rounded-xl bg-[#f8fafc] border border-slate-200 focus:ring-4 focus:ring-slate-100 focus:border-slate-300 outline-none transition-all placeholder:text-slate-400 text-[15px] font-medium"
+                                        className="w-full pl-12 pr-32 py-4 rounded-xl bg-white border border-[#0B4F6C]/20 focus:ring-4 focus:ring-[#0B4F6C]/10 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-400 text-[15px] font-medium shadow-sm"
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm">
-                                        <Users className="w-4 h-4 text-slate-500" />
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
+                                        <Users className="w-4 h-4 text-[#0B4F6C]" />
                                         <span className="text-xs font-bold text-slate-700">
-                                            {users.length} <span className="text-[10px] text-slate-400 uppercase tracking-tight ml-0.5">Total Users</span>
+                                            {users.length} <span className="text-[10px] text-slate-500 uppercase tracking-tight ml-0.5">Total Users</span>
                                         </span>
                                     </div>
                                 </div>
@@ -777,12 +799,13 @@ export default function DigitalResumeDashboard() {
                                         <table className="w-full text-left border-collapse table-fixed">
                                             <thead className="sticky top-0 bg-slate-50 z-10">
                                                 <tr className="border-b border-slate-200 bg-[#fbfcfd]">
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[35%]">Company Application Email</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[22%]">Personal Email</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Resume</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Credits</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%]">Joined</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-center">Status</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[23%] text-left">Company Application Email</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[24%] text-left">Personal Email</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[14%] text-center">Resume</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Credits</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Joined</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Status</th>
+                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-center">Audit</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
@@ -851,7 +874,7 @@ export default function DigitalResumeDashboard() {
                                                                 )}
                                                             </div>
                                                         </td>
-                                                        <td className="px-6 py-5">
+                                                        <td className="px-6 py-5 text-center relative">
                                                             {editingCredits === user_row.email ? (
                                                                 <div className="flex items-center gap-2 focus-within:z-20 justify-center">
                                                                     <input
@@ -876,7 +899,7 @@ export default function DigitalResumeDashboard() {
                                                                     </button>
                                                                 </div>
                                                             ) : (
-                                                                <div className="flex items-center gap-3 group/credit justify-center">
+                                                                <div className="flex items-center gap-3 group/credit relative w-fit mx-auto">
                                                                     <div className={`px-4 py-1.5 bg-white rounded-xl text-[16px] font-black border-2 ${user_row.credits_remaining > 0
                                                                         ? 'text-emerald-700 border-emerald-200 bg-emerald-50/30'
                                                                         : 'text-rose-700 border-rose-200 bg-rose-50/30'
@@ -888,14 +911,14 @@ export default function DigitalResumeDashboard() {
                                                                             setEditingCredits(user_row.email);
                                                                             setNewCreditValue(user_row.credits_remaining);
                                                                         }}
-                                                                        className="opacity-0 group-hover/credit:opacity-100 p-2 text-slate-500 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all"
+                                                                        className="absolute -right-[40px] top-1/2 -translate-y-1/2 opacity-0 group-hover/credit:opacity-100 p-2 text-slate-500 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all z-10"
                                                                     >
                                                                         <Edit className="w-4 h-4" />
                                                                     </button>
                                                                 </div>
                                                             )}
                                                         </td>
-                                                        <td className="px-6 py-5">
+                                                        <td className="px-6 py-5 text-center">
                                                             <p className="text-xs font-bold text-slate-500 tracking-tight">{formatDate(user_row.user_created_at)}</p>
                                                         </td>
                                                         <td className="px-6 py-5 text-center">
@@ -903,6 +926,16 @@ export default function DigitalResumeDashboard() {
                                                                 <span className={`w-1.5 h-1.5 rounded-full ${user_row.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
                                                                 {user_row.is_active ? 'Active' : 'Offline'}
                                                             </div>
+                                                        </td>
+                                                        <td className="px-6 py-5 text-center">
+                                                            <button
+                                                                onClick={() => handleRefreshUser(user_row.email)}
+                                                                disabled={refreshingEmail === user_row.email}
+                                                                className="p-2 text-slate-400 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/10 rounded-lg transition-colors border border-transparent hover:border-[#0B4F6C]/20 disabled:opacity-50"
+                                                                title="Refresh user data"
+                                                            >
+                                                                <RefreshCcw className={`w-4 h-4 ${refreshingEmail === user_row.email ? 'animate-spin text-[#0B4F6C]' : ''}`} />
+                                                            </button>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -1198,6 +1231,33 @@ export default function DigitalResumeDashboard() {
                     </div>
                 )
             }
+
+            {/* Resume Replace Confirmation Modal */}
+            {resumeToConfirmReplace && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 p-8 text-center">
+                        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <FileUp className="w-8 h-8 text-blue-500" />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">Replace Resume?</h3>
+                        <p className="text-sm text-slate-500 mb-6">Are you sure you want to replace the resume for <br /><span className="font-semibold text-slate-700 truncate block mt-1">{resumeToConfirmReplace}</span></p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setResumeToConfirmReplace(null)}
+                                className="flex-1 px-4 py-3 rounded-2xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all text-sm"
+                            >
+                                No, Cancel
+                            </button>
+                            <button
+                                onClick={handleConfirmReplace}
+                                className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-2xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all text-sm"
+                            >
+                                Yes, Replace
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Hidden File Input for Resume Replace */}
             <input
                 type="file"

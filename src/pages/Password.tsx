@@ -186,7 +186,7 @@
 
 //       {/* Sidebar */}
 //       <div 
-//         className={`fixed lg:static inset-y-0 left-0 z-50 w-72 transform ${
+//         className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${
 //           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
 //         } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
 //       >
@@ -601,6 +601,21 @@ export default function Password() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Check password requirements
+    const passwordRequirements = [
+      { met: formData.newPassword.length >= 8, error: "Password must be at least 8 characters" },
+      { met: /[A-Z]/.test(formData.newPassword), error: "Password must contain an uppercase letter" },
+      { met: /[a-z]/.test(formData.newPassword), error: "Password must contain a lowercase letter" },
+      { met: /[0-9]/.test(formData.newPassword), error: "Password must contain a number" },
+      { met: /[!@#$%^&*]/.test(formData.newPassword), error: "Password must contain a special character" }
+    ];
+
+    const unmetRequirement = passwordRequirements.find(req => !req.met);
+    if (unmetRequirement) {
+      setError(unmetRequirement.error);
+      return;
+    }
+
     if (showForgotPassword) {
       if (!otpVerified) {
         setError('Please verify OTP first');
@@ -612,8 +627,8 @@ export default function Password() {
         return;
       }
 
-      if (formData.newPassword.length < 8) {
-        setError('Password must be at least 8 characters');
+      if (formData.newPassword !== formData.confirmPassword) {
+        setError('New passwords do not match');
         return;
       }
 
@@ -685,7 +700,7 @@ export default function Password() {
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <div className={`fixed lg:static inset-y-0 left-0 z-50 w-72 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out`}>
+      <div className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out`}>
         <Sidebar userEmail={user?.email || ''} onLogout={handleLogout} />
       </div>
 
@@ -820,3 +835,4 @@ export default function Password() {
     </div>
   );
 }
+

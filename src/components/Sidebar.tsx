@@ -232,7 +232,7 @@
 
 
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -263,7 +263,13 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
   const location = useLocation();
 
   // collapsed = icon-only rail (like 2nd screenshot)
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    return localStorage.getItem("sidebar_collapsed") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sidebar_collapsed", String(collapsed));
+  }, [collapsed]);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
 

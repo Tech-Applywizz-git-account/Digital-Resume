@@ -131,7 +131,7 @@ const HrEmailPage: React.FC = () => {
 
       {/* Sidebar */}
       <div 
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 transform ${
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
       >
