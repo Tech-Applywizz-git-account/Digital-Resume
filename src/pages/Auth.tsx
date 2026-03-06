@@ -583,6 +583,20 @@ export default function Auth() {
       return;
     }
 
+    const passwordRequirements = [
+      { met: formData.password1.length >= 8, error: "Password must be at least 8 characters" },
+      { met: /[A-Z]/.test(formData.password1), error: "Password must contain an uppercase letter" },
+      { met: /[a-z]/.test(formData.password1), error: "Password must contain a lowercase letter" },
+      { met: /[0-9]/.test(formData.password1), error: "Password must contain a number" },
+      { met: /[!@#$%^&*]/.test(formData.password1), error: "Password must contain a special character" }
+    ];
+
+    const unmetRequirement = passwordRequirements.find(req => !req.met);
+    if (unmetRequirement) {
+      alert(unmetRequirement.error);
+      return;
+    }
+
     if (!otpVerified) {
       alert("Please verify your email with OTP first");
       return;
@@ -659,11 +673,10 @@ export default function Auth() {
                 </button>
 
                 {/* <button
-                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
-                    activeTab === "signup"
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "text-slate-600 bg-transparent hover:bg-white"
-                  }`}
+                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === "signup"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-600 bg-transparent hover:bg-white"
+                    }`}
                   onClick={() => {
                     setActiveTab("signup");
                     resetOTPState();

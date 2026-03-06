@@ -32,10 +32,10 @@ export default function Profile() {
 
   const fetchUserProfile = async () => {
     if (!user?.id) return;
-    
+
     try {
       setLoading(true);
-      
+
       // Fetch user profile from Supabase
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
@@ -81,16 +81,29 @@ export default function Profile() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!user?.id) return;
-    
+
     try {
-      // Check if profile details record exists
+      // 1. Update profiles table for name fields
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          first_name: formData.firstName,
+          last_name: formData.lastName
+        })
+        .eq('id', user.id);
+
+      if (profileError) throw profileError;
+
+      // 2. Check if profile details record exists
       const { data: existingDetails, error: fetchError } = await supabase
         .from('profile_details')
         .select('id')
         .eq('profile_id', user.id)
         .maybeSingle();
+
+      if (fetchError) throw fetchError;
 
       let saveError = null;
 
@@ -124,7 +137,7 @@ export default function Profile() {
       }
 
       if (saveError) throw saveError;
-      
+
       alert('Profile updated successfully!');
     } catch (error: any) {
       console.error('Error updating profile:', error);
@@ -137,17 +150,16 @@ export default function Profile() {
       <div className="min-h-screen bg-white flex">
         {/* Mobile sidebar overlay */}
         {sidebarOpen && (
-          <div 
+          <div
             className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           ></div>
         )}
 
         {/* Sidebar */}
-        <div 
-          className={`fixed lg:static inset-y-0 left-0 z-50 w-72 transform ${
-            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
+        <div
+          className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+            } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
         >
           <Sidebar userEmail={user?.email || ''} onLogout={handleLogout} />
         </div>
@@ -181,17 +193,16 @@ export default function Profile() {
     <div className="min-h-screen bg-white flex">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         ></div>
       )}
 
       {/* Sidebar */}
-      <div 
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 transform ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
+      <div
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
       >
         <Sidebar userEmail={user?.email || ''} onLogout={handleLogout} />
       </div>
@@ -245,8 +256,7 @@ export default function Profile() {
                         name="firstName"
                         value={formData.firstName}
                         onChange={handleChange}
-                        disabled // First name is disabled as requested
-                        className="w-full pl-9 sm:pl-10 pr-3 py-2 sm:pr-4 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B4F6C] focus:border-transparent outline-none transition-all bg-gray-100 text-sm sm:text-base"
+                        className="w-full pl-9 sm:pl-10 pr-3 py-2 sm:pr-4 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B4F6C] focus:border-transparent outline-none transition-all text-sm sm:text-base"
                       />
                     </div>
                   </div>
@@ -262,8 +272,7 @@ export default function Profile() {
                         name="lastName"
                         value={formData.lastName}
                         onChange={handleChange}
-                        disabled // Last name is disabled as requested
-                        className="w-full pl-9 sm:pl-10 pr-3 py-2 sm:pr-4 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B4F6C] focus:border-transparent outline-none transition-all bg-gray-100 text-sm sm:text-base"
+                        className="w-full pl-9 sm:pl-10 pr-3 py-2 sm:pr-4 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B4F6C] focus:border-transparent outline-none transition-all text-sm sm:text-base"
                       />
                     </div>
                   </div>

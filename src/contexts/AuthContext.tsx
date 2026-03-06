@@ -126,7 +126,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(true);
       setUser(mockUser);
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please try again.');
+      if (err.message && err.message.toLowerCase().includes('invalid login credentials')) {
+        // Double check if the user exists at all
+        const { data: existingUser } = await supabase
+          .from('profiles')
+          .select('email')
+          .ilike('email', email.trim())
+          .maybeSingle();
+
+        if (existingUser) {
+          setError('Invalid login credentials.');
+        } else {
+          setError('User not found. If you do not have an account, please sign up first.');
+        }
+      } else {
+        setError(err.message || 'Login failed. Please try again.');
+      }
       throw err;
     } finally {
       setLoading(false);
