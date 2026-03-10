@@ -27,7 +27,8 @@ import {
     BarChart3,
     Sparkles,
     Brain,
-    Coins
+    Coins,
+    Link
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
@@ -44,7 +45,10 @@ interface CRMUser {
     added_by: string | null;
     resume_url?: string | null;
     resume_name?: string | null;
+    vercel_portfolio_url?: string | null;
     latest_job_request_id?: string | null;
+    current_stage?: string | null;
+    assigned_to_email?: string | null;
     profiles?: {
         full_name: string | null;
     } | null;
@@ -186,7 +190,9 @@ export default function DigitalResumeDashboard() {
 
             // 2. Identify identifiers
             const userIds = crmData.map(u => u.user_id).filter(id => !!id);
-            const userEmails = crmData.map(u => u.email).filter(e => !!e);
+            const userEmails = Array.from(new Set(
+                crmData.flatMap(u => [u.email, u.company_application_email]).filter(Boolean) as string[]
+            ));
 
             if (userIds.length > 0 || userEmails.length > 0) {
                 const BATCH_SIZE = 50;
@@ -245,16 +251,84 @@ export default function DigitalResumeDashboard() {
                     }
                 });
 
-                const usersWithDetails = crmData.map(user => ({
-                    ...user,
-                    profiles: profileMap.has(user.user_id)
-                        ? { full_name: profileMap.get(user.user_id) }
-                        : null,
-                    resume_url: resumeMap.get(user.email)?.url || null,
-                    resume_name: resumeMap.get(user.email)?.name || null,
-                    latest_job_request_id: jobRequestMap.get(user.email) || null
-                }));
-                setUsers(usersWithDetails);
+                // Immediately load the dashboard interface with rapid Supabase records!
+                const initialUsersWithDetails = crmData.map(user => {
+                    const localResume = resumeMap.get(user.email);
+                    return {
+                        ...user,
+                        profiles: profileMap.has(user.user_id) && user.user_id
+                            ? { full_name: profileMap.get(user.user_id) }
+                            : null,
+                        resume_url: localResume?.url || null,
+                        resume_name: localResume ? localResume.name : null,
+                        latest_job_request_id: jobRequestMap.get(user.email) || null,
+                        vercel_portfolio_url: null, // to be populated seamlessly in background
+                        current_stage: null,
+                        assigned_to_email: null
+                    };
+                });
+                setUsers(initialUsersWithDetails);
+
+                // Start background streaming logic to prevent hanging UI
+                (async () => {
+                    const BATCH = 5;
+                    for (let i = 0; i < userEmails.length; i += BATCH) {
+                        const chunk = userEmails.slice(i, i + BATCH);
+                        const chunkResults = await Promise.all(chunk.map(async (email) => {
+                            try {
+                                const response = await fetch(`/api/proxy-applywizz?email=${email}`);
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    return { email, data };
+                                }
+                            } catch (err) {
+                                // silent network fail
+                            }
+                            return { email, data: null };
+                        }));
+
+                        const tempVercelMap = new Map();
+                        chunkResults.forEach((v: any) => { if (v.data) tempVercelMap.set(v.email, v.data); });
+
+                        if (tempVercelMap.size > 0) {
+                            setUsers(prevUsers => prevUsers.map(user => {
+                                const vRawPersonal = tempVercelMap.get(user.email);
+                                const vRawApp = user.company_application_email ? tempVercelMap.get(user.company_application_email) : null;
+
+                                // Only process if this user got data in the current batch chunk
+                                if (!vRawPersonal && !vRawApp) return user;
+
+                                const vDataPersonal = Array.isArray(vRawPersonal) ? vRawPersonal[0] : vRawPersonal;
+                                const vDataApp = Array.isArray(vRawApp) ? vRawApp[0] : vRawApp;
+
+                                const vResumeUrl =
+                                    vDataPersonal?.data?.resume?.pdf_path?.[0] || vDataApp?.data?.resume?.pdf_path?.[0] ||
+                                    vDataPersonal?.resume?.pdf_path?.[0] || vDataApp?.resume?.pdf_path?.[0];
+
+                                const portP = vDataPersonal?.data?.portfolio?.link || vDataPersonal?.portfolio?.link || vDataPersonal?.link;
+                                const portA = vDataApp?.data?.portfolio?.link || vDataApp?.portfolio?.link || vDataApp?.link;
+
+                                const isVercel = (url?: string) => typeof url === "string" && url.toLowerCase().includes('vercel.app');
+                                const finalVercelPortfolio = isVercel(portP) ? portP : (isVercel(portA) ? portA : null);
+
+                                const vStage = vDataPersonal?.data?.current_stage || vDataApp?.data?.current_stage || vDataPersonal?.current_stage || vDataApp?.current_stage;
+                                const vAssigned = vDataPersonal?.data?.assigned_to_email || vDataApp?.data?.assigned_to_email || vDataPersonal?.assigned_to_email || vDataApp?.assigned_to_email;
+
+                                const finalResumeUrl = user.resume_url || vResumeUrl || null;
+                                const finalResumeName = user.resume_name || (vResumeUrl ? vResumeUrl.split('?')[0].split('/').pop() : null);
+
+                                return {
+                                    ...user,
+                                    resume_url: finalResumeUrl,
+                                    resume_name: finalResumeName,
+                                    vercel_portfolio_url: user.vercel_portfolio_url || finalVercelPortfolio,
+                                    current_stage: user.current_stage || vStage || null,
+                                    assigned_to_email: user.assigned_to_email || vAssigned || null
+                                };
+                            }));
+                        }
+                    }
+                })();
             } else {
                 setUsers(crmData);
             }
@@ -301,18 +375,14 @@ export default function DigitalResumeDashboard() {
                 // Step 2: gather unique user_ids
                 const userIds = Array.from(new Set(data.map((l: any) => l.user_id).filter(Boolean))) as string[];
 
-                // Step 3: look up emails from crm_users, fallback to profiles
+                // Step 3: look up emails from profiles
                 const emailMap: Record<string, string> = {};
                 if (userIds.length > 0) {
-                    const { data: crmUsers } = await supabase
-                        .from('crm_users').select('id, email').in('id', userIds);
-                    if (crmUsers) crmUsers.forEach((u: any) => { if (u.id && u.email) emailMap[u.id] = u.email; });
+                    const { data: profUsers, error: profError } = await supabase
+                        .from('profiles').select('id, email').in('id', userIds);
 
-                    const missing = userIds.filter(id => !emailMap[id]);
-                    if (missing.length > 0) {
-                        const { data: profUsers } = await supabase
-                            .from('profiles').select('id, email').in('id', missing);
-                        if (profUsers) profUsers.forEach((u: any) => { if (u.id && u.email) emailMap[u.id] = u.email; });
+                    if (!profError && profUsers) {
+                        profUsers.forEach((u: any) => { if (u.id && u.email) emailMap[u.id] = u.email; });
                     }
                 }
 
@@ -661,31 +731,31 @@ export default function DigitalResumeDashboard() {
     return (
         <div className="h-screen bg-white flex flex-col overflow-hidden antialiased text-slate-900 font-['-apple-system',_BlinkMacSystemFont,_'Segoe_UI',_Roboto,_Helvetica,_Arial,_sans-serif]">
             {/* Top Admin Nav */}
-            <nav className="bg-[#0B4F6C] text-white px-6 py-2.5 flex justify-between items-center shadow-lg z-20 shrink-0">
-                <div className="flex items-center gap-3">
+            <nav className="bg-[#0B4F6C] text-white px-4 md:px-6 py-3 flex justify-between items-center shadow-lg z-20 shrink-0">
+                <div className="flex items-center gap-2 md:gap-3">
                     <div className="bg-white/10 p-1.5 rounded-lg backdrop-blur-sm">
                         <ShieldCheck className="w-5 h-5 text-white" />
                     </div>
-                    <div className="hidden sm:block">
-                        <h1 className="text-base font-bold tracking-tight uppercase">Digital Resume CRM</h1>
+                    <div className="hidden xs:block">
+                        <h1 className="text-sm md:text-base font-bold tracking-tight uppercase">Digital Resume CRM</h1>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 md:gap-4">
                     <button
                         onClick={() => setShowAddUserModal(true)}
-                        className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shadow-sm"
+                        className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 md:px-4 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shadow-sm"
                     >
                         <UserPlus className="w-3.5 h-3.5" />
-                        <span className="hidden md:inline">Add User</span>
+                        <span className="hidden sm:inline">Add User</span>
                     </button>
 
                     <button
                         onClick={() => setShowAddAdminModal(true)}
-                        className="bg-[#159A9C] hover:bg-[#159A9C]/90 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shadow-sm"
+                        className="bg-[#159A9C] hover:bg-[#159A9C]/90 text-white px-3 md:px-4 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shadow-sm"
                     >
                         <ShieldCheck className="w-3.5 h-3.5" />
-                        <span className="hidden md:inline">Add Admin</span>
+                        <span className="hidden sm:inline">Add Admin</span>
                     </button>
 
 
@@ -725,10 +795,10 @@ export default function DigitalResumeDashboard() {
             <main className="flex-1 p-4 md:p-6 overflow-hidden flex flex-col">
                 <div className="max-w-[1600px] mx-auto w-full flex-1 flex flex-col overflow-hidden">
                     {/* Tab Switcher */}
-                    <div className="flex items-center gap-1 mb-6 bg-slate-100/50 p-1 rounded-xl w-fit shrink-0">
+                    <div className="flex items-center gap-1 mb-6 bg-slate-100/50 p-1 rounded-xl w-fit shrink-0 max-w-full overflow-x-auto no-scrollbar">
                         <button
                             onClick={() => setActiveTab('users')}
-                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'users'
+                            className={`flex items-center gap-2 px-4 md:px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'users'
                                 ? 'bg-white text-[#0B4F6C] shadow-md border border-slate-200'
                                 : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
                         >
@@ -737,7 +807,7 @@ export default function DigitalResumeDashboard() {
                         </button>
                         <button
                             onClick={() => setActiveTab('ai-usage')}
-                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'ai-usage'
+                            className={`flex items-center gap-2 px-4 md:px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'ai-usage'
                                 ? 'bg-white text-[#0B4F6C] shadow-md border border-slate-200'
                                 : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
                         >
@@ -749,22 +819,36 @@ export default function DigitalResumeDashboard() {
                     {activeTab === 'users' ? (
                         <>
                             {/* Top Search Area */}
-                            <div className="mb-8 shrink-0 flex items-center gap-4 w-full">
+                            <div className="mb-6 shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full">
                                 <div className="relative flex-1">
                                     <Search className="w-5 h-5 text-[#0B4F6C]/60 absolute left-4 top-1/2 -translate-y-1/2" />
                                     <input
                                         type="text"
                                         placeholder="Search leads, clients, or domains..."
-                                        className="w-full pl-12 pr-32 py-4 rounded-xl bg-white border border-[#0B4F6C]/20 focus:ring-4 focus:ring-[#0B4F6C]/10 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-400 text-[15px] font-medium shadow-sm"
+                                        className="w-full pl-12 pr-4 sm:pr-32 py-3.5 md:py-4 rounded-xl bg-white border border-[#0B4F6C]/20 focus:ring-4 focus:ring-[#0B4F6C]/10 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-400 text-sm md:text-[15px] font-medium shadow-sm"
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
                                         <Users className="w-4 h-4 text-[#0B4F6C]" />
                                         <span className="text-xs font-bold text-slate-700">
                                             {users.length} <span className="text-[10px] text-slate-500 uppercase tracking-tight ml-0.5">Total Users</span>
                                         </span>
                                     </div>
+                                </div>
+                                <div className="sm:hidden flex items-center justify-between px-4 py-2 bg-[#0B4F6C]/5 rounded-xl border border-[#0B4F6C]/10">
+                                    <div className="flex items-center gap-2 px-3 py-1 bg-white border border-slate-200 rounded-lg shadow-sm">
+                                        <Users className="w-4 h-4 text-[#0B4F6C]" />
+                                        <span className="text-xs font-bold text-slate-700">
+                                            {users.length} <span className="text-[10px] text-slate-500 uppercase tracking-tight ml-0.5">Total</span>
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => fetchUsers()}
+                                        className="p-2 text-[#0B4F6C] hover:bg-white rounded-lg transition-all"
+                                    >
+                                        <RefreshCcw className={`w-4 h-4 ${isRefreshingUsers ? 'animate-spin' : ''}`} />
+                                    </button>
                                 </div>
                             </div>
 
@@ -796,42 +880,222 @@ export default function DigitalResumeDashboard() {
                                             <p className="text-slate-500 text-xs">Clear filters to see all users</p>
                                         </div>
                                     ) : (
-                                        <table className="w-full text-left border-collapse table-fixed">
-                                            <thead className="sticky top-0 bg-slate-50 z-10">
-                                                <tr className="border-b border-slate-200 bg-[#fbfcfd]">
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[23%] text-left">Company Application Email</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[24%] text-left">Personal Email</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[14%] text-center">Resume</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Credits</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Joined</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Status</th>
-                                                    <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-center">Audit</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {filteredUsers.map((user_row) => (
-                                                    <tr key={user_row.email} className="hover:bg-slate-50/80 transition-colors group">
-                                                        <td className="px-6 py-5 text-[14px] font-medium text-slate-800">
-                                                            <div className="flex flex-col">
-                                                                {user_row.profiles?.full_name && (
-                                                                    <span className="font-bold text-slate-900">{user_row.profiles.full_name}</span>
-                                                                )}
-                                                                {user_row.company_application_email ? (
-                                                                    <span className={user_row.profiles?.full_name ? "text-xs text-slate-500" : ""}>
-                                                                        {user_row.company_application_email}
-                                                                    </span>
+                                        <>
+                                            <table className="w-full text-left border-collapse table-fixed hidden lg:table">
+                                                <thead className="sticky top-0 bg-slate-50 z-10">
+                                                    <tr className="border-b border-slate-200 bg-[#fbfcfd]">
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[23%] text-left">Company Application Email</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[24%] text-left">Personal Email</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[14%] text-center">Resume</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Credits</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Joined</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Status</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-center">Audit</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {filteredUsers.map((user_row) => (
+                                                        <tr key={user_row.email} className="hover:bg-slate-50/80 transition-colors group">
+                                                            <td className="px-6 py-5 text-[14px] font-medium text-slate-800">
+                                                                <div className="flex flex-col">
+                                                                    {user_row.profiles?.full_name && (
+                                                                        <span className="font-bold text-slate-900">{user_row.profiles.full_name}</span>
+                                                                    )}
+                                                                    {user_row.company_application_email ? (
+                                                                        <span className={user_row.profiles?.full_name ? "text-xs text-slate-500" : ""}>
+                                                                            {user_row.company_application_email}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-slate-400 font-normal">Dashboard Record</span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-5">
+                                                                <p className="font-medium text-slate-600 text-[13px] truncate">{user_row.email}</p>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-center">
+                                                                <div className="flex flex-col items-center gap-2">
+                                                                    {user_row.resume_url ? (
+                                                                        <>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        if (user_row.latest_job_request_id) {
+                                                                                            navigate(`/final-result/${user_row.latest_job_request_id}?resumeUrl=${encodeURIComponent(user_row.resume_url || '')}`);
+                                                                                        } else if (user_row.resume_url) {
+                                                                                            navigate(`/final-result/profile?email=${encodeURIComponent(user_row.email)}&resumeUrl=${encodeURIComponent(user_row.resume_url)}`);
+                                                                                        }
+                                                                                    }}
+                                                                                    className="flex items-center gap-1.5 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg hover:bg-[#0B4F6C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                                                                                >
+                                                                                    <FileText className="w-3.5 h-3.5" />
+                                                                                    View
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleReplaceResumeClick(user_row.email)}
+                                                                                    disabled={isReplacingResume && replacingResumeEmail === user_row.email}
+                                                                                    className="flex items-center gap-1.5 px-4 py-2 bg-[#159A9C] text-white rounded-lg hover:bg-[#159A9C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                                                >
+                                                                                    {isReplacingResume && replacingResumeEmail === user_row.email ? (
+                                                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                                    ) : (
+                                                                                        <FileUp className="w-3.5 h-3.5" />
+                                                                                    )}
+                                                                                    Replace
+                                                                                </button>
+                                                                            </div>
+                                                                            {!user_row.resume_name && (
+                                                                                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                                                                                    From Profile
+                                                                                </span>
+                                                                            )}
+                                                                            {user_row.vercel_portfolio_url && (
+                                                                                <a
+                                                                                    href={user_row.vercel_portfolio_url}
+                                                                                    target="_blank"
+                                                                                    rel="noopener noreferrer"
+                                                                                    className="text-[10px] text-[#159A9C] font-bold hover:underline flex items-center gap-1 mt-1"
+                                                                                >
+                                                                                    <Link className="w-3 h-3" />
+                                                                                    Vercel Portfolio
+                                                                                </a>
+                                                                            )}
+                                                                        </>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setReplacingResumeEmail(user_row.email);
+                                                                                resumeFileInputRef.current?.click();
+                                                                            }}
+                                                                            disabled={isReplacingResume && replacingResumeEmail === user_row.email}
+                                                                            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                                        >
+                                                                            {isReplacingResume && replacingResumeEmail === user_row.email ? (
+                                                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                            ) : (
+                                                                                <Plus className="w-3.5 h-3.5" />
+                                                                            )}
+                                                                            Add Resume
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-center relative">
+                                                                {editingCredits === user_row.email ? (
+                                                                    <div className="flex items-center gap-2 focus-within:z-20 justify-center">
+                                                                        <input
+                                                                            type="number"
+                                                                            className="w-16 px-2 py-1.5 text-base font-bold border-2 rounded-lg focus:ring-2 focus:ring-[#0B4F6C]/20 border-slate-300"
+                                                                            value={newCreditValue}
+                                                                            onChange={(e) => setNewCreditValue(parseInt(e.target.value))}
+                                                                            autoFocus
+                                                                        />
+                                                                        <button
+                                                                            onClick={() => handleUpdateCredits(user_row.email)}
+                                                                            disabled={isUpdatingCredits}
+                                                                            className="bg-[#0B4F6C] text-white p-2 rounded-lg hover:opacity-90 disabled:opacity-50"
+                                                                        >
+                                                                            {isUpdatingCredits ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setEditingCredits(null)}
+                                                                            className="bg-slate-200 text-slate-600 p-2 rounded-lg hover:bg-slate-300"
+                                                                        >
+                                                                            <X className="w-5 h-5" />
+                                                                        </button>
+                                                                    </div>
                                                                 ) : (
-                                                                    <span className="text-slate-400 font-normal">Dashboard Record</span>
+                                                                    <div className="flex items-center gap-3 group/credit relative w-fit mx-auto">
+                                                                        <div className={`px-4 py-1.5 bg-white rounded-xl text-[16px] font-black border-2 ${user_row.credits_remaining > 0
+                                                                            ? 'text-emerald-700 border-emerald-200 bg-emerald-50/30'
+                                                                            : 'text-rose-700 border-rose-200 bg-rose-50/30'
+                                                                            }`}>
+                                                                            {user_row.credits_remaining}
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEditingCredits(user_row.email);
+                                                                                setNewCreditValue(user_row.credits_remaining);
+                                                                            }}
+                                                                            className="absolute -right-[40px] top-1/2 -translate-y-1/2 opacity-0 group-hover/credit:opacity-100 p-2 text-slate-500 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all z-10"
+                                                                        >
+                                                                            <Edit className="w-4 h-4" />
+                                                                        </button>
+                                                                    </div>
                                                                 )}
+                                                            </td>
+                                                            <td className="px-6 py-5 text-center">
+                                                                <p className="text-xs font-bold text-slate-500 tracking-tight">{formatDate(user_row.user_created_at)}</p>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-center">
+                                                                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${user_row.is_active ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${user_row.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                                                                    {user_row.is_active ? 'Active' : 'Offline'}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-center">
+                                                                <button
+                                                                    onClick={() => handleRefreshUser(user_row.email)}
+                                                                    disabled={refreshingEmail === user_row.email}
+                                                                    className="p-2 text-slate-400 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/10 rounded-lg transition-colors border border-transparent hover:border-[#0B4F6C]/20 disabled:opacity-50"
+                                                                    title="Refresh user data"
+                                                                >
+                                                                    <RefreshCcw className={`w-4 h-4 ${refreshingEmail === user_row.email ? 'animate-spin text-[#0B4F6C]' : ''}`} />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+
+                                            {/* Mobile Card Layout for Users */}
+                                            <div className="lg:hidden divide-y divide-slate-100 bg-white">
+                                                {filteredUsers.map((user_row) => (
+                                                    <div key={user_row.email} className="p-4 hover:bg-slate-50/50 transition-colors">
+                                                        <div className="flex justify-between items-start mb-3">
+                                                            <div className="flex flex-col min-w-0 pr-2">
+                                                                {user_row.profiles?.full_name && (
+                                                                    <span className="font-bold text-slate-900 text-sm truncate">{user_row.profiles.full_name}</span>
+                                                                )}
+                                                                <span className="text-[13px] text-slate-600 font-medium truncate">
+                                                                    {user_row.company_application_email || 'Dashboard Record'}
+                                                                </span>
+                                                                <span className="text-[11px] text-slate-400 mt-0.5 truncate">{user_row.email}</span>
                                                             </div>
-                                                        </td>
-                                                        <td className="px-6 py-5">
-                                                            <p className="font-medium text-slate-600 text-[13px] truncate">{user_row.email}</p>
-                                                        </td>
-                                                        <td className="px-6 py-5 text-center">
-                                                            <div className="flex flex-col items-center gap-2">
+                                                            <div className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${user_row.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                                <span className={`w-1 h-1 rounded-full ${user_row.is_active ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                                                                {user_row.is_active ? 'Active' : 'Offline'}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-3 mb-4">
+                                                            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Credits Available</p>
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className={`text-base font-black ${user_row.credits_remaining > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                                        {user_row.credits_remaining}
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingCredits(user_row.email);
+                                                                            setNewCreditValue(user_row.credits_remaining);
+                                                                        }}
+                                                                        className="p-1.5 text-slate-500 hover:text-[#0B4F6C] hover:bg-white rounded-lg transition-colors"
+                                                                    >
+                                                                        <Edit className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Date Joined</p>
+                                                                <p className="text-[13px] font-bold text-slate-700">{formatDate(user_row.user_created_at)}</p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex-1 flex gap-2">
                                                                 {user_row.resume_url ? (
-                                                                    <div className="flex items-center gap-2">
+                                                                    <>
                                                                         <button
                                                                             onClick={() => {
                                                                                 if (user_row.latest_job_request_id) {
@@ -840,114 +1104,73 @@ export default function DigitalResumeDashboard() {
                                                                                     window.open(user_row.resume_url, '_blank');
                                                                                 }
                                                                             }}
-                                                                            className="flex items-center gap-1.5 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg hover:bg-[#0B4F6C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                                                                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#0B4F6C] text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
                                                                         >
-                                                                            <FileText className="w-3.5 h-3.5" />
-                                                                            View
+                                                                            <FileText className="w-3.5 h-3.5" /> View
                                                                         </button>
                                                                         <button
                                                                             onClick={() => handleReplaceResumeClick(user_row.email)}
-                                                                            disabled={isReplacingResume && replacingResumeEmail === user_row.email}
-                                                                            className="flex items-center gap-1.5 px-4 py-2 bg-[#159A9C] text-white rounded-lg hover:bg-[#159A9C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#159A9C] text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
                                                                         >
-                                                                            {isReplacingResume && replacingResumeEmail === user_row.email ? (
-                                                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                                            ) : (
-                                                                                <FileUp className="w-3.5 h-3.5" />
-                                                                            )}
-                                                                            Replace
+                                                                            <FileUp className="w-3.5 h-3.5" /> Replace
                                                                         </button>
-                                                                    </div>
+                                                                    </>
                                                                 ) : (
                                                                     <button
-                                                                        onClick={() => handleReplaceResumeClick(user_row.email)}
-                                                                        disabled={isReplacingResume && replacingResumeEmail === user_row.email}
-                                                                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                                        onClick={() => {
+                                                                            setReplacingResumeEmail(user_row.email);
+                                                                            resumeFileInputRef.current?.click();
+                                                                        }}
+                                                                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-500 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
                                                                     >
-                                                                        {isReplacingResume && replacingResumeEmail === user_row.email ? (
-                                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                                        ) : (
-                                                                            <Plus className="w-3.5 h-3.5" />
-                                                                        )}
-                                                                        Add Resume
+                                                                        <Plus className="w-3.5 h-3.5" /> Add Resume
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                        </td>
-                                                        <td className="px-6 py-5 text-center relative">
-                                                            {editingCredits === user_row.email ? (
-                                                                <div className="flex items-center gap-2 focus-within:z-20 justify-center">
-                                                                    <input
-                                                                        type="number"
-                                                                        className="w-16 px-2 py-1.5 text-base font-bold border-2 rounded-lg focus:ring-2 focus:ring-[#0B4F6C]/20 border-slate-300"
-                                                                        value={newCreditValue}
-                                                                        onChange={(e) => setNewCreditValue(parseInt(e.target.value))}
-                                                                        autoFocus
-                                                                    />
-                                                                    <button
-                                                                        onClick={() => handleUpdateCredits(user_row.email)}
-                                                                        disabled={isUpdatingCredits}
-                                                                        className="bg-[#0B4F6C] text-white p-2 rounded-lg hover:opacity-90 disabled:opacity-50"
-                                                                    >
-                                                                        {isUpdatingCredits ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => setEditingCredits(null)}
-                                                                        className="bg-slate-200 text-slate-600 p-2 rounded-lg hover:bg-slate-300"
-                                                                    >
-                                                                        <X className="w-5 h-5" />
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="flex items-center gap-3 group/credit relative w-fit mx-auto">
-                                                                    <div className={`px-4 py-1.5 bg-white rounded-xl text-[16px] font-black border-2 ${user_row.credits_remaining > 0
-                                                                        ? 'text-emerald-700 border-emerald-200 bg-emerald-50/30'
-                                                                        : 'text-rose-700 border-rose-200 bg-rose-50/30'
-                                                                        }`}>
-                                                                        {user_row.credits_remaining}
-                                                                    </div>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setEditingCredits(user_row.email);
-                                                                            setNewCreditValue(user_row.credits_remaining);
-                                                                        }}
-                                                                        className="absolute -right-[40px] top-1/2 -translate-y-1/2 opacity-0 group-hover/credit:opacity-100 p-2 text-slate-500 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/5 rounded-xl transition-all z-10"
-                                                                    >
-                                                                        <Edit className="w-4 h-4" />
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-5 text-center">
-                                                            <p className="text-xs font-bold text-slate-500 tracking-tight">{formatDate(user_row.user_created_at)}</p>
-                                                        </td>
-                                                        <td className="px-6 py-5 text-center">
-                                                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${user_row.is_active ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                                                                <span className={`w-1.5 h-1.5 rounded-full ${user_row.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-                                                                {user_row.is_active ? 'Active' : 'Offline'}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-5 text-center">
                                                             <button
                                                                 onClick={() => handleRefreshUser(user_row.email)}
                                                                 disabled={refreshingEmail === user_row.email}
-                                                                className="p-2 text-slate-400 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/10 rounded-lg transition-colors border border-transparent hover:border-[#0B4F6C]/20 disabled:opacity-50"
-                                                                title="Refresh user data"
+                                                                className="p-2.5 text-slate-400 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shrink-0"
                                                             >
-                                                                <RefreshCcw className={`w-4 h-4 ${refreshingEmail === user_row.email ? 'animate-spin text-[#0B4F6C]' : ''}`} />
+                                                                <RefreshCcw className={`w-4 h-4 ${refreshingEmail === user_row.email ? 'animate-spin' : ''}`} />
                                                             </button>
-                                                        </td>
-                                                    </tr>
+                                                        </div>
+
+                                                        {/* Inline Credit Editor for Mobile */}
+                                                        {editingCredits === user_row.email && (
+                                                            <div className="mt-4 p-4 bg-slate-100 rounded-2xl border-2 border-[#0B4F6C]/20 flex items-center gap-3 animate-in slide-in-from-top-2 duration-200">
+                                                                <input
+                                                                    type="number"
+                                                                    className="flex-1 px-4 py-2 text-base font-bold border-2 rounded-xl focus:ring-2 focus:ring-[#0B4F6C]/20 border-white bg-white"
+                                                                    value={newCreditValue}
+                                                                    onChange={(e) => setNewCreditValue(parseInt(e.target.value))}
+                                                                    autoFocus
+                                                                />
+                                                                <button
+                                                                    onClick={() => handleUpdateCredits(user_row.email)}
+                                                                    disabled={isUpdatingCredits}
+                                                                    className="bg-[#0B4F6C] text-white p-2.5 rounded-xl shadow-lg shadow-[#0B4F6C]/20"
+                                                                >
+                                                                    {isUpdatingCredits ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setEditingCredits(null)}
+                                                                    className="bg-white text-slate-500 p-2.5 rounded-xl border border-slate-200"
+                                                                >
+                                                                    <X className="w-5 h-5" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 ))}
-                                            </tbody>
-                                        </table>
+                                            </div>
+                                        </>
                                     )}
                                 </div>
                             </div>
                         </>
                     ) : (
                         <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            {/* AI Stats Overview */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 shrink-0">
                                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-5">
                                     <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center border border-blue-100 shrink-0">
@@ -1004,45 +1227,75 @@ export default function DigitalResumeDashboard() {
                                             <p className="text-slate-500 text-xs">Conversations will appear once visitors interact with AI</p>
                                         </div>
                                     ) : (
-                                        <table className="w-full text-left border-collapse table-fixed">
-                                            <thead className="sticky top-0 bg-slate-50 z-10">
-                                                <tr className="border-b border-slate-200 bg-[#fbfcfd]">
-                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[30%]">Candidate / User</th>
-                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%]">Feature</th>
-                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Tokens</th>
-                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Cost</th>
-                                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[25%] text-right">Time</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
+                                        <>
+                                            <table className="w-full text-left border-collapse table-fixed hidden lg:table">
+                                                <thead className="sticky top-0 bg-slate-50 z-10">
+                                                    <tr className="border-b border-slate-200 bg-[#fbfcfd]">
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[30%]">Candidate / User</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%]">Feature</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Tokens</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Cost</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[25%] text-right">Time</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {usageLogs.map((log) => (
+                                                        <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className={`w-2 h-2 rounded-full ${log.user_id ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
+                                                                    <span className="text-xs font-bold text-slate-700 truncate" title={log.email || 'Anonymous'}>
+                                                                        {log.email || 'Anonymous/Guest'}
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold uppercase border border-blue-100 leading-none">
+                                                                    {log.feature_name.replace('_', ' ')}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-center font-medium text-slate-600 text-xs">
+                                                                {log.total_tokens.toLocaleString()}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-center">
+                                                                <span className="text-xs font-bold text-emerald-600 tracking-tight">${Number(log.cost).toFixed(5)}</span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <span className="text-[10px] font-bold text-slate-400">{new Date(log.created_at).toLocaleString()}</span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+
+                                            {/* Mobile Card Layout for AI Usage */}
+                                            <div className="lg:hidden divide-y divide-slate-100 bg-white">
                                                 {usageLogs.map((log) => (
-                                                    <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                                                        <td className="px-6 py-4">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className={`w-2 h-2 rounded-full ${log.user_id ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
+                                                    <div key={log.id} className="p-4 hover:bg-slate-50/50 transition-colors">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <div className={`shrink-0 w-2 h-2 rounded-full ${log.user_id ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
                                                                 <span className="text-xs font-bold text-slate-700 truncate" title={log.email || 'Anonymous'}>
                                                                     {log.email || 'Anonymous/Guest'}
                                                                 </span>
                                                             </div>
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold uppercase border border-blue-100 leading-none">
+                                                            <span className="text-[10px] font-bold text-slate-400 shrink-0">
+                                                                {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between mt-2">
+                                                            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-bold uppercase border border-blue-100 italic">
                                                                 {log.feature_name.replace('_', ' ')}
                                                             </span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-center font-medium text-slate-600 text-xs">
-                                                            {log.total_tokens.toLocaleString()}
-                                                        </td>
-                                                        <td className="px-6 py-4 text-center">
-                                                            <span className="text-xs font-bold text-emerald-600 tracking-tight">${Number(log.cost).toFixed(5)}</span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-right">
-                                                            <span className="text-[10px] font-bold text-slate-400">{new Date(log.created_at).toLocaleString()}</span>
-                                                        </td>
-                                                    </tr>
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-[11px] font-medium text-slate-500">{log.total_tokens.toLocaleString()} tokens</span>
+                                                                <span className="text-[11px] font-bold text-emerald-600">${Number(log.cost).toFixed(4)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 ))}
-                                            </tbody>
-                                        </table>
+                                            </div>
+                                        </>
                                     )}
                                 </div>
                             </div>

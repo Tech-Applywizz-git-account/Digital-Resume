@@ -28,6 +28,36 @@ const Step2: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [apiResumeUrl, setApiResumeUrl] = useState<string | null>(null);
+  const [isCheckingApi, setIsCheckingApi] = useState(false);
+
+  // Check for API resume on mount
+  React.useEffect(() => {
+    const checkApiResume = async () => {
+      const email = localStorage.getItem("crm_user_email") || user?.email;
+      if (!email) return;
+
+      setIsCheckingApi(true);
+      try {
+        const response = await fetch(`/api/proxy-applywizz?email=${email.trim().toLowerCase()}`);
+        if (response.ok) {
+          const jsonResponse = await response.json();
+          const userData = Array.isArray(jsonResponse) ? jsonResponse[0] : jsonResponse;
+          const vResumeUrl = userData?.data?.resume?.pdf_path?.[0] || userData?.resume?.pdf_path?.[0];
+          if (vResumeUrl) {
+            setApiResumeUrl(vResumeUrl);
+            console.log("📍 API Resume found:", vResumeUrl);
+          }
+        }
+      } catch (err) {
+        console.error("Error checking API resume:", err);
+      } finally {
+        setIsCheckingApi(false);
+      }
+    };
+
+    checkApiResume();
+  }, [user]);
 
   const handleFileSelect = (file: File) => {
     const validTypes = [
@@ -85,10 +115,49 @@ const Step2: React.FC = () => {
   // 🔁 NEW CRM-AWARE HANDLE SUBMIT
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Priority: Uploaded resume exists
     if (!selectedFile) {
-      showToast("Please select a resume file.", "warning");
+      if (apiResumeUrl) {
+        setIsUploading(true);
+        try {
+          // Flow 2: Use API resume (client did NOT upload)
+          const response = await fetch(apiResumeUrl);
+          const buffer = await response.arrayBuffer();
+          let extractedText = "";
+
+          if (apiResumeUrl.toLowerCase().endsWith('.pdf')) {
+            const loadingTask = pdfjsLib.getDocument({ data: buffer });
+            const pdf = await loadingTask.promise;
+            let text = "";
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              const pageText = (content.items as any[]).map((item: any) => item.str).join(" ");
+              text += pageText + " ";
+            }
+            extractedText = text;
+          }
+
+          localStorage.setItem("uploadedResumeUrl", "");
+          localStorage.setItem("resumeFileName", apiResumeUrl.split('/').pop() || "Profile_Resume.pdf");
+          localStorage.setItem("resumeFullText", extractedText.trim());
+          localStorage.removeItem("teleprompterText");
+          navigate("/step3");
+          return;
+        } catch (err) {
+          console.error("Error processing API resume text:", err);
+          localStorage.setItem("uploadedResumeUrl", "");
+          navigate("/step3");
+          return;
+        } finally {
+          setIsUploading(false);
+        }
+      }
+      showToast("Please select a resume file or wait for API fetch.", "warning");
       return;
     }
+
     if (!user) {
       showToast("Please sign in again before uploading.", "warning");
       return;
@@ -319,6 +388,17 @@ const Step2: React.FC = () => {
               </CardHeader>
 
               <CardContent>
+                {apiResumeUrl && (
+                  <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                      <Check className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-blue-900 leading-tight">Resume found from profile</p>
+                      <p className="text-xs text-blue-700/70 mt-0.5">You can proceed with this or upload a new one.</p>
+                    </div>
+                  </div>
+                )}
                 <form onSubmit={handleSubmit}>
                   <div
                     className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${isDragging

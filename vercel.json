@@ -13,10 +13,28 @@
       "use": "@vercel/node"
     }
   ],
+  "rewrites": [
+    {
+      "source": "/applywizz-api/:path*",
+      "destination": "https://applywizz-5i8qccsfs-applywizz-tech-vercels-projects.vercel.app/api/:path*"
+    },
+    {
+      "source": "/proxy-s3/:path*",
+      "destination": "https://applywizz-prod.s3.us-east-2.amazonaws.com/:path*"
+    },
+    {
+      "source": "/proxy-vercel-blob/:path*",
+      "destination": "https://public.blob.vercel-storage.com/:path*"
+    }
+  ],
   "routes": [
     {
       "src": "/api/test",
       "dest": "/api/test.js"
+    },
+    {
+      "src": "/api/proxy-applywizz",
+      "dest": "/api/proxy-applywizz.js"
     },
     {
       "src": "/api/generate-introduction",

@@ -63,28 +63,55 @@ const generateButtonImage = async (text: string, iconSrc: string, width: number,
   });
 };
 
+const getProxiedUrl = (url: string | null) => {
+  if (!url) return "";
+  if (url.includes('applywizz-prod.s3.us-east-2.amazonaws.com')) {
+    return url.replace(/^https?:\/\/applywizz-prod\.s3\.us-east-2\.amazonaws\.com\//, '/proxy-s3/');
+  }
+  if (url.includes('public.blob.vercel-storage.com')) {
+    return url.replace(/^https?:\/\/public\.blob\.vercel-storage\.com\//, '/proxy-vercel-blob/');
+  }
+  return url;
+};
+
 const FinalResult: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+
   const { user, logout } = useAuthContext();
   const { castId } = useParams<{ castId: string }>();
 
-  const [resumeUrl, setResumeUrl] = useState<string | null>(null);
-  const [resumeFileName, setResumeFileName] = useState<string>("Resume.pdf");
+  const searchParams = new URLSearchParams(location.search);
+  const idFromQuery = searchParams.get('id') || searchParams.get('resumeId');
+  const urlFromQuery = searchParams.get('resumeUrl');
+  const emailParam = searchParams.get('email');
+
+  const [resumeUrl, setResumeUrl] = useState<string | null>(
+    urlFromQuery ? decodeURIComponent(urlFromQuery) : null
+  );
+  const [resumeFileName, setResumeFileName] = useState<string>(
+    urlFromQuery ? (decodeURIComponent(urlFromQuery).split('/').pop()?.split('?')[0] || "Resume.pdf") : "Resume.pdf"
+  );
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [jobTitle, setJobTitle] = useState<string>("");
-  const [isExternalVisitor, setIsExternalVisitor] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!urlFromQuery && !!(castId || idFromQuery));
   const [candidateName, setCandidateName] = useState<string>("Candidate");
 
   const [portfolioUrl, setPortfolioUrl] = useState("");
   const [isEditingPortfolio, setIsEditingPortfolio] = useState(false);
   const [tempPortfolioUrl, setTempPortfolioUrl] = useState("");
-  const [resumeOwnerEmail, setResumeOwnerEmail] = useState<string | null>(null);
+  const [resumeOwnerEmail, setResumeOwnerEmail] = useState<string | null>(
+    emailParam ? decodeURIComponent(emailParam) : null
+  );
+  const [resumeOwnerAppEmail, setResumeOwnerAppEmail] = useState<string | null>(null);
   const [resumeOwnerUserId, setResumeOwnerUserId] = useState<string | null>(null);
 
-  const searchParams = new URLSearchParams(location.search);
   const isFromPdf = searchParams.get('from') === 'pdf' || searchParams.get('source') === 'pdf';
+  const initialId = castId || idFromQuery;
+  const [isSyncingWithVercel, setIsSyncingWithVercel] = useState(initialId === 'profile' || !!emailParam);
+
+  // Determine external visitor status immediately if possible
+  const [isExternalVisitor, setIsExternalVisitor] = useState(!!(!user && initialId));
 
   // Panel State
   const initialMode = searchParams.get('mode') as 'chat' | 'video' | 'resume' | null;
@@ -145,19 +172,46 @@ const FinalResult: React.FC = () => {
   // ✅ Load data from localStorage or Supabase
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true);
+      // Only show top-level loader if we don't have enough initial data
+      if (!resumeUrl) {
+        setLoading(true);
+      }
+
       try {
-        const params = new URLSearchParams(location.search);
-        const idFromQuery = params.get('id') || params.get('resumeId');
+        const idFromQuery = searchParams.get('id') || searchParams.get('resumeId');
+        const urlFromQuery = searchParams.get('resumeUrl');
         const effectiveId = castId || idFromQuery;
 
-        console.log("🚀 Loading data with:", { user, castId, idFromQuery, effectiveId });
+        console.log("🚀 Loading data with:", { user, castId, idFromQuery, effectiveId, urlFromQuery });
 
         // Check if this is an external visitor (no user but has an ID)
         const isExternal = !user && effectiveId;
         setIsExternalVisitor(!!isExternal);
 
-        if (effectiveId) {
+        if (effectiveId === 'profile') {
+          // Special case: API-only resume, no Supabase record exists
+          // Load resume + portfolio directly from Vercel API via the fetchVercelDetails effect
+          const emailParam = searchParams.get('email');
+          if (emailParam) {
+            const decodedEmail = decodeURIComponent(emailParam);
+            setResumeOwnerEmail(decodedEmail);
+            // Also try to get the application email for this user
+            supabase
+              .from('digital_resume_by_crm')
+              .select('company_application_email')
+              .eq('email', decodedEmail)
+              .maybeSingle()
+              .then(({ data: crmUser }) => {
+                if (crmUser?.company_application_email) {
+                  setResumeOwnerAppEmail(crmUser.company_application_email);
+                }
+              });
+            setJobTitle('Resume');
+          } else {
+            // No email in URL — fall back to localStorage
+            await loadLocalData();
+          }
+        } else if (effectiveId) {
           // If we have an ID (from path or query), load that specific record
           await loadExternalData(effectiveId);
         } else {
@@ -173,6 +227,82 @@ const FinalResult: React.FC = () => {
 
     loadData();
   }, [user, castId, location.search]);
+
+  // ✅ Sync with Vercel User Details API (ONLY source for resume/portfolio)
+  useEffect(() => {
+    const fetchVercelDetails = async () => {
+      const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+      if (emailsToTry.length === 0) {
+        setIsSyncingWithVercel(false);
+        return;
+      }
+
+      setIsSyncingWithVercel(true);
+      let foundPortfolio = false;
+      for (const email of emailsToTry) {
+        if (foundPortfolio) break;
+        const normalizedEmail = email.trim().toLowerCase();
+        try {
+          const response = await fetch(
+            `/api/proxy-applywizz?email=${normalizedEmail}`
+          );
+          if (response.ok) {
+            const jsonResponse = await response.json();
+            const userData = Array.isArray(jsonResponse) ? jsonResponse[0] : jsonResponse;
+            if (!userData) continue;
+
+            const vResumeUrl = userData?.data?.resume?.pdf_path?.[0] || userData?.resume?.pdf_path?.[0];
+            const vPortfolioUrl = userData?.data?.portfolio?.link || userData?.portfolio?.link;
+
+            if (vResumeUrl && typeof vResumeUrl === "string") {
+              setResumeUrl(current => {
+                // Priority: Use existing resume if it exists (from URL param or previous fetch)
+                if (current) return current;
+
+                const fileNameFromUrl = vResumeUrl.split('?')[0].split('/').pop();
+                setResumeFileName(fileNameFromUrl || "Resume.pdf");
+                return vResumeUrl;
+              });
+
+              // ✅ Sync with Supabase if we have a valid ID and a logged-in user
+              const currentId = castId || idFromQuery;
+              if (user && currentId && currentId !== 'profile') {
+                console.log("🔄 Syncing external resume to Supabase for ID:", currentId);
+                Promise.all([
+                  supabase.from('crm_job_requests').update({ resume_url: vResumeUrl }).eq('id', currentId).is('resume_url', null),
+                  supabase.from('job_requests').update({ resume_path: vResumeUrl }).eq('id', currentId).is('resume_path', null)
+                ]).then(([crmRes, regRes]) => {
+                  if (!crmRes.error || !regRes.error) {
+                    console.log("✅ Successfully synced resume path to Supabase");
+                  }
+                }).catch(err => console.error("❌ Sync failed:", err));
+              }
+            }
+
+            const isValidVercelUrl =
+              typeof vPortfolioUrl === "string" &&
+              (vPortfolioUrl.startsWith("http") || vPortfolioUrl.includes("localhost"));
+
+            if (isValidVercelUrl) {
+              setPortfolioUrl(vPortfolioUrl || "");
+              setTempPortfolioUrl(vPortfolioUrl || "");
+              foundPortfolio = true;
+            }
+          }
+        } catch (err) {
+          console.error(`❌ Error fetching Vercel details:`, err);
+        }
+      }
+
+      if (!foundPortfolio) {
+        setPortfolioUrl("");
+        setTempPortfolioUrl("");
+      }
+      setIsSyncingWithVercel(false);
+    };
+
+    fetchVercelDetails();
+  }, [resumeOwnerEmail, resumeOwnerAppEmail, user]);
 
   const loadLocalData = async () => {
     // First try to get data from localStorage
@@ -199,39 +329,28 @@ const FinalResult: React.FC = () => {
 
           if (!error && data) {
             setJobTitle(data.job_title || jobTitleValue || "");
-            setResumeUrl(data.resume_url || uploadedResumeUrl);
-            setResumeFileName(fileName || (data.resume_url ?
-              data.resume_url.split('/').pop() || "Resume.pdf" :
-              "Resume.pdf"));
 
-            // Portfolio lookup: Try user_id first, then request_id
-            if (data.user_id) {
-              const { data: userPortData } = await supabase
-                .from('portfolio_settings')
-                .select('url')
-                .eq('user_id', data.user_id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              if (userPortData?.url) {
-                setPortfolioUrl(userPortData.url);
-              } else {
-                // Fallback to request_id for old records
-                const { data: reqPortData } = await supabase
-                  .from('portfolio_settings')
-                  .select('url')
-                  .eq('request_id', currentJobRequestId)
-                  .maybeSingle();
-                if (reqPortData?.url) setPortfolioUrl(reqPortData.url);
-              }
-            } else {
-              // No user_id, must rely on request_id
-              const { data: reqPortData } = await supabase
-                .from('portfolio_settings')
-                .select('url')
-                .eq('request_id', currentJobRequestId)
-                .maybeSingle();
-              if (reqPortData?.url) setPortfolioUrl(reqPortData.url);
+            // --- Resume/Portfolio Lookup ---
+            if (data.email) {
+              setResumeOwnerEmail(data.email);
+              console.log("📍 Email detected, logic will prefer Supabase resume if exists.");
+
+              setResumeUrl(data.resume_url || uploadedResumeUrl);
+              setResumeFileName(fileName || (data.resume_url ?
+                data.resume_url.split('/').pop() || "Resume.pdf" :
+                "Resume.pdf"));
+
+              // Fetch CRM record for application email
+              supabase
+                .from('digital_resume_by_crm')
+                .select('company_application_email')
+                .eq('email', data.email)
+                .maybeSingle()
+                .then(({ data: crmUser }) => {
+                  if (crmUser?.company_application_email) {
+                    setResumeOwnerAppEmail(crmUser.company_application_email);
+                  }
+                });
             }
 
             // Get latest video URL from crm_recordings
@@ -275,40 +394,28 @@ const FinalResult: React.FC = () => {
 
           if (!error && data) {
             setJobTitle(data.job_title || jobTitleValue || "");
-            setResumeUrl(data.resume_path || uploadedResumeUrl);
-            setResumeFileName(fileName || data.resume_original_name || (data.resume_path ?
-              data.resume_path.split('/').pop() || "Resume.pdf" :
-              "Resume.pdf"));
 
-            // Portfolio lookup: Try user_id first, then request_id
-            if (data.user_id) {
-              const { data: userPortData } = await supabase
-                .from('portfolio_settings')
-                .select('url')
-                .eq('user_id', data.user_id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              if (userPortData?.url) {
-                setPortfolioUrl(userPortData.url);
-              } else {
-                // Fallback to request_id for old records
-                const { data: reqPortData } = await supabase
-                  .from('portfolio_settings')
-                  .select('url')
-                  .eq('request_id', currentJobRequestId)
-                  .maybeSingle();
-                if (reqPortData?.url) setPortfolioUrl(reqPortData.url);
-              }
-            } else {
-              // No user_id, must rely on request_id
-              const { data: reqPortData } = await supabase
-                .from('portfolio_settings')
-                .select('url')
-                .eq('request_id', currentJobRequestId)
-                .maybeSingle();
-              if (reqPortData?.url) setPortfolioUrl(reqPortData.url);
+            // --- Resume/Portfolio Lookup: Handled by Vercel API Sync ---
+            const candidateEmail = (data as any)?.candidate_email || (data as any)?.email || null;
+            if (candidateEmail) {
+              setResumeOwnerEmail(candidateEmail);
+              console.log("📍 Email detected, Vercel sync will handle portfolio.");
             }
+
+            let finalResumeUrl = data.resume_path || uploadedResumeUrl;
+            if (finalResumeUrl && !finalResumeUrl.startsWith('http')) {
+              try {
+                const bucket = isCRMUser ? 'CRM_users_resumes' : 'resumes';
+                finalResumeUrl = supabase.storage.from(bucket).getPublicUrl(finalResumeUrl).data.publicUrl;
+              } catch (urlError) {
+                console.error("Error constructing resume URL:", urlError);
+              }
+            }
+            setResumeUrl(finalResumeUrl);
+
+            setResumeFileName(fileName || data.resume_original_name || (finalResumeUrl ?
+              finalResumeUrl.split('/').pop() || "Resume.pdf" :
+              "Resume.pdf"));
 
             // Get latest video URL from recordings
             const { data: recs } = await supabase
@@ -348,10 +455,7 @@ const FinalResult: React.FC = () => {
       }
     }
 
-    // Fallback to localStorage data
-    if (uploadedResumeUrl) setResumeUrl(uploadedResumeUrl);
-    if (fileName) setResumeFileName(fileName);
-    else setResumeFileName("Resume.pdf");
+    // localStorage resume fallback removed (Prioritizing Vercel API ONLY)
     if (recordedVideoUrl) {
       let finalVideoUrl = recordedVideoUrl;
       if (finalVideoUrl && !finalVideoUrl.startsWith('http')) {
@@ -379,44 +483,44 @@ const FinalResult: React.FC = () => {
       // Consolidate data from whichever table matched
       const data = crmResult.data || regularResult.data;
 
-      // Portfolio lookup: Try user_id first, then request_id
-      if (data?.user_id) {
-        const { data: userPortfolio } = await supabase
-          .from('portfolio_settings')
-          .select('url')
-          .eq('user_id', data.user_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      // --- Resume/Portfolio Lookup: Handled by Vercel API Sync ---
+      const ownerEmail = (data as any)?.email || (data as any)?.candidate_email || null;
+      if (ownerEmail) {
+        setResumeOwnerEmail(ownerEmail);
+        console.log("📍 Email detected, Vercel sync will handle resume and portfolio.");
 
-        if (userPortfolio?.url) {
-          setPortfolioUrl(userPortfolio.url);
-        } else {
-          // Fallback to request_id for old resumes
-          const { data: reqPortfolio } = await supabase
-            .from('portfolio_settings')
-            .select('url')
-            .eq('request_id', id)
-            .maybeSingle();
-          if (reqPortfolio?.url) setPortfolioUrl(reqPortfolio.url);
-        }
-      } else {
-        // Fallback for resumes without user_id
-        const { data: reqPortfolio } = await supabase
-          .from('portfolio_settings')
-          .select('url')
-          .eq('request_id', id)
-          .maybeSingle();
-        if (reqPortfolio?.url) setPortfolioUrl(reqPortfolio.url);
+        // Fetch CRM record to get application email
+        supabase
+          .from('digital_resume_by_crm')
+          .select('company_application_email')
+          .eq('email', ownerEmail)
+          .maybeSingle()
+          .then(({ data: crmUser }) => {
+            if (crmUser?.company_application_email) {
+              setResumeOwnerAppEmail(crmUser.company_application_email);
+            }
+          });
       }
       if (data) {
         console.log("✅ Request record found:", data);
         setJobTitle(data.job_title || "");
 
-        // Handle resume URL
-        const rawResumeUrl = (data as any).resume_url || (data as any).resume_path;
-        setResumeUrl(rawResumeUrl || null);
-        setResumeFileName(rawResumeUrl ? rawResumeUrl.split('/').pop() : "Resume.pdf");
+        // Handle existing resume URL
+        let rawResumeUrl = (data as any).resume_url || (data as any).resume_path;
+        if (rawResumeUrl) {
+          if (!rawResumeUrl.startsWith('http')) {
+            try {
+              // Determine bucket based on whether this record came from crm table
+              const isCrmRecord = !!crmResult.data;
+              const bucket = isCrmRecord ? 'CRM_users_resumes' : 'resumes';
+              rawResumeUrl = supabase.storage.from(bucket).getPublicUrl(rawResumeUrl).data.publicUrl;
+            } catch (urlError) {
+              console.error("Error constructing resume URL:", urlError);
+            }
+          }
+          setResumeUrl(rawResumeUrl);
+          setResumeFileName(rawResumeUrl.split('/').pop() || "Resume.pdf");
+        }
 
         // Handle Candidate Name
         if (data.user_id) {
@@ -524,21 +628,15 @@ const FinalResult: React.FC = () => {
         return;
       }
 
-      console.log("💾 Executing upsert for request_id:", currentJobRequestId, "and user_id:", targetUserId);
-      const { error: upsertError } = await supabase.from("portfolio_settings").upsert({
-        request_id: currentJobRequestId,
-        user_id: targetUserId,
-        url: trimmedUrl
-      });
+      // Supabase portfolio_settings upsert removed (Source of Truth is Vercel API)
+      console.log("📍 Portfolio updated in local session.");
 
-      if (upsertError) {
-        console.error("❌ Supabase Upsert Error:", upsertError);
-        throw upsertError;
-      }
 
       setPortfolioUrl(trimmedUrl);
       setIsEditingPortfolio(false);
-      showToast("Portfolio updated", "success");
+      showToast("Portfolio updated locally", "success");
+
+
     } catch (err: any) {
       console.error("Error saving portfolio:", err);
       showToast(err.message || "Failed to save portfolio link", "error");
@@ -559,19 +657,28 @@ const FinalResult: React.FC = () => {
   };
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
     try {
+      const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+      const emailParam = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
+
       // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
       const hasPortfolio = !!portfolioUrl;
       const chatUrl = hasPortfolio
-        ? `${window.location.origin}/chat?resumeId=${currentRequestId}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`
-        : `${window.location.origin}/chat?resumeId=${currentRequestId}&source=pdf&mode=chat`;
+        ? `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`
+        : `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}&source=pdf&mode=chat`;
 
       // Play Intro button → this app's final-result page
-      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf`;
+      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}`;
 
       const hasVideo = !!videoUrl;
 
-      let response = await fetch(resumeUrlStr);
-      if (!response.ok) response = await fetch(resumeUrlStr, { credentials: 'include' });
+      // Use a local proxy path to avoid CORS issues when fetching the actual PDF bytes
+      let proxiedUrl = resumeUrlStr;
+      if (resumeUrlStr.includes('applywizz-prod.s3.us-east-2.amazonaws.com')) {
+        proxiedUrl = resumeUrlStr.replace(/^https?:\/\/applywizz-prod\.s3\.us-east-2\.amazonaws\.com\//, '/proxy-s3/');
+      }
+
+      let response = await fetch(proxiedUrl);
+      if (!response.ok) response = await fetch(proxiedUrl, { credentials: 'include' });
       if (!response.ok) throw new Error("Failed to fetch PDF");
 
       const arrayBuffer = await response.arrayBuffer();
@@ -644,13 +751,14 @@ const FinalResult: React.FC = () => {
       if (!resumeUrl) return;
       const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
 
-      const isPdf = resumeUrl.toLowerCase().endsWith('.pdf');
+      const isPdf = resumeUrl.toLowerCase().split('?')[0].endsWith('.pdf') || resumeUrl.includes('.pdf?');
 
       if (!isPdf) {
         showToast("Enhancement is only available for PDF files. Downloading original resume.", "warning");
         const a = document.createElement("a");
         a.href = resumeUrl;
         a.download = resumeFileName;
+        a.target = "_blank";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -660,24 +768,41 @@ const FinalResult: React.FC = () => {
       // ✅ Tracking PDF Download
       trackEvent('pdf_download', currentCastId);
 
-      const enhancedUrl = await enhancePDF(resumeUrl, currentCastId);
-      const userName = candidateName !== "Candidate" ? candidateName : (user?.firstName || user?.name || "Candidate");
-      const a = document.createElement("a");
-      a.href = enhancedUrl;
-      a.download = `${userName}_DIGITALRESUME.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(enhancedUrl), 1000);
+      try {
+        const enhancedUrl = await enhancePDF(resumeUrl, currentCastId);
+        const userName = candidateName !== "Candidate" ? candidateName : (user?.firstName || user?.name || "Candidate");
+        const a = document.createElement("a");
+        a.href = enhancedUrl;
+        a.download = `${userName}_DIGITALRESUME.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(enhancedUrl), 1000);
+      } catch (enhanceErr) {
+        console.error("❌ Enhancement failed, falling back to original download:", enhanceErr);
+
+        // Final fallback: Direct download of the original resume
+        const a = document.createElement("a");
+        a.href = resumeUrl;
+        a.download = resumeFileName;
+        // For cross-origin S3 URLs, download attribute might be ignored. 
+        // target="_blank" ensures it at least opens in a new tab if it can't download.
+        a.target = "_blank";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast("Downloaded original resume (enhancement failed)", "warning");
+      }
     } catch (err) {
+      console.error("Download process error:", err);
       showToast("Download failed", "error");
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b shadow-sm z-[100]">
-        <div className="max-w-max mx-auto flex flex-row flex-nowrap items-center px-4 pt-3 pb-1.5 gap-3 overflow-x-auto no-scrollbar">
+      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b shadow-sm z-[100] h-16 md:h-14">
+        <div className="max-w-7xl mx-auto h-full flex items-center gap-3 px-4 overflow-x-auto no-scrollbar flex-nowrap">
           {user && !isFromPdf && (
             <Button
               variant="outline"
@@ -692,7 +817,7 @@ const FinalResult: React.FC = () => {
             </Button>
           )}
 
-          {user && !isFromPdf && portfolioUrl && (
+          {user && !isFromPdf && (
             <div className="flex items-center shrink-0">
               {isEditingPortfolio ? (
                 <div className="flex items-center gap-2 bg-white border border-blue-400 rounded-xl p-1 pr-2 shadow-md animate-in fade-in zoom-in duration-200 h-11">
@@ -753,8 +878,8 @@ const FinalResult: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="ml-1 p-1.5 text-gray-400 rounded-lg transition-all">
-                      {portfolioUrl ? <Pencil className="h-3.5 w-3.5" /> : <span className="text-xs font-bold px-1 text-blue-600 uppercase">Add</span>}
+                    <div className="ml-auto p-1.5 text-gray-400 rounded-lg transition-all hover:bg-gray-100">
+                      <Pencil className="h-3.5 w-3.5" />
                     </div>
                   </div>
                 </div>
@@ -762,29 +887,34 @@ const FinalResult: React.FC = () => {
             </div>
           )}
 
-          {!isFromPdf && user && (
+          {/* Primary Action Group: Visible to both owner and visitor */}
+          {!isFromPdf && (user || isExternalVisitor) && (
             <>
               <Button
                 variant="outline"
                 onClick={handleDownloadEnhanced}
-                className="flex items-center gap-2 border-blue-500 text-blue-600 h-10 px-4 shrink-0"
-                disabled={!resumeUrl}
+                className="flex items-center gap-2 border-blue-500 text-blue-600 h-10 px-3 md:px-4 shrink-0 transition-opacity"
+                disabled={!resumeUrl || loading || isSyncingWithVercel}
               >
-                <Download className="h-4 w-4" />
-                <span className="text-sm font-semibold">Download Enhanced Resume</span>
+                {loading || isSyncingWithVercel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <span className="text-sm font-semibold hidden sm:inline">Download Enhanced Resume</span>
+                <span className="text-sm font-semibold sm:hidden">Download</span>
               </Button>
 
               <Button
                 variant="outline"
                 onClick={() => {
-                  const currentCastId = castId || localStorage.getItem("current_job_request_id");
-                  const shareableLink = `${window.location.origin}/final-result/${currentCastId || ""}`;
+                  const currentCastId = castId || idFromQuery || localStorage.getItem("current_job_request_id");
+                  const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+                  const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
+                  const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
                   navigator.clipboard.writeText(shareableLink).then(() => showToast('Link copied!', 'success'));
                 }}
-                className="flex items-center gap-2 border-green-500 text-green-600 h-10 px-4 shrink-0"
+                className="flex items-center gap-2 border-green-500 text-green-600 h-10 px-3 md:px-4 shrink-0"
               >
                 <Link className="h-4 w-4" />
-                <span className="text-sm font-semibold">Copy Link</span>
+                <span className="text-sm font-semibold hidden sm:inline">Copy Link</span>
+                <span className="text-sm font-semibold sm:hidden">Copy</span>
               </Button>
             </>
           )}
@@ -792,40 +922,35 @@ const FinalResult: React.FC = () => {
           {videoUrl && (
             <button
               onClick={() => {
+                const currentCastId = castId || idFromQuery || "profile";
+                trackEvent('play_intro', currentCastId);
                 const params = new URLSearchParams(location.search);
                 params.set('mode', 'video');
                 navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-
                 setPanelMode('video');
                 setIsPanelOpen(true);
-                const currentCastId = castId || searchParams.get('id') || "profile";
-                trackEvent('play_intro', currentCastId);
               }}
-              className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
+              className="flex items-center justify-center gap-2 h-10 px-3 md:px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
             >
-              <img src="/Frame 215.svg" alt="" className="w-4 h-4" />
+              <Play className="w-4 h-4" />
               <span>Play Intro</span>
             </button>
           )}
 
-          {/* Only show Let's Talk if we have a portfolio URL. 
-              External visitors only see it if it's in the DB. 
-              Logged-in users see it if in DB OR their own localStorage. */}
           {!!portfolioUrl && (
             <button
               onClick={() => {
-                const currentCastId = castId || searchParams.get('id') || searchParams.get('resumeId') || "";
+                const currentCastId = castId || idFromQuery || "profile";
+                const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+                const emailParamValue = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
+                const resumeUrlParam = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
                 trackEvent('lets_talk', currentCastId);
-
-                if (portfolioUrl) {
-                  // Navigate to the chat page which shows portfolio + chat panel side-by-side
-                  const chatUrl = `/chat?resumeId=${currentCastId}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`;
-                  navigate(chatUrl);
-                }
+                const chatUrl = `/chat?resumeId=${currentCastId}${emailParamValue}${resumeUrlParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`;
+                navigate(chatUrl);
               }}
-              className="flex items-center justify-center gap-2 h-10 px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
+              className="flex items-center justify-center gap-2 h-10 px-3 md:px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
             >
-              <img src="/Vector.svg" alt="" className="w-4 h-4" />
+              <MessageSquare className="w-4 h-4" />
               <span>Let's talk</span>
             </button>
           )}
@@ -858,7 +983,7 @@ const FinalResult: React.FC = () => {
                 src={
                   resumeUrl.toLowerCase().endsWith('.docx') || resumeUrl.toLowerCase().endsWith('.doc')
                     ? `https://docs.google.com/gview?url=${encodeURIComponent(resumeUrl)}&embedded=true`
-                    : `${resumeUrl}#zoom=100&view=FitH`
+                    : `${getProxiedUrl(resumeUrl)}#zoom=100&view=FitH`
                 }
                 title="Resume Preview"
                 className="w-full border-0 min-h-[1100px]"
@@ -866,7 +991,7 @@ const FinalResult: React.FC = () => {
                 allowFullScreen
               />
             </div>
-          ) : loading ? (
+          ) : (loading || isSyncingWithVercel) ? (
             <div className="min-h-[400px] flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
             </div>
@@ -876,21 +1001,23 @@ const FinalResult: React.FC = () => {
         </div>
       </div>
 
-      {isPanelOpen && (
-        <ResumeChatPanel
-          isOpen={isPanelOpen}
-          onClose={closePanel}
-          mode={panelMode}
-          videoUrl={videoUrl}
-          resumeUrl={resumeUrl}
-          ownerId={resumeOwnerUserId}
-          onModeChange={(m: 'chat' | 'video' | 'resume') => setPanelMode(m)}
-          onDownload={handleDownloadEnhanced}
-          isDataLoading={loading}
-          recruiterMode={true}
-        />
-      )}
-    </div>
+      {
+        isPanelOpen && (
+          <ResumeChatPanel
+            isOpen={isPanelOpen}
+            onClose={closePanel}
+            mode={panelMode}
+            videoUrl={videoUrl}
+            resumeUrl={resumeUrl}
+            ownerId={resumeOwnerUserId}
+            onModeChange={(m: 'chat' | 'video' | 'resume') => setPanelMode(m)}
+            onDownload={handleDownloadEnhanced}
+            isDataLoading={loading}
+            recruiterMode={true}
+          />
+        )
+      }
+    </div >
   );
 };
 

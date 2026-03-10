@@ -15,6 +15,7 @@ import {
   Menu,
   FileUp,
   BarChart3,
+  Link,
 } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
@@ -148,47 +149,102 @@ export default function Dashboard() {
       setIsCRM(userInfo.isCRMUser);
       setCRMEmail(userInfo.email);
 
-      if (userInfo.isCRMUser && userInfo.email) {
-        // Fetch from CRM tables with recordings
-        const { data, error } = await supabase
-          .from('crm_job_requests')
-          .select(`
-            id,
-            job_title,
-            job_description,
-            resume_url,
-            application_status,
-            created_at
-          `)
-          .eq('email', userInfo.email)
-          .order('created_at', { ascending: false });
+      if (userInfo.isCRMUser) {
+        const emails = [userInfo.email, userInfo.company_application_email].filter(Boolean) as string[];
 
-        if (error) throw error;
+        const fetchVercelData = async () => {
+          for (const email of emails) {
+            try {
+              const res = await fetch(`/api/proxy-applywizz?email=${email}`);
+              if (res.ok) {
+                const json = await res.json();
+                const d = Array.isArray(json) ? json[0] : json;
+                if (d) return d;
+              }
+            } catch (e) { }
+          }
+          return null;
+        };
+
+        // Fetch Vercel details for the CRM user
+        const vercelPromise = fetchVercelData();
+
+        // Fetch from CRM tables with recordings
+        const [crmResult, vercelData] = await Promise.all([
+          supabase
+            .from('crm_job_requests')
+            .select(`
+              id,
+              job_title,
+              job_description,
+              resume_url,
+              application_status,
+              created_at
+            `)
+            .in('email', emails)
+            .order('created_at', { ascending: false }),
+          vercelPromise
+        ]);
+
+        if (crmResult.error) throw crmResult.error;
+        const data = crmResult.data;
 
         // Fetch recordings and session details for each job request
-        const jobsWithDetails = await Promise.all(
-          (data || []).map(async (item) => {
-            const [recRes, sessionRes, engagedRes] = await Promise.all([
-              supabase.from('crm_recordings').select('video_url').eq('job_request_id', item.id).limit(1),
-              supabase.from('resume_sessions').select('id', { count: 'exact', head: true }).eq('resume_id', item.id),
-              supabase.from('resume_sessions').select('id', { count: 'exact', head: true })
-                .eq('resume_id', item.id)
-                .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true')
-            ]);
+        // Correctly extract resume URL and portfolio from the nested API structure
+        const vApiResumeUrl = vercelData?.data?.resume?.pdf_path?.[0] || vercelData?.resume?.pdf_path?.[0] || null;
+        const vApiPort = vercelData?.data?.portfolio?.link || vercelData?.portfolio?.link || null;
+        const vApiPortfolio = (typeof vApiPort === "string" && vApiPort.toLowerCase().includes('vercel.app')) ? vApiPort : null;
+        const vApiName = vercelData?.data?.name || vercelData?.name || null;
 
-            return {
-              ...item,
-              resume_path: item.resume_url,
-              status: item.application_status || 'draft',
-              recordings: recRes.data?.map(r => ({ storage_path: r.video_url })) || [],
-              view_count: sessionRes.count || 0,
-              engaged_count: engagedRes.count || 0
-            };
-          })
-        );
+        const supabaseJobs = data || [];
 
-        setcareercasts(jobsWithDetails);
+        // If no Supabase records exist but API has a resume → create a synthetic record
+        if (supabaseJobs.length === 0 && vApiResumeUrl) {
+          const primaryEmail = emails[0]; // personal email (first priority)
+          const syntheticRecord = {
+            id: 'api-resume',
+            job_title: `${vApiName ? vApiName + "'s" : 'Your'} Resume`,
+            job_description: '',
+            resume_path: vApiResumeUrl,
+            status: 'ready',
+            created_at: new Date().toISOString(),
+            recordings: [],
+            view_count: 0,
+            engaged_count: 0,
+            vercel_portfolio_url: vApiPortfolio,
+            is_api_resume: true,
+            owner_email: primaryEmail
+          };
+          setcareercasts([syntheticRecord]);
+        } else {
+          const jobsWithDetails = await Promise.all(
+            supabaseJobs.map(async (item) => {
+              const [recRes, sessionRes, engagedRes] = await Promise.all([
+                supabase.from('crm_recordings').select('video_url').eq('job_request_id', item.id).limit(1),
+                supabase.from('resume_sessions').select('id', { count: 'exact', head: true }).eq('resume_id', item.id),
+                supabase.from('resume_sessions').select('id', { count: 'exact', head: true })
+                  .eq('resume_id', item.id)
+                  .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true')
+              ]);
+
+              return {
+                ...item,
+                // Priority: Supabase resume first, then API resume as fallback
+                resume_path: item.resume_url || vApiResumeUrl || null,
+                status: item.application_status || 'draft',
+                recordings: recRes.data?.map(r => ({ storage_path: r.video_url })) || [],
+                view_count: sessionRes.count || 0,
+                engaged_count: engagedRes.count || 0,
+                vercel_portfolio_url: vApiPortfolio
+              };
+            })
+          );
+          setcareercasts(jobsWithDetails);
+        }
       } else {
+        // Regular User branch — these users are NOT in the Vercel/ApplyWizz system
+        // so we do NOT call the external API (would always 404 for them).
+
         // Fetch from regular tables
         const { data, error } = await supabase
           .from('job_requests')
@@ -218,8 +274,10 @@ export default function Dashboard() {
 
             return {
               ...item,
+              resume_path: item.resume_path || null,
               view_count: sessionRes.count || 0,
-              engaged_count: engagedRes.count || 0
+              engaged_count: engagedRes.count || 0,
+              vercel_portfolio_url: null
             };
           })
         );
@@ -358,7 +416,11 @@ export default function Dashboard() {
       navigate('/step3');
     }
   };
-  const handleViewDetails = (id: string) => navigate(`/final-result/${id}`);
+  const handleViewDetails = (id: string, resumePath?: string) => {
+    const baseUrl = `/final-result/${id}`;
+    const url = resumePath ? `${baseUrl}?resumeUrl=${encodeURIComponent(resumePath)}` : baseUrl;
+    navigate(url);
+  };
   const handleCloseVideo = () => setSelectedVideo(null);
   const handleClosePricingPopup = () => setShowPricingPopup(false);
 
@@ -546,14 +608,26 @@ export default function Dashboard() {
                             <td className="py-3 px-4 font-medium">{cast.job_title || 'Untitled'}</td>
                             <td className="py-3 px-4">
                               {cast.resume_path ? (
-                                <a
-                                  href={cast.resume_path}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-[#01796F] hover:underline flex items-center gap-1"
-                                >
-                                  <FileText className="w-4 h-4" /> View
-                                </a>
+                                <>
+                                  <a
+                                    href={cast.resume_path}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[#01796F] hover:underline flex items-center gap-1"
+                                  >
+                                    <FileText className="w-4 h-4" /> View
+                                  </a>
+                                  {cast.vercel_portfolio_url && (
+                                    <a
+                                      href={cast.vercel_portfolio_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-blue-600 hover:underline flex items-center gap-1 mt-1 text-xs"
+                                    >
+                                      <Link className="w-3.5 h-3.5" /> Portfolio
+                                    </a>
+                                  )}
+                                </>
                               ) : (
                                 <span className="text-gray-400 text-xs italic">No resume</span>
                               )}
@@ -581,7 +655,16 @@ export default function Dashboard() {
                             <td className="py-3 px-4 text-center">
                               <div className="flex justify-center gap-2">
                                 <button
-                                  onClick={() => cast.resume_path && handleViewDetails(cast.id)}
+                                  onClick={() => {
+                                    if (!cast.resume_path) return;
+                                    if (cast.is_api_resume) {
+                                      // Navigate to FinalResult with profile email so it loads the same way
+                                      const email = cast.owner_email || crmEmail || user?.email || '';
+                                      navigate(`/final-result/profile?email=${encodeURIComponent(email)}&resumeUrl=${encodeURIComponent(cast.resume_path || '')}`);
+                                    } else {
+                                      handleViewDetails(cast.id, cast.resume_path);
+                                    }
+                                  }}
                                   disabled={!cast.resume_path}
                                   className={`${cast.resume_path
                                     ? 'bg-[#01796F] hover:bg-[#016761] text-white'
@@ -590,18 +673,20 @@ export default function Dashboard() {
                                 >
                                   View
                                 </button>
-                                <button
-                                  onClick={() => handleReplaceClick(cast.id)}
-                                  disabled={isReplacing && replacingId === cast.id}
-                                  className="border-2 border-emerald-500 text-emerald-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-emerald-500 hover:text-white transition-colors flex items-center gap-1"
-                                >
-                                  {isReplacing && replacingId === cast.id ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    <FileUp className="w-3 h-3" />
-                                  )}
-                                  Replace
-                                </button>
+                                {cast.resume_path && (
+                                  <button
+                                    onClick={() => handleReplaceClick(cast.id)}
+                                    disabled={isReplacing && replacingId === cast.id}
+                                    className="border-2 border-emerald-500 text-emerald-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-emerald-500 hover:text-white transition-colors flex items-center gap-1"
+                                  >
+                                    {isReplacing && replacingId === cast.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <FileUp className="w-3 h-3" />
+                                    )}
+                                    Replace
+                                  </button>
+                                )}
                                 {both ? (
                                   <button
                                     onClick={() => handleReRecord(cast)}
@@ -667,11 +752,31 @@ export default function Dashboard() {
                                       <span>No video</span>
                                     </span>
                                   )}
+
+                                  {cast.vercel_portfolio_url && (
+                                    <a
+                                      href={cast.vercel_portfolio_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-xs font-medium"
+                                    >
+                                      <Link className="w-4 h-4" />
+                                      <span>Portfolio</span>
+                                    </a>
+                                  )}
                                 </div>
 
                                 <div className="flex gap-2 mt-2">
                                   <button
-                                    onClick={() => cast.resume_path && handleViewDetails(cast.id)}
+                                    onClick={() => {
+                                      if (!cast.resume_path) return;
+                                      if (cast.is_api_resume) {
+                                        const email = cast.owner_email || crmEmail || user?.email || '';
+                                        navigate(`/final-result/profile?email=${encodeURIComponent(email)}&resumeUrl=${encodeURIComponent(cast.resume_path || '')}`);
+                                      } else {
+                                        handleViewDetails(cast.id, cast.resume_path);
+                                      }
+                                    }}
                                     disabled={!cast.resume_path}
                                     className={`flex-1 ${cast.resume_path
                                       ? 'bg-[#01796F] hover:bg-[#016761] text-white'
@@ -680,18 +785,20 @@ export default function Dashboard() {
                                   >
                                     View Details
                                   </button>
-                                  <button
-                                    onClick={() => handleReplaceClick(cast.id)}
-                                    disabled={isReplacing && replacingId === cast.id}
-                                    className="flex-1 border border-emerald-500 text-emerald-600 px-3 py-2 rounded-lg font-medium text-sm hover:bg-emerald-500 hover:text-white transition-colors flex items-center justify-center gap-1"
-                                  >
-                                    {isReplacing && replacingId === cast.id ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <FileUp className="w-4 h-4" />
-                                    )}
-                                    Replace
-                                  </button>
+                                  {cast.resume_path && (
+                                    <button
+                                      onClick={() => handleReplaceClick(cast.id)}
+                                      disabled={isReplacing && replacingId === cast.id}
+                                      className="flex-1 border border-emerald-500 text-emerald-600 px-3 py-2 rounded-lg font-medium text-sm hover:bg-emerald-500 hover:text-white transition-colors flex items-center justify-center gap-1"
+                                    >
+                                      {isReplacing && replacingId === cast.id ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <FileUp className="w-4 h-4" />
+                                      )}
+                                      Replace
+                                    </button>
+                                  )}
                                   {both ? (
                                     <button
                                       onClick={() => handleReRecord(cast)}
