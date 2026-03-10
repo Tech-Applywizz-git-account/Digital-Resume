@@ -2,12 +2,11 @@ import React, { useState, useRef, useEffect } from "react";
 import { Send, X, MessageSquare, User, Bot, Loader2, Sparkles, Play, FileText, Download } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { supabase } from "../integrations/supabase/client";
-import * as pdfjsLib from "pdfjs-dist";
 import { trackEvent } from "../utils/tracking";
+import * as pdfjs from "pdfjs-dist";
 
-// Configure PDF.js worker
-const pdfjsVersion = pdfjsLib.version || "5.4.296";
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
+// Set worker source for pdfjs-dist
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
 
 interface Message {
     id: string;
@@ -67,6 +66,7 @@ const ResumeChatPanel = ({
     ]);
     const [inputText, setInputText] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [isExtracting, setIsExtracting] = useState(false);
     const [resumeText, setResumeText] = useState<string>("");
     const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>(
         recruiterMode ? RECRUITER_QUESTIONS : DEFAULT_QUESTIONS
@@ -74,70 +74,84 @@ const ResumeChatPanel = ({
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const loadResumeText = async () => {
-            // ✅ Reset state when a new resume is selected
-            setMessages([
-                {
-                    id: '1',
-                    text: recruiterMode
-                        ? "Hi there! 👋 I'm glad you're here. Feel free to ask me anything — about my experience, skills, projects, or how I can add value to your team. I'm happy to chat!"
-                        : "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
-                    sender: 'bot',
-                    timestamp: new Date()
-                }
-            ]);
-            setSuggestedQuestions(recruiterMode ? RECRUITER_QUESTIONS : DEFAULT_QUESTIONS);
-            setResumeText(""); // Clear old content
-
-            // ❌ DO NOT use localStorage. Fetch and parse fresh every time.
-            if (resumeUrl) {
-                try {
-                    console.log("🚀 Switching Resume. Fetching fresh PDF from:", resumeUrl);
-                    setIsLoading(true);
-
-                    const response = await fetch(resumeUrl);
-                    if (!response.ok) throw new Error(`Failed to fetch PDF: ${response.statusText}`);
-
-                    const blob = await response.blob();
-                    const arrayBuffer = await blob.arrayBuffer();
-
-                    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-                    const pdf = await loadingTask.promise;
-
-                    let text = "";
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        const page = await pdf.getPage(i);
-                        const content = await page.getTextContent();
-                        const pageText = (content.items as any[])
-                            .map((item: any) => item.str)
-                            .join("\n");
-                        text += pageText + "\n\n";
-                    }
-
-                    const extractedText = text.replace(/\n\s*\n/g, "\n").trim().slice(0, 25000);
-                    console.log("✅ Extracted PDF text length:", extractedText.length);
-                    console.log("📄 Resume Preview:", extractedText.slice(0, 100));
-
-                    setResumeText(extractedText);
-
-                } catch (err: any) {
-                    console.error("❌ Failed to parse PDF from URL:", err);
-                    setMessages(prev => [...prev, {
-                        id: Date.now().toString(),
-                        text: "I was unable to read the resume file. Please ensure it is accessible.",
-                        sender: 'bot',
-                        timestamp: new Date()
-                    }]);
-                } finally {
-                    setIsLoading(false);
-                }
+        // ✅ Reset state when a new resume is selected
+        setMessages([
+            {
+                id: '1',
+                text: recruiterMode
+                    ? "Hi there! 👋 I'm glad you're here. Feel free to ask me anything — about my experience, skills, projects, or how I can add value to your team. I'm happy to chat!"
+                    : "Hi! I'm here to help you analyze this resume. You can ask me questions about the candidate's experience, skills, or background.",
+                sender: 'bot',
+                timestamp: new Date()
             }
-        };
+        ]);
+        setSuggestedQuestions(recruiterMode ? RECRUITER_QUESTIONS : DEFAULT_QUESTIONS);
 
         if (resumeUrl) {
-            loadResumeText();
+            extractTextFromPdf(resumeUrl);
+        } else {
+            setResumeText("");
         }
-    }, [resumeUrl, recruiterMode]); // Reset only when resumeUrl or mode changes
+    }, [resumeUrl, recruiterMode]);
+
+    const getProxiedUrl = (url: string | null) => {
+        if (!url) return "";
+        if (url.includes('applywizz-prod.s3.us-east-2.amazonaws.com')) {
+            return url.replace(/^https?:\/\/applywizz-prod\.s3\.us-east-2\.amazonaws\.com\//, '/proxy-s3/');
+        }
+        if (url.includes('public.blob.vercel-storage.com')) {
+            return url.replace(/^https?:\/\/public\.blob\.vercel-storage\.com\//, '/proxy-vercel-blob/');
+        }
+        return url;
+    };
+
+    const extractTextFromPdf = async (url: string) => {
+        try {
+            setIsExtracting(true);
+            console.log("📄 Starting PDF text extraction:", url);
+
+            const fetchUrl = getProxiedUrl(url);
+
+            let response = await fetch(fetchUrl);
+            if (!response.ok) {
+                console.log("⚠️ Initial fetch failed, trying with credentials...");
+                response = await fetch(fetchUrl, { credentials: 'include' });
+            }
+
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+            const arrayBuffer = await response.arrayBuffer();
+
+            const loadingTask = pdfjs.getDocument({
+                data: arrayBuffer,
+                useSystemFonts: true,
+                disableFontFace: true,
+            });
+
+            const pdf = await loadingTask.promise;
+            let fullText = "";
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map((item: any) => item.str).join(" ");
+                fullText += pageText + "\n";
+            }
+
+            const cleanText = fullText.trim();
+            setResumeText(cleanText);
+
+            if (cleanText.length < 10) {
+                console.warn("⚠️ Extracted text is very short. PDF might be an image.");
+            }
+
+            console.log("✅ PDF extraction complete. Length:", cleanText.length);
+        } catch (error) {
+            console.error("❌ PDF text extraction failed:", error);
+        } finally {
+            setIsExtracting(false);
+        }
+    };
 
     useEffect(() => {
         scrollToBottom();
@@ -162,13 +176,19 @@ const ResumeChatPanel = ({
         setIsLoading(true);
 
         try {
-            if (!resumeText) {
-                throw new Error("Resume content is still loading. Please wait a moment.");
+            console.log("📤 Sending Resume Chat Request...");
+
+            if (isExtracting) {
+                throw new Error("I'm still reading the resume. Please wait a moment...");
             }
 
-            console.log("📤 Sending Resume Chat Request...");
-            console.log("📄 Source URL:", resumeUrl);
-            console.log("📄 Content Sample:", resumeText.slice(0, 100));
+            if (!resumeText && resumeUrl) {
+                throw new Error("I couldn't read the resume content. Please ensure it's a valid PDF.");
+            }
+
+            if (!resumeText) {
+                throw new Error("No resume content found to analyze.");
+            }
 
             const { data, error } = await supabase.functions.invoke('resume-chat', {
                 body: {
@@ -180,7 +200,30 @@ const ResumeChatPanel = ({
                 }
             });
 
-            if (error) throw error;
+            if (error) {
+                console.error("Supabase function error:", error);
+
+                // Try to extract a more descriptive message from the error object
+                let detailMsg = "";
+                if (error instanceof Error) {
+                    detailMsg = error.message;
+                }
+
+                // If it's a FunctionsHttpError, it might have the body text
+                const anyError = error as any;
+                if (anyError.context && typeof anyError.context.json === 'function') {
+                    try {
+                        const errorBody = await anyError.context.json();
+                        if (errorBody && errorBody.error) {
+                            detailMsg = errorBody.error;
+                        }
+                    } catch (e) {
+                        // ignore body parse error
+                    }
+                }
+
+                throw new Error(detailMsg || `Function returned status ${anyError.context?.status || 'unknown'}`);
+            }
 
             let botText = data.answer || "I couldn't generate a response.";
 
@@ -316,7 +359,7 @@ const ResumeChatPanel = ({
                         {resumeUrl ? (
                             <>
                                 <iframe
-                                    src={`${resumeUrl}#toolbar=0&navpanes=0`}
+                                    src={`${getProxiedUrl(resumeUrl)}#toolbar=0&navpanes=0`}
                                     className="w-full h-full border-none"
                                     title="Resume PDF"
                                 />
@@ -416,13 +459,22 @@ const ResumeChatPanel = ({
                             <div ref={messagesEndRef} />
                         </div>
 
+                        {/* Status Indicator for Extraction */}
+                        {isExtracting && (
+                            <div className="px-4 py-1 flex items-center gap-2 text-[10px] text-slate-400 font-medium animate-pulse">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                Reading resume data...
+                            </div>
+                        )}
+
                         {/* Suggested Questions */}
                         <div className="px-4 pb-2 flex gap-2 overflow-x-auto no-scrollbar pt-2">
                             {suggestedQuestions.map((q, i) => (
                                 <button
                                     key={i}
                                     onClick={() => handleSendMessage(q)}
-                                    className="whitespace-nowrap px-4 py-2 bg-white border border-[#0B4F6C]/20 text-[#0B4F6C] text-xs font-medium rounded-xl hover:bg-[#0B4F6C] hover:text-white transition-all shadow-sm active:scale-95"
+                                    disabled={isLoading}
+                                    className="whitespace-nowrap px-4 py-2 bg-white border border-[#0B4F6C]/20 text-[#0B4F6C] text-xs font-medium rounded-xl hover:bg-[#0B4F6C] hover:text-white transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {q}
                                 </button>

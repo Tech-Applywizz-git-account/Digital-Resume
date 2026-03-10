@@ -27,14 +27,20 @@ export const getCRMUserEmail = async (userId: string): Promise<string | null> =>
 };
 
 /**
- * Get user type and email
+ * Get user type and emails
  */
 export const getUserInfo = async (userId: string) => {
-    const isCRM = await isCRMUser(userId);
-    const email = isCRM ? await getCRMUserEmail(userId) : null;
+    const { data } = await supabase
+        .from('digital_resume_by_crm')
+        .select('email, company_application_email')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    const isCRM = !!data;
 
     return {
         isCRMUser: isCRM,
-        email: email,
+        email: data?.email || null,
+        company_application_email: data?.company_application_email || null,
     };
 };

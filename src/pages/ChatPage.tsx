@@ -3,20 +3,20 @@ import { supabase } from "../integrations/supabase/client";
 import ResumeChatPanel from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
 
-// Removed default sample portfolio URL
-
 const ChatPage: React.FC = () => {
-    const [resumeUrl, setResumeUrl] = useState<string | null>(null);
-    const [videoUrl, setVideoUrl] = useState<string | null>(null);
-    const [dbPortfolioUrl, setDbPortfolioUrl] = useState<string | null>(null);
-    const [ownerId, setOwnerId] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
-
     const params = new URLSearchParams(window.location.search);
     const resumeId = params.get("resumeId") || params.get("id");
     const source = params.get("source");
     const modeParam = params.get("mode") as "chat" | "video" | "resume" | null;
     const openVideo = params.get("openVideo") === "true" || modeParam === 'video';
+    const urlFromQuery = params.get("resumeUrl");
+
+    const [resumeUrl, setResumeUrl] = useState<string | null>(urlFromQuery || null);
+    const [videoUrl, setVideoUrl] = useState<string | null>(null);
+    const [dbPortfolioUrl, setDbPortfolioUrl] = useState<string | null>(null);
+    const [ownerId, setOwnerId] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
     const portfolioUrl = dbPortfolioUrl || params.get("portfolio");
 
     const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
@@ -39,17 +39,13 @@ const ChatPage: React.FC = () => {
     useEffect(() => {
         if (!resumeId || hasTracked.current) return;
 
-        // 1. Initial Page Load Event
         trackEvent('page_load', resumeId);
         hasTracked.current = true;
 
-        // 2. Detect if visitor arrived by clicking "Let's Talk" button inside the PDF
-        //    URL shape: /chat?resumeId=XXX&source=pdf
         if (source === 'pdf') {
             trackEvent('lets_talk', resumeId);
         }
 
-        // 3. Session Duration Tracking
         const handleUnload = () => {
             trackSessionEnd(resumeId);
         };
@@ -60,7 +56,6 @@ const ChatPage: React.FC = () => {
         };
     }, [resumeId]);
 
-    // ✅ Track Portfolio Interaction
     const handlePortfolioInteraction = () => {
         if (resumeId) {
             trackEvent('portfolio_click', resumeId);
@@ -77,10 +72,16 @@ const ChatPage: React.FC = () => {
             }
 
             try {
+                // Tracking what we found via local variables because state updates are async
+                let foundResumeUrl = urlFromQuery || null;
+                let foundPortfolioUrl = params.get("portfolio") || null;
+                let foundOwnerId = null;
+
+                // 1. Initial Fetch from Supabase
                 const [crmResult, regularResult, portfolioResult] = await Promise.all([
                     supabase
                         .from("crm_job_requests")
-                        .select("resume_url, user_id")
+                        .select("resume_url, user_id, email, company_application_email")
                         .eq("id", resumeId)
                         .maybeSingle(),
                     supabase
@@ -95,51 +96,16 @@ const ChatPage: React.FC = () => {
                         .maybeSingle(),
                 ]);
 
-                const data = crmResult.data || regularResult.data
-                if (data?.user_id) {
-                    // Fetch portfolio strictly by owner's user_id, fallback to request_id
-                    const { data: userPortfolio } = await supabase
-                        .from('portfolio_settings')
-                        .select('url')
-                        .eq('user_id', data.user_id)
-                        .order('created_at', { ascending: false })
-                        .limit(1)
-                        .maybeSingle();
-
-                    if (userPortfolio?.url) {
-                        setDbPortfolioUrl(userPortfolio.url);
-                    } else {
-                        // Fallback to request_id for legacy records
-                        const { data: reqPortData } = await supabase
-                            .from('portfolio_settings')
-                            .select('url')
-                            .eq('request_id', resumeId)
-                            .maybeSingle();
-                        if (reqPortData?.url) setDbPortfolioUrl(reqPortData.url);
-                    }
-                } else if (resumeId) {
-                    // No user_id, rely on request_id
-                    const { data: reqPortData } = await supabase
-                        .from('portfolio_settings')
-                        .select('url')
-                        .eq('request_id', resumeId)
-                        .maybeSingle();
-                    if (reqPortData?.url) setDbPortfolioUrl(reqPortData.url);
-                }
-
-                // If still no portfolio after all checks, handle redirect
-                if (!dbPortfolioUrl && !params.get("portfolio") && resumeId) {
-                    const sourceParam = params.get("source") || "pdf";
-                    const originalMode = params.get("mode");
-                    const finalMode = (originalMode === "chat") ? "" : originalMode;
-                    const modeParam = finalMode ? `&mode=${finalMode}` : "";
-                    window.location.replace(`${window.location.origin}/final-result/${resumeId}?from=pdf&source=${sourceParam}${modeParam}&id=${resumeId}`);
-                    return;
-                }
-
+                // 2. Resolve URLs from Supabase
                 if (crmResult.data) {
-                    setResumeUrl(crmResult.data.resume_url || null);
-                    if (crmResult.data.user_id) setOwnerId(crmResult.data.user_id);
+                    let rUrl = crmResult.data.resume_url || null;
+                    if (rUrl && !rUrl.startsWith('http')) {
+                        rUrl = supabase.storage.from("CRM_users_resumes").getPublicUrl(rUrl).data.publicUrl;
+                    }
+                    if (!foundResumeUrl) foundResumeUrl = rUrl;
+
+                    foundOwnerId = crmResult.data.user_id || null;
+                    setOwnerId(foundOwnerId);
 
                     const { data: rec } = await supabase
                         .from("crm_recordings")
@@ -148,34 +114,93 @@ const ChatPage: React.FC = () => {
                         .maybeSingle();
 
                     if (rec?.video_url) {
-                        const path = rec.video_url;
-                        setVideoUrl(
-                            path.startsWith("http")
-                                ? path
-                                : supabase.storage
-                                    .from("CRM_users_recordings")
-                                    .getPublicUrl(path).data.publicUrl
-                        );
+                        setVideoUrl(rec.video_url.startsWith("http") ? rec.video_url :
+                            supabase.storage.from("CRM_users_recordings").getPublicUrl(rec.video_url).data.publicUrl);
                     }
                 } else if (regularResult.data) {
                     const data = regularResult.data;
-                    setResumeUrl(data.resume_path || null);
-                    if (data.user_id) setOwnerId(data.user_id);
+                    let rUrl = data.resume_path || null;
+                    if (rUrl && !rUrl.startsWith('http')) {
+                        rUrl = supabase.storage.from("resumes").getPublicUrl(rUrl).data.publicUrl;
+                    }
+                    if (!foundResumeUrl) foundResumeUrl = rUrl;
+
+                    foundOwnerId = data.user_id || null;
+                    setOwnerId(foundOwnerId);
 
                     const recordings = data.recordings as any;
                     if (recordings && recordings.length > 0) {
                         const path = recordings[0].storage_path;
                         if (path) {
-                            setVideoUrl(
-                                path.startsWith("http")
-                                    ? path
-                                    : supabase.storage
-                                        .from("recordings")
-                                        .getPublicUrl(path).data.publicUrl
-                            );
+                            setVideoUrl(path.startsWith("http") ? path :
+                                supabase.storage.from("recordings").getPublicUrl(path).data.publicUrl);
                         }
                     }
                 }
+
+                // 3. Resolve Portfolio
+                if (portfolioResult.data?.url) {
+                    foundPortfolioUrl = portfolioResult.data.url;
+                } else if (foundOwnerId) {
+                    const { data: userPortfolio } = await supabase
+                        .from('portfolio_settings')
+                        .select('url')
+                        .eq('user_id', foundOwnerId)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+                    if (userPortfolio?.url) foundPortfolioUrl = userPortfolio.url;
+                }
+
+                // 4. ✅ Vercel API Fallback (Crucial for API-only users or fresh uploads)
+                if (!foundResumeUrl || !foundPortfolioUrl) {
+                    const emailsToTry = [
+                        crmResult.data?.email,
+                        crmResult.data?.company_application_email,
+                        params.get("email")
+                    ].filter(Boolean) as string[];
+
+                    for (const email of emailsToTry) {
+                        try {
+                            const response = await fetch(`/api/proxy-applywizz?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+                            if (response.ok) {
+                                const jsonResponse = await response.json();
+                                const userData = Array.isArray(jsonResponse) ? jsonResponse[0] : jsonResponse;
+                                const vResumeUrl = userData?.data?.resume?.pdf_path?.[0] || userData?.resume?.pdf_path?.[0];
+                                const vPortfolioUrl = userData?.data?.portfolio?.link || userData?.portfolio?.link;
+
+                                if (vResumeUrl && !foundResumeUrl) {
+                                    foundResumeUrl = vResumeUrl;
+                                    // ✅ Sync with Supabase
+                                    if (resumeId && resumeId !== 'profile') {
+                                        console.log("🔄 Syncing external resume to Supabase (from ChatPage):", resumeId);
+                                        Promise.all([
+                                            supabase.from('crm_job_requests').update({ resume_url: vResumeUrl }).eq('id', resumeId).is('resume_url', null),
+                                            supabase.from('job_requests').update({ resume_path: vResumeUrl }).eq('id', resumeId).is('resume_path', null)
+                                        ]).catch(err => console.error("❌ Sync failed:", err));
+                                    }
+                                }
+                                if (vPortfolioUrl && !foundPortfolioUrl) foundPortfolioUrl = vPortfolioUrl;
+
+                                if (foundResumeUrl && foundPortfolioUrl) break;
+                            }
+                        } catch (err) {
+                            console.error("❌ Vercel fallback fetch error:", err);
+                        }
+                    }
+                }
+
+                // Update final states
+                setResumeUrl(foundResumeUrl);
+                setDbPortfolioUrl(foundPortfolioUrl);
+
+                // 5. Final validation - ensure we have a portfolio to show
+                if (!foundPortfolioUrl && resumeId !== 'profile') {
+                    // Redirect back if no portfolio found to show alongside chat
+                    const sourceParam = params.get("source") || "pdf";
+                    window.location.replace(`${window.location.origin}/final-result/${resumeId}?from=pdf&source=${sourceParam}&id=${resumeId}`);
+                }
+
             } catch (err) {
                 console.error("ChatPage load error:", err);
             } finally {
@@ -197,11 +222,10 @@ const ChatPage: React.FC = () => {
                         if (iframeRef.current) iframeRef.current.src = src;
                     });
                 }
-            }, 320); // slightly after the 300ms width transition completes
+            }, 320);
             return () => clearTimeout(timer);
         }
     }, [isPanelOpen]);
-
 
     return (
         <div className="flex flex-col md:flex-row w-full h-screen overflow-hidden relative bg-black">
@@ -216,7 +240,7 @@ const ChatPage: React.FC = () => {
                     ref={iframeRef}
                     src={portfolioUrl || ""}
                     title="Portfolio"
-                    className="w-full h-full border-none block"
+                    className="w-full h-full border-0 block"
                     allow="fullscreen"
                 />
 
@@ -229,7 +253,7 @@ const ChatPage: React.FC = () => {
                 {!isPanelOpen && (
                     <button
                         onClick={() => setIsPanelOpen(true)}
-                        className="absolute right-6 bottom-6 w-15 h-15 rounded-full bg-[#0B4F6C] text-white border-none shadow-2xl cursor-pointer flex items-center justify-center z-[100] transition-all duration-300 hover:scale-110 hover:-translate-y-1 active:scale-95"
+                        className="absolute right-6 bottom-6 w-15 h-15 rounded-full bg-[#0B4F6C] text-white border-0 shadow-2xl cursor-pointer flex items-center justify-center z-[100] transition-all duration-300 hover:scale-110 hover:-translate-y-1 active:scale-95"
                     >
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z" />

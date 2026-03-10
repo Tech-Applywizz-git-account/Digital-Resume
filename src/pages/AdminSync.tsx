@@ -10,6 +10,7 @@ const AdminSync = () => {
     const [manualEmail, setManualEmail] = useState('');
     const [manualName, setManualName] = useState('');
     const [manualLoading, setManualLoading] = useState(false);
+    const [backfillLoading, setBackfillLoading] = useState(false);
 
     const runSync = async () => {
         setLoading(true);
@@ -86,6 +87,78 @@ const AdminSync = () => {
         }
     };
 
+    const backfillResumes = async () => {
+        setBackfillLoading(true);
+        setLogs(prev => ["🚀 Starting Resume Path Backfill...", ...prev]);
+        let totalProcessed = 0;
+        let totalUpdated = 0;
+
+        try {
+            // 1. Fetch records missing resumes
+            const [{ data: crmRecords }, { data: regRecords }] = await Promise.all([
+                supabase.from('crm_job_requests').select('id, email').is('resume_url', null),
+                supabase.from('job_requests').select('id, candidate_email, email').is('resume_path', null)
+            ]);
+
+            // Helper to sync a single record
+            const syncRecord = async (id: string, email: string, table: 'crm_job_requests' | 'job_requests') => {
+                if (!email) return;
+                try {
+                    const response = await fetch(`/api/proxy-applywizz?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+                    if (response.ok) {
+                        const json = await response.json();
+                        const userData = Array.isArray(json) ? json[0] : json;
+                        const vResumeUrl = userData?.data?.resume?.pdf_path?.[0] || userData?.resume?.pdf_path?.[0];
+
+                        if (vResumeUrl) {
+                            const col = table === 'crm_job_requests' ? 'resume_url' : 'resume_path';
+                            const { error } = await supabase.from(table).update({ [col]: vResumeUrl }).eq('id', id);
+                            if (error) console.error(`Failed to update ${id} in ${table}:`, error);
+                            return !error;
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Error syncing ${email}:`, e);
+                }
+                return false;
+            };
+
+            // Process CRM records
+            if (crmRecords) {
+                for (const rec of crmRecords) {
+                    totalProcessed++;
+                    const success = await syncRecord(rec.id, rec.email, 'crm_job_requests');
+                    if (success) totalUpdated++;
+                }
+            }
+
+            // Process Regular records
+            if (regRecords) {
+                for (const rec of regRecords) {
+                    totalProcessed++;
+                    const emailString = (rec as any).candidate_email || (rec as any).email;
+                    const success = await syncRecord(rec.id, emailString, 'job_requests');
+                    if (success) totalUpdated++;
+                }
+            }
+
+            setLogs(prev => [
+                `✅ Backfill Completed!`,
+                `Processed: ${totalProcessed}`,
+                `Updated: ${totalUpdated}`,
+                ...prev
+            ]);
+            showToast(`Backfill complete: Updated ${totalUpdated} records.`, 'success');
+
+        } catch (err: any) {
+            console.error(err);
+            setLogs(prev => [`❌ Backfill Error: ${err.message}`, ...prev]);
+            showToast('Backfill failed.', 'error');
+        } finally {
+            setBackfillLoading(false);
+        }
+    };
+
     return (
         <div className="p-8 max-w-2xl mx-auto">
             <Card className="mb-8">
@@ -119,6 +192,44 @@ const AdminSync = () => {
                             {manualLoading ? 'Creating...' : 'Create User'}
                         </Button>
                     </div>
+                </CardContent>
+            </Card>
+
+            <Card className="mb-8">
+                <CardHeader>
+                    <CardTitle>Resume Path Backfill</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <p className="text-gray-600 text-sm">
+                        Scans all existing requests that are missing a resume path and attempts to find them via the external API.
+                    </p>
+                    <Button
+                        onClick={backfillResumes}
+                        disabled={backfillLoading}
+                        variant="secondary"
+                        className="w-full flex items-center gap-2"
+                    >
+                        {backfillLoading ? 'Processing...' : 'Sync Missing Resumes 🔁'}
+                    </Button>
+                </CardContent>
+            </Card>
+
+            <Card className="mb-8">
+                <CardHeader>
+                    <CardTitle>Resume Path Backfill</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <p className="text-gray-600 text-sm">
+                        Scans all existing requests that are missing a resume path and attempts to find them via the external API.
+                    </p>
+                    <Button
+                        onClick={backfillResumes}
+                        disabled={backfillLoading}
+                        variant="secondary"
+                        className="w-full flex items-center gap-2"
+                    >
+                        {backfillLoading ? 'Processing...' : 'Sync Missing Resumes 🔁'}
+                    </Button>
                 </CardContent>
             </Card>
 
