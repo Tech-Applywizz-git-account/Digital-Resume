@@ -580,16 +580,18 @@ const FinalResult: React.FC = () => {
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
 
-      const btnW_play = 100;
-      const btnW_chat = 97;
-      const btnH = 28;
-      const gap = 12;
-      const margin = 20;
-      const topMargin = 10;
+      const btnW_play = 85;
+const btnW_chat = 82;
+const btnH = 20;
+const gap = 10;
+const margin = 20;
 
-      const totalW = (hasVideo ? (btnW_play + gap) : 0) + (hasPortfolio ? btnW_chat : 0);
-      let currentX = width - totalW - margin;
-      const btnY = height - btnH - topMargin;
+const topMargin = 5;
+
+const totalW = (hasVideo ? (btnW_play + gap) : 0) + (hasPortfolio ? btnW_chat : 0);
+let currentX = width - totalW - margin;
+
+const btnY = height - btnH - topMargin;
 
       const context = pdfDoc.context;
 
