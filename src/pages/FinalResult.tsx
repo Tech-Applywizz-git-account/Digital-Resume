@@ -585,10 +585,11 @@ const FinalResult: React.FC = () => {
       const btnH = 28;
       const gap = 12;
       const margin = 20;
+      const topMargin = 10;
 
       const totalW = (hasVideo ? (btnW_play + gap) : 0) + (hasPortfolio ? btnW_chat : 0);
       let currentX = width - totalW - margin;
-      const btnY = height - 20; 
+      const btnY = height - btnH - topMargin;
 
       const context = pdfDoc.context;
 
