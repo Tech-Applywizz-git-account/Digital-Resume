@@ -23,6 +23,7 @@ import SignupPage from "./pages/SignupPage";
 import DigitalResumeDashboard from "./pages/DigitalResumeDashboard";
 import DigitalResumeLogin from "./pages/DigitalResumeLogin";
 import ChatPage from "./pages/ChatPage";
+import ResumeAnalytics from "./pages/ResumeAnalytics";
 
 const RootRoute = () => {
   const query = new URLSearchParams(window.location.search);
@@ -60,6 +61,7 @@ function App() {
         <Route path="/hr-email" element={<HrEmail />} />
         <Route path="/hr-email-details" element={<HrEmailDetails />} />
         <Route path="/chat" element={<ChatPage />} />
+        <Route path="/analytics/:castId" element={<ResumeAnalytics />} />
       </Routes>
     </AuthProvider>
   );

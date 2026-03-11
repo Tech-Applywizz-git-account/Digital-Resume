@@ -35,6 +35,7 @@ interface SessionData {
     pdf_downloaded: boolean;
     duration_seconds: number;
     started_at: string;
+    resume_id: string;
 }
 
 interface EventData {
@@ -43,6 +44,7 @@ interface EventData {
     event_type: string;
     country: string;
     source: string;
+    resume_id: string;
 }
 
 export default function ResumeAnalytics() {
@@ -53,6 +55,7 @@ export default function ResumeAnalytics() {
     const [sessions, setSessions] = useState<SessionData[]>([]);
     const [events, setEvents] = useState<EventData[]>([]);
     const [resumeTitle, setResumeTitle] = useState('Resume Analytics');
+    const [resumeTitles, setResumeTitles] = useState<Record<string, string>>({});
     const [timeRange, setTimeRange] = useState('all'); // '7d', '30d', 'all'
 
     // Summary Stats
@@ -74,6 +77,10 @@ export default function ResumeAnalytics() {
     }, [castId, timeRange]);
 
     const fetchResumeInfo = async () => {
+        if (castId === 'all') {
+            setResumeTitle('Overall Performance');
+            return;
+        }
         // Try both tables
         const [crmJob, regularJob] = await Promise.all([
             supabase.from('crm_job_requests').select('job_title').eq('id', castId).maybeSingle(),
@@ -86,11 +93,28 @@ export default function ResumeAnalytics() {
     const fetchAnalytics = async () => {
         setLoading(true);
         try {
-            // 1. Fetch Sessions
+            // 1. Fetch relevant resume IDs if 'all'
+            let targetResumeIds: string[] = [];
+            if (castId === 'all') {
+                const { data: userResumes } = await supabase
+                    .from('job_requests')
+                    .select('id')
+                    .order('created_at', { ascending: false });
+                targetResumeIds = userResumes?.map(r => r.id) || [];
+            } else {
+                targetResumeIds = [castId!];
+            }
+
+            if (targetResumeIds.length === 0) {
+                setLoading(false);
+                return;
+            }
+
+            // 2. Fetch Sessions
             let sessionQuery = supabase
                 .from('resume_sessions')
                 .select('*')
-                .eq('resume_id', castId)
+                .in('resume_id', targetResumeIds)
                 .order('started_at', { ascending: false });
 
             // Apply time filter (simplistic for now)
@@ -107,11 +131,11 @@ export default function ResumeAnalytics() {
             const { data: sessionData, error: sError } = await sessionQuery;
             if (sError) throw sError;
 
-            // 2. Fetch Click Events (Individual actions)
+            // 3. Fetch Click Events (Individual actions)
             let clickQuery = supabase
                 .from('resume_click_tracking')
                 .select('*')
-                .eq('resume_id', castId)
+                .in('resume_id', targetResumeIds)
                 .order('created_at', { ascending: false });
 
             if (timeRange === '7d') {
@@ -125,6 +149,17 @@ export default function ResumeAnalytics() {
 
             setSessions(sessionData || []);
             setEvents(eventData || []);
+
+            // 4. Fetch titles for 'all' mode
+            if (castId === 'all' && targetResumeIds.length > 0) {
+                const { data: titles } = await supabase
+                    .from('job_requests')
+                    .select('id, job_title')
+                    .in('id', targetResumeIds);
+                const titleMap: Record<string, string> = {};
+                titles?.forEach(t => { titleMap[t.id] = t.job_title || 'Untitled'; });
+                setResumeTitles(titleMap);
+            }
 
             // 3. Process Stats
             const s = sessionData || [];
@@ -221,8 +256,8 @@ export default function ResumeAnalytics() {
                                 key={range}
                                 onClick={() => setTimeRange(range)}
                                 className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${timeRange === range
-                                        ? 'bg-white text-slate-900 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700'
+                                    ? 'bg-white text-slate-900 shadow-sm'
+                                    : 'text-slate-500 hover:text-slate-700'
                                     }`}
                             >
                                 {range === 'all' ? 'All Time' : range === '30d' ? '30 Days' : '7 Days'}
@@ -343,6 +378,52 @@ export default function ResumeAnalytics() {
                         </div>
                     </div>
                 </div>
+
+                {/* Comparison Table (User to User) */}
+                {castId === 'all' && Object.keys(resumeTitles).length > 0 && (
+                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm mb-8 overflow-hidden">
+                        <div className="px-6 py-5 border-b border-slate-100">
+                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                <Layers className="w-4 h-4 text-[#0B4F6C]" /> User-to-User Resume Comparison
+                            </h3>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-slate-50/50">
+                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Resume / Job Title</th>
+                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Views</th>
+                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Engagements</th>
+                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {Object.entries(resumeTitles).map(([id, title]) => {
+                                        const rSessions = sessions.filter(s => s.resume_id === id);
+                                        const rEvents = events.filter(e => e.resume_id === id);
+                                        return (
+                                            <tr key={id} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="px-6 py-4 text-xs font-bold text-slate-800">{title}</td>
+                                                <td className="px-6 py-4 text-xs font-bold text-slate-600 text-center">{rSessions.length}</td>
+                                                <td className="px-6 py-4 text-xs font-bold text-slate-600 text-center">
+                                                    {rEvents.length} actions
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button
+                                                        onClick={() => navigate(`/analytics/${id}`)}
+                                                        className="text-[10px] font-bold text-[#0B4F6C] hover:underline uppercase tracking-wider"
+                                                    >
+                                                        Details
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
 
                 {/* Detailed Logs */}
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
