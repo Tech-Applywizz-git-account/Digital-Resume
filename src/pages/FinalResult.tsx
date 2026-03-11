@@ -10,58 +10,110 @@ import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
 
-const generateButtonImage = async (text: string, iconSrc: string, width: number, height: number, iconWidth: number, iconHeight: number): Promise<string | null> => {
-  return new Promise((resolve) => {
-    const canvas = document.createElement('canvas');
+// --- Play Intro Button Canvas Generator ---
+// Layout: inline-flex, h=28px, padding: 6px 8px 5px 8px, align-items: flex-start, gap: 6px
+// Icon: 17x17 | Shadow: 2px 2px 4.1px rgba(0,0,0,0.25)
+const generatePlayIntroImage = async (text: string, iconSrc: string, width: number): Promise<string | null> => {
+  return new Promise(async (resolve) => {
+    try { if (document.fonts) await document.fonts.load('500 10px Poppins'); } catch (_) { }
+    const height = 28;
     const dpr = 4;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    const sml = 5, smr = 7, smt = 5, smb = 7; // shadow margins (extra for shadow extent)
+    const canvas = document.createElement('canvas');
+    canvas.width = (width + sml + smr) * dpr;
+    canvas.height = (height + smt + smb) * dpr;
     const ctx = canvas.getContext('2d');
     if (!ctx) { resolve(null); return; }
     ctx.scale(dpr, dpr);
-
+    ctx.translate(sml, smt);
+    // Shadow: 2px right, 2px down, 4.1px blur
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 2; ctx.shadowBlur = 4.1;
     // Background
     ctx.fillStyle = '#0A66C2';
-    const radius = 6;
+    const r = 6;
     ctx.beginPath();
-    ctx.moveTo(radius, 0);
-    ctx.lineTo(width - radius, 0);
-    ctx.quadraticCurveTo(width, 0, width, radius);
-    ctx.lineTo(width, height - radius);
-    ctx.quadraticCurveTo(width, height, width - radius, height);
-    ctx.lineTo(radius, height);
-    ctx.quadraticCurveTo(0, height, 0, height - radius);
-    ctx.lineTo(0, radius);
-    ctx.quadraticCurveTo(0, 0, radius, 0);
-    ctx.closePath();
-    ctx.fill();
-
+    ctx.moveTo(r, 0); ctx.lineTo(width - r, 0); ctx.quadraticCurveTo(width, 0, width, r);
+    ctx.lineTo(width, height - r); ctx.quadraticCurveTo(width, height, width - r, height);
+    ctx.lineTo(r, height); ctx.quadraticCurveTo(0, height, 0, height - r);
+    ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
+    ctx.closePath(); ctx.fill();
     // Border
-    ctx.strokeStyle = '#CEDFF9';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    const img = new Image();
-    img.crossOrigin = "anonymous";
+    ctx.shadowColor = 'transparent'; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#CEDFF9'; ctx.lineWidth = 2; ctx.stroke();
+    const img = new Image(); img.crossOrigin = 'anonymous';
     img.onload = () => {
-      ctx.font = 'bold 12px Arial';
-      const textMetrics = ctx.measureText(text);
-      const gap = 6;
-      const totalContentW = iconWidth + gap + textMetrics.width;
-      const startX = (width - totalContentW) / 2;
-
-      ctx.drawImage(img, startX, (height - iconHeight) / 2, iconWidth, iconHeight);
-
-      ctx.fillStyle = 'white';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, startX + iconWidth + gap, height / 2 + 1);
-
+      ctx.font = '500 10px Poppins, sans-serif';
+      if ('letterSpacing' in ctx) (ctx as any).letterSpacing = '-0.006px';
+      const iconW = 17, iconH = 17, gap = 6;
+      const tm = ctx.measureText(text);
+      const totalW = iconW + gap + tm.width;
+      const startX = (width - totalW) / 2; // justify-content: center
+      // Vertically center icon and text together within the button
+      const centerY = height / 2;
+      const iconY = centerY - iconH / 2;
+      ctx.drawImage(img, startX, iconY, iconW, iconH);
+      ctx.fillStyle = 'white'; ctx.textBaseline = 'middle';
+      ctx.fillText(text, startX + iconW + gap, centerY);
       resolve(canvas.toDataURL('image/png'));
     };
     img.onerror = () => resolve(null);
     img.src = iconSrc;
   });
 };
+
+// --- Let's Talk Button Canvas Generator ---
+// Layout: flex, w=97px, h=28px, padding: 5px 15px 6px 15px, align-items: flex-end, gap: 6px
+// Icon: 15x13 | Shadow: -1px 1px 4px rgba(0,0,0,0.25)
+const generateLetsTalkImage = async (text: string, iconSrc: string): Promise<string | null> => {
+  return new Promise(async (resolve) => {
+    try { if (document.fonts) await document.fonts.load('500 10px Poppins'); } catch (_) { }
+    const width = 97, height = 28;
+    const dpr = 4;
+    const sml = 7, smr = 5, smt = 5, smb = 7; // shadow left extended for -1px X shadow
+    const canvas = document.createElement('canvas');
+    canvas.width = (width + sml + smr) * dpr;
+    canvas.height = (height + smt + smb) * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) { resolve(null); return; }
+    ctx.scale(dpr, dpr);
+    ctx.translate(sml, smt);
+    // Shadow: -1px left, 1px down, 4px blur
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowOffsetX = -1; ctx.shadowOffsetY = 1; ctx.shadowBlur = 4;
+    // Background
+    ctx.fillStyle = '#0A66C2';
+    const r = 6;
+    ctx.beginPath();
+    ctx.moveTo(r, 0); ctx.lineTo(width - r, 0); ctx.quadraticCurveTo(width, 0, width, r);
+    ctx.lineTo(width, height - r); ctx.quadraticCurveTo(width, height, width - r, height);
+    ctx.lineTo(r, height); ctx.quadraticCurveTo(0, height, 0, height - r);
+    ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
+    ctx.closePath(); ctx.fill();
+    // Border
+    ctx.shadowColor = 'transparent'; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#CEDFF9'; ctx.lineWidth = 2; ctx.stroke();
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      ctx.font = '500 10px Poppins, sans-serif';
+      if ('letterSpacing' in ctx) (ctx as any).letterSpacing = '-0.006px';
+      const iconW = 15, iconH = 13, gap = 6;
+      const tm = ctx.measureText(text);
+      const totalW = iconW + gap + tm.width;
+      const startX = (width - totalW) / 2; // justify-content: center
+      // Vertically center icon and text together within the button
+      const centerY = height / 2;
+      const iconY = centerY - iconH / 2;
+      ctx.drawImage(img, startX, iconY, iconW, iconH);
+      ctx.fillStyle = 'white'; ctx.textBaseline = 'middle';
+      ctx.fillText(text, startX + iconW + gap, centerY);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(null);
+    img.src = iconSrc;
+  });
+};
+
 
 const getProxiedUrl = (url: string | null) => {
   if (!url) return "";
@@ -736,9 +788,9 @@ const FinalResult: React.FC = () => {
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
 
-      const btnW_play = 85;
-      const btnW_chat = 82;
-      const btnH = 20;
+      const btnW_play = 105;
+      const btnW_chat = 100;
+      const btnH = 28;
       const gap = 10;
       const margin = 20;
 
@@ -751,13 +803,18 @@ const FinalResult: React.FC = () => {
 
       const context = pdfDoc.context;
 
-      // Draw Chat Button (Let's talk)
+      // Draw Chat Button (Let's talk) — w=97px, h=28px, align-items: flex-end, icon 15x13
       if (hasPortfolio) {
-        const chatButtonDataUrl = await generateButtonImage("Let's talk", "/Vector.svg", btnW_chat, btnH, 15, 13);
+        const chatButtonDataUrl = await generateLetsTalkImage("Let's Talk", "/Vector.svg");
         if (chatButtonDataUrl) {
           const chatBytes = await fetch(chatButtonDataUrl).then(r => r.arrayBuffer());
           const chatImg = await pdfDoc.embedPng(chatBytes);
-          firstPage.drawImage(chatImg, { x: currentX, y: btnY, width: btnW_chat, height: btnH });
+          // Canvas includes shadow margins: sml=7, smr=5, smt=5, smb=7
+          const drawW = 97 + 7 + 5;
+          const drawH = 28 + 5 + 7;
+          const drawX = currentX - 7; // offset left for sml
+          const drawY = btnY - 5;     // offset up for smt
+          firstPage.drawImage(chatImg, { x: drawX, y: drawY, width: drawW, height: drawH });
           const chatLink = context.obj({
             Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
             Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_chat), PDFNumber.of(btnY + btnH)]),
@@ -771,13 +828,18 @@ const FinalResult: React.FC = () => {
         }
       }
 
-      // Draw Play Intro Button
+      // Draw Play Intro Button — align-items: flex-start, icon 17x17
       if (hasVideo) {
-        const playButtonDataUrl = await generateButtonImage("Play Intro", "/Frame 215.svg", btnW_play, btnH, 17, 17);
+        const playButtonDataUrl = await generatePlayIntroImage("Play Intro", "/Frame 215.svg", btnW_play);
         if (playButtonDataUrl) {
           const playBytes = await fetch(playButtonDataUrl).then(r => r.arrayBuffer());
           const playImg = await pdfDoc.embedPng(playBytes);
-          firstPage.drawImage(playImg, { x: currentX, y: btnY, width: btnW_play, height: btnH });
+          // Canvas includes shadow margins: sml=5, smr=7, smt=5, smb=7
+          const drawW = btnW_play + 5 + 7;
+          const drawH = 28 + 5 + 7;
+          const drawX = currentX - 5; // offset for sml
+          const drawY = btnY - 5;     // offset for smt
+          firstPage.drawImage(playImg, { x: drawX, y: drawY, width: drawW, height: drawH });
           const playLink = context.obj({
             Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
             Rect: context.obj([PDFNumber.of(currentX), PDFNumber.of(btnY), PDFNumber.of(currentX + btnW_play), PDFNumber.of(btnY + btnH)]),
@@ -822,14 +884,25 @@ const FinalResult: React.FC = () => {
 
       try {
         const enhancedUrl = await enhancePDF(resumeUrl, currentCastId);
-        const userName = candidateName !== "Candidate" ? candidateName : (user?.firstName || user?.name || "Candidate");
+
+        const userName =
+          candidateName !== "Candidate"
+            ? candidateName
+            : (user?.firstName || user?.name || "Candidate");
+
+        const response = await fetch(enhancedUrl);
+        const blob = await response.blob();
+
+        const downloadUrl = window.URL.createObjectURL(blob);
+
         const a = document.createElement("a");
-        a.href = enhancedUrl;
+        a.href = downloadUrl;
         a.download = `${userName}_DIGITALRESUME.pdf`;
         document.body.appendChild(a);
         a.click();
+
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(enhancedUrl), 1000);
+        window.URL.revokeObjectURL(downloadUrl);
       } catch (enhanceErr) {
         console.error("❌ Enhancement failed, falling back to original download:", enhanceErr);
 
@@ -983,9 +1056,17 @@ const FinalResult: React.FC = () => {
                 setPanelMode('video');
                 setIsPanelOpen(true);
               }}
-              className="flex items-center justify-center gap-2 h-10 px-3 md:px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-[8px] h-10 px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[2px_2px_4.1px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
+              style={{
+                fontFamily: 'Poppins, sans-serif',
+                fontSize: '13px',
+                fontWeight: 600,
+                letterSpacing: '-0.006px',
+                color: '#FFF',
+                textAlign: 'center'
+              }}
             >
-              <Play className="w-4 h-4" />
+              <img src="/Frame 215.svg" alt="Play" style={{ width: '20px', height: '20px', flexShrink: 0 }} />
               <span>Play Intro</span>
             </button>
           )}
@@ -1001,10 +1082,18 @@ const FinalResult: React.FC = () => {
                 const chatUrl = `/chat?resumeId=${currentCastId}${emailParamValue}${resumeUrlParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`;
                 navigate(chatUrl);
               }}
-              className="flex items-center justify-center gap-2 h-10 px-3 md:px-4 rounded-md text-sm font-bold bg-[#0A66C2] text-white border border-[#CEDFF9] hover:brightness-110 shadow-sm transition-all shrink-0 whitespace-nowrap"
+              className="flex items-center justify-center gap-[8px] h-10 px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[-1px_1px_4px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
+              style={{
+                fontFamily: 'Poppins, sans-serif',
+                fontSize: '13px',
+                fontWeight: 600,
+                letterSpacing: '-0.006px',
+                color: '#FFF',
+                textAlign: 'center'
+              }}
             >
-              <MessageSquare className="w-4 h-4" />
-              <span>Let's talk</span>
+              <img src="/Vector.svg" alt="Chat" style={{ width: '18px', height: '16px', flexShrink: 0 }} />
+              <span>Let's Talk</span>
             </button>
           )}
 
@@ -1037,7 +1126,7 @@ const FinalResult: React.FC = () => {
                 src={
                   resumeUrl.toLowerCase().endsWith('.docx') || resumeUrl.toLowerCase().endsWith('.doc')
                     ? `https://docs.google.com/gview?url=${encodeURIComponent(resumeUrl)}&embedded=true`
-                    : `${getProxiedUrl(resumeUrl)}#zoom=100&view=FitH`
+                    : `${resumeUrl}#zoom=100&view=FitH`
                 }
                 title="Resume Preview"
                 className="w-full border-0 min-h-[1100px]"
