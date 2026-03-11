@@ -7,11 +7,11 @@ interface ToastProps {
   onClose?: () => void;
 }
 
-export const Toast: React.FC<ToastProps> = ({ 
-  message, 
-  type = 'info', 
+export const Toast: React.FC<ToastProps> = ({
+  message,
+  type = 'info',
   duration = 3000,
-  onClose 
+  onClose
 }) => {
   const [isVisible, setIsVisible] = useState(true);
 
@@ -40,17 +40,17 @@ export const Toast: React.FC<ToastProps> = ({
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50 animate-fadeIn">
-      <div className={`${getTypeStyles()} px-4 py-2 rounded-lg shadow-lg flex items-center`}>
-        <span className="text-sm font-medium">{message}</span>
-        <button 
+    <div className="animate-fadeIn shadow-[0_10px_30px_rgba(0,0,0,0.12)] rounded-2xl overflow-hidden border border-white/20 backdrop-blur-md pointer-events-auto">
+      <div className={`${type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-rose-500' : type === 'warning' ? 'bg-amber-500' : 'bg-slate-800'} text-white px-5 py-3.5 flex items-center min-w-[280px]`}>
+        <span className="text-sm font-bold tracking-tight flex-1">{message}</span>
+        <button
           onClick={() => {
             setIsVisible(false);
             if (onClose) onClose();
           }}
-          className="ml-2 text-white hover:text-gray-200 focus:outline-none"
+          className="ml-4 text-white/60 hover:text-white focus:outline-none transition-colors text-xl leading-none"
         >
-          ×
+          &times;
         </button>
       </div>
     </div>
@@ -58,32 +58,40 @@ export const Toast: React.FC<ToastProps> = ({
 };
 
 export const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info', duration = 3000) => {
-  const toastContainer = document.getElementById('toast-container');
-  if (!toastContainer) return;
+  let toastContainer = document.getElementById('toast-container');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toast-container';
+    toastContainer.className = 'fixed top-6 right-6 z-[9999] flex flex-col gap-3 pointer-events-none';
+    document.body.appendChild(toastContainer);
+  }
 
   const toastElement = document.createElement('div');
+  toastElement.className = 'pointer-events-auto';
   toastContainer.appendChild(toastElement);
 
   const removeToast = () => {
-    toastContainer.removeChild(toastElement);
+    if (toastElement.parentNode === toastContainer) {
+      toastContainer?.removeChild(toastElement);
+    }
   };
 
   const toast = (
-    <Toast 
-      message={message} 
-      type={type} 
-      duration={duration} 
-      onClose={removeToast} 
+    <Toast
+      message={message}
+      type={type}
+      duration={duration}
+      onClose={removeToast}
     />
   );
 
   // Since we're in a non-React context, we'll need to render this differently
   // For now, we'll just create a simple toast element
   toastElement.innerHTML = `
-    <div class="fixed top-4 right-4 z-50 animate-fadeIn">
-      <div class="${type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'} text-white px-4 py-2 rounded-lg shadow-lg flex items-center">
-        <span class="text-sm font-medium">${message}</span>
-        <button class="ml-2 text-white hover:text-gray-200 focus:outline-none">×</button>
+    <div class="animate-fadeIn shadow-[0_10px_30px_rgba(0,0,0,0.12)] rounded-2xl overflow-hidden border border-white/20 backdrop-blur-md">
+      <div class="${type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-rose-500' : type === 'warning' ? 'bg-amber-500' : 'bg-slate-800'} text-white px-5 py-3.5 flex items-center min-w-[280px]">
+        <span class="text-sm font-bold tracking-tight flex-1">${message}</span>
+        <button class="ml-4 text-white/60 hover:text-white focus:outline-none transition-colors text-xl leading-none">&times;</button>
       </div>
     </div>
   `;

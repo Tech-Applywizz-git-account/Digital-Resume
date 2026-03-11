@@ -961,7 +961,7 @@ const FinalResult: React.FC = () => {
                   const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
                   const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
                   const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
-                  navigator.clipboard.writeText(shareableLink).then(() => showToast('Link copied!', 'success'));
+                  navigator.clipboard.writeText(shareableLink).then(() => showToast('Link copied to clipboard! Share the link.', 'success'));
                 }}
                 className="flex items-center gap-2 border-green-500 text-green-600 h-10 px-3 md:px-4 shrink-0"
               >
