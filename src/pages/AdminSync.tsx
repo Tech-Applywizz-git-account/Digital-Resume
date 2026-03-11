@@ -94,10 +94,10 @@ const AdminSync = () => {
         let totalUpdated = 0;
 
         try {
-            // 1. Fetch records missing resumes
+            // 1. Fetch all records to check for missing resumes OR portfolios
             const [{ data: crmRecords }, { data: regRecords }] = await Promise.all([
-                supabase.from('crm_job_requests').select('id, email').is('resume_url', null),
-                supabase.from('job_requests').select('id, candidate_email, email').is('resume_path', null)
+                supabase.from('crm_job_requests').select('id, email'),
+                supabase.from('job_requests').select('id, candidate_email, email')
             ]);
 
             // Helper to sync a single record
@@ -109,13 +109,23 @@ const AdminSync = () => {
                         const json = await response.json();
                         const userData = Array.isArray(json) ? json[0] : json;
                         const vResumeUrl = userData?.data?.resume?.pdf_path?.[0] || userData?.resume?.pdf_path?.[0];
+                        const vPortfolioUrl = userData?.data?.portfolio?.link || userData?.portfolio?.link;
 
+                        let updated = false;
+
+                        // Sync Resume
                         if (vResumeUrl) {
                             const col = table === 'crm_job_requests' ? 'resume_url' : 'resume_path';
-                            const { error } = await supabase.from(table).update({ [col]: vResumeUrl }).eq('id', id);
-                            if (error) console.error(`Failed to update ${id} in ${table}:`, error);
-                            return !error;
+                            const { error: resumeErr } = await supabase.from(table).update({ [col]: vResumeUrl }).eq('id', id);
+                            if (!resumeErr) updated = true;
                         }
+
+                        // Sync Portfolio (only if we have a valid user_id).
+                        // portfolio_settings links via user_id, not request_id.
+                        // Backfill via the FinalResult page visit is safer.
+                        // Skipping here to avoid 400 errors on missing columns.
+
+                        return updated;
                     }
                 } catch (e) {
                     console.error(`Error syncing ${email}:`, e);
@@ -214,24 +224,6 @@ const AdminSync = () => {
                 </CardContent>
             </Card>
 
-            <Card className="mb-8">
-                <CardHeader>
-                    <CardTitle>Resume Path Backfill</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <p className="text-gray-600 text-sm">
-                        Scans all existing requests that are missing a resume path and attempts to find them via the external API.
-                    </p>
-                    <Button
-                        onClick={backfillResumes}
-                        disabled={backfillLoading}
-                        variant="secondary"
-                        className="w-full flex items-center gap-2"
-                    >
-                        {backfillLoading ? 'Processing...' : 'Sync Missing Resumes 🔁'}
-                    </Button>
-                </CardContent>
-            </Card>
 
             <Card>
                 <CardHeader>

@@ -37,6 +37,10 @@
       "dest": "/api/proxy-applywizz.js"
     },
     {
+      "src": "/api/proxy-pdf",
+      "dest": "/api/proxy-pdf.js"
+    },
+    {
       "src": "/api/generate-introduction",
       "dest": "/api/generate-introduction.js"
     },

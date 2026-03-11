@@ -96,12 +96,14 @@ const ResumeChatPanel = ({
 
     const getProxiedUrl = (url: string | null) => {
         if (!url) return "";
-        if (url.includes('applywizz-prod.s3.us-east-2.amazonaws.com')) {
-            return url.replace(/^https?:\/\/applywizz-prod\.s3\.us-east-2\.amazonaws\.com\//, '/proxy-s3/');
+        // If it's already a relative path (our proxy), return as is
+        if (url.startsWith('/proxy-') || url.startsWith('/api/proxy-pdf')) return url;
+
+        // Use our dynamic proxy for any S3 or Vercel Blob URLs to bypass CORS
+        if (url.includes('amazonaws.com') || url.includes('vercel-storage.com')) {
+            return `/api/proxy-pdf?url=${encodeURIComponent(url)}`;
         }
-        if (url.includes('public.blob.vercel-storage.com')) {
-            return url.replace(/^https?:\/\/public\.blob\.vercel-storage\.com\//, '/proxy-vercel-blob/');
-        }
+
         return url;
     };
 
@@ -389,7 +391,15 @@ const ResumeChatPanel = ({
                 ) : (
                     // Chat Mode
                     <>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-6 relative">
+                            {isDataLoading && (
+                                <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10 backdrop-blur-[1px]">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <Loader2 className="w-6 h-6 text-[#0B4F6C] animate-spin" />
+                                        <span className="text-[10px] font-medium text-slate-500">Searching for data...</span>
+                                    </div>
+                                </div>
+                            )}
                             {messages.map((msg) => (
                                 <div
                                     key={msg.id}

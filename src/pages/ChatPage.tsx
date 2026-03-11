@@ -72,91 +72,74 @@ const ChatPage: React.FC = () => {
             }
 
             try {
-                // Tracking what we found via local variables because state updates are async
+                // Tracking discovery locally to avoid stale state issues during async ops
                 let foundResumeUrl = urlFromQuery || null;
                 let foundPortfolioUrl = params.get("portfolio") || null;
                 let foundOwnerId = null;
 
-                // 1. Initial Fetch from Supabase
-                const [crmResult, regularResult, portfolioResult] = await Promise.all([
-                    supabase
-                        .from("crm_job_requests")
-                        .select("resume_url, user_id, email, company_application_email")
-                        .eq("id", resumeId)
-                        .maybeSingle(),
-                    supabase
-                        .from("job_requests")
-                        .select("resume_path, user_id, recordings(storage_path)")
-                        .eq("id", resumeId)
-                        .maybeSingle(),
-                    supabase
-                        .from("portfolio_settings")
-                        .select("url")
-                        .eq("request_id", resumeId)
-                        .maybeSingle(),
+                // 1. Initial Fetch from Supabase (Resumes & User Info)
+                // We run these in parallel, but handle their results individually to be robust.
+                const [crmResult, regularResult] = await Promise.all([
+                    supabase.from("crm_job_requests").select("resume_url, user_id, email, company_application_email").eq("id", resumeId).maybeSingle(),
+                    supabase.from("job_requests").select("resume_path, user_id, recordings(storage_path)").eq("id", resumeId).maybeSingle()
                 ]);
 
-                // 2. Resolve URLs from Supabase
-                if (crmResult.data) {
-                    let rUrl = crmResult.data.resume_url || null;
+                // 2. Resolve URLs & Identity from Supabase
+                const dbData = crmResult.data || regularResult.data;
+                if (dbData) {
+                    foundOwnerId = dbData.user_id || null;
+                    setOwnerId(foundOwnerId);
+
+                    // Resolve Resume URL from DB
+                    let rUrl = (dbData as any).resume_url || (dbData as any).resume_path || null;
                     if (rUrl && !rUrl.startsWith('http')) {
-                        rUrl = supabase.storage.from("CRM_users_resumes").getPublicUrl(rUrl).data.publicUrl;
+                        const bucket = crmResult.data ? "CRM_users_resumes" : "resumes";
+                        rUrl = supabase.storage.from(bucket).getPublicUrl(rUrl).data.publicUrl;
                     }
                     if (!foundResumeUrl) foundResumeUrl = rUrl;
 
-                    foundOwnerId = crmResult.data.user_id || null;
-                    setOwnerId(foundOwnerId);
-
-                    const { data: rec } = await supabase
-                        .from("crm_recordings")
-                        .select("video_url")
-                        .eq("job_request_id", resumeId)
-                        .maybeSingle();
-
-                    if (rec?.video_url) {
-                        setVideoUrl(rec.video_url.startsWith("http") ? rec.video_url :
-                            supabase.storage.from("CRM_users_recordings").getPublicUrl(rec.video_url).data.publicUrl);
-                    }
-                } else if (regularResult.data) {
-                    const data = regularResult.data;
-                    let rUrl = data.resume_path || null;
-                    if (rUrl && !rUrl.startsWith('http')) {
-                        rUrl = supabase.storage.from("resumes").getPublicUrl(rUrl).data.publicUrl;
-                    }
-                    if (!foundResumeUrl) foundResumeUrl = rUrl;
-
-                    foundOwnerId = data.user_id || null;
-                    setOwnerId(foundOwnerId);
-
-                    const recordings = data.recordings as any;
-                    if (recordings && recordings.length > 0) {
-                        const path = recordings[0].storage_path;
-                        if (path) {
-                            setVideoUrl(path.startsWith("http") ? path :
-                                supabase.storage.from("recordings").getPublicUrl(path).data.publicUrl);
+                    // Resolve Video URL
+                    if (crmResult.data) {
+                        const { data: rec } = await supabase.from("crm_recordings").select("video_url").eq("job_request_id", resumeId).maybeSingle();
+                        if (rec?.video_url) {
+                            setVideoUrl(rec.video_url.startsWith("http") ? rec.video_url :
+                                supabase.storage.from("CRM_users_recordings").getPublicUrl(rec.video_url).data.publicUrl);
+                        }
+                    } else if (regularResult.data) {
+                        const recordings = regularResult.data.recordings as any;
+                        if (recordings && recordings.length > 0) {
+                            const path = recordings[0].storage_path;
+                            if (path) {
+                                setVideoUrl(path.startsWith("http") ? path :
+                                    supabase.storage.from("recordings").getPublicUrl(path).data.publicUrl);
+                            }
                         }
                     }
                 }
 
-                // 3. Resolve Portfolio
-                if (portfolioResult.data?.url) {
-                    foundPortfolioUrl = portfolioResult.data.url;
+                // 3. Resolve Portfolio (Using user_id column, correctly)
+                if (foundPortfolioUrl) {
+                    setDbPortfolioUrl(foundPortfolioUrl);
                 } else if (foundOwnerId) {
-                    const { data: userPortfolio } = await supabase
+                    const { data: portfolioSettings } = await supabase
                         .from('portfolio_settings')
                         .select('url')
                         .eq('user_id', foundOwnerId)
-                        .order('created_at', { ascending: false })
-                        .limit(1)
                         .maybeSingle();
-                    if (userPortfolio?.url) foundPortfolioUrl = userPortfolio.url;
+
+                    if (portfolioSettings?.url) {
+                        foundPortfolioUrl = portfolioSettings.url;
+                        setDbPortfolioUrl(foundPortfolioUrl);
+                    }
                 }
 
-                // 4. ✅ Vercel API Fallback (Crucial for API-only users or fresh uploads)
+                // 4. ✅ Vercel API Fallback (Crucial for discovery when DB record is missing URL/Portfolio)
                 if (!foundResumeUrl || !foundPortfolioUrl) {
                     const emailsToTry = [
                         crmResult.data?.email,
                         crmResult.data?.company_application_email,
+                        (regularResult.data as any)?.candidate_email,
+                        (regularResult.data as any)?.email,
                         params.get("email")
                     ].filter(Boolean) as string[];
 
@@ -166,39 +149,47 @@ const ChatPage: React.FC = () => {
                             if (response.ok) {
                                 const jsonResponse = await response.json();
                                 const userData = Array.isArray(jsonResponse) ? jsonResponse[0] : jsonResponse;
+                                if (!userData) continue;
+
                                 const vResumeUrl = userData?.data?.resume?.pdf_path?.[0] || userData?.resume?.pdf_path?.[0];
                                 const vPortfolioUrl = userData?.data?.portfolio?.link || userData?.portfolio?.link;
 
                                 if (vResumeUrl && !foundResumeUrl) {
                                     foundResumeUrl = vResumeUrl;
-                                    // ✅ Sync with Supabase
+                                    // Async sync back to DB
                                     if (resumeId && resumeId !== 'profile') {
-                                        console.log("🔄 Syncing external resume to Supabase (from ChatPage):", resumeId);
-                                        Promise.all([
-                                            supabase.from('crm_job_requests').update({ resume_url: vResumeUrl }).eq('id', resumeId).is('resume_url', null),
-                                            supabase.from('job_requests').update({ resume_path: vResumeUrl }).eq('id', resumeId).is('resume_path', null)
-                                        ]).catch(err => console.error("❌ Sync failed:", err));
+                                        const updateObj = crmResult.data ? { resume_url: vResumeUrl } : { resume_path: vResumeUrl };
+                                        const table = crmResult.data ? 'crm_job_requests' : 'job_requests';
+                                        supabase.from(table).update(updateObj).eq('id', resumeId).then(() => console.log("✅ Synced resume path"));
                                     }
                                 }
-                                if (vPortfolioUrl && !foundPortfolioUrl) foundPortfolioUrl = vPortfolioUrl;
+
+                                if (vPortfolioUrl && !foundPortfolioUrl) {
+                                    foundPortfolioUrl = vPortfolioUrl;
+                                    setDbPortfolioUrl(vPortfolioUrl);
+                                    // Async sync back to DB if we have an owner
+                                    if (foundOwnerId) {
+                                        supabase.from('portfolio_settings')
+                                            .upsert({ user_id: foundOwnerId, url: vPortfolioUrl })
+                                            .then(() => console.log("✅ Synced portfolio URL"));
+                                    }
+                                }
 
                                 if (foundResumeUrl && foundPortfolioUrl) break;
                             }
                         } catch (err) {
-                            console.error("❌ Vercel fallback fetch error:", err);
+                            console.error("❌ Vercel discovery error:", err);
                         }
                     }
                 }
 
-                // Update final states
+                // Final updates to state
                 setResumeUrl(foundResumeUrl);
-                setDbPortfolioUrl(foundPortfolioUrl);
 
-                // 5. Final validation - ensure we have a portfolio to show
+                // 5. Final validation - redirect if we literally have nothing to show for a non-profile request
                 if (!foundPortfolioUrl && resumeId !== 'profile') {
-                    // Redirect back if no portfolio found to show alongside chat
-                    const sourceParam = params.get("source") || "pdf";
-                    window.location.replace(`${window.location.origin}/final-result/${resumeId}?from=pdf&source=${sourceParam}&id=${resumeId}`);
+                    console.warn("⚠️ No portfolio found for ID, redirecting to result page:", resumeId);
+                    window.location.replace(`${window.location.origin}/final-result/${resumeId}?from=pdf&source=pdf&id=${resumeId}`);
                 }
 
             } catch (err) {

@@ -65,12 +65,14 @@ const generateButtonImage = async (text: string, iconSrc: string, width: number,
 
 const getProxiedUrl = (url: string | null) => {
   if (!url) return "";
-  if (url.includes('applywizz-prod.s3.us-east-2.amazonaws.com')) {
-    return url.replace(/^https?:\/\/applywizz-prod\.s3\.us-east-2\.amazonaws\.com\//, '/proxy-s3/');
+  // If it's already a relative path (our proxy), return as is
+  if (url.startsWith('/proxy-') || url.startsWith('/api/proxy-pdf')) return url;
+
+  // Use our dynamic proxy for any S3 or Vercel Blob URLs to bypass CORS
+  if (url.includes('amazonaws.com') || url.includes('vercel-storage.com')) {
+    return `/api/proxy-pdf?url=${encodeURIComponent(url)}`;
   }
-  if (url.includes('public.blob.vercel-storage.com')) {
-    return url.replace(/^https?:\/\/public\.blob\.vercel-storage\.com\//, '/proxy-vercel-blob/');
-  }
+
   return url;
 };
 
@@ -287,6 +289,28 @@ const FinalResult: React.FC = () => {
               setPortfolioUrl(vPortfolioUrl || "");
               setTempPortfolioUrl(vPortfolioUrl || "");
               foundPortfolio = true;
+
+              // ✅ Sync Portfolio to Supabase using user_id as the key
+              const targetUserId = resumeOwnerUserId || user?.id;
+              if (user && targetUserId && vPortfolioUrl) {
+                console.log("🔄 Syncing external portfolio to Supabase for user:", targetUserId);
+                supabase.from('portfolio_settings')
+                  .select('id')
+                  .eq('user_id', targetUserId)
+                  .maybeSingle()
+                  .then(({ data: existing }) => {
+                    if (existing) {
+                      supabase.from('portfolio_settings')
+                        .update({ url: vPortfolioUrl })
+                        .eq('user_id', targetUserId)
+                        .then(() => console.log("✅ Updated portfolio in Supabase"));
+                    } else {
+                      supabase.from('portfolio_settings')
+                        .insert({ url: vPortfolioUrl, user_id: targetUserId })
+                        .then(() => console.log("✅ Inserted new portfolio record in Supabase"));
+                    }
+                  });
+              }
             }
           }
         } catch (err) {
@@ -302,7 +326,7 @@ const FinalResult: React.FC = () => {
     };
 
     fetchVercelDetails();
-  }, [resumeOwnerEmail, resumeOwnerAppEmail, user]);
+  }, [resumeOwnerEmail, resumeOwnerAppEmail, user, resumeOwnerUserId]);
 
   const loadLocalData = async () => {
     // First try to get data from localStorage
@@ -659,23 +683,21 @@ const FinalResult: React.FC = () => {
     try {
       const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
       const emailParam = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
+      const resumeUrlParam = resumeUrlStr ? `&resumeUrl=${encodeURIComponent(resumeUrlStr)}` : '';
 
       // Chat button → this app's own /chat page (portfolio iframe + chat panel side-by-side)
       const hasPortfolio = !!portfolioUrl;
       const chatUrl = hasPortfolio
-        ? `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`
-        : `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}&source=pdf&mode=chat`;
+        ? `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}${resumeUrlParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`
+        : `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}${resumeUrlParam}&source=pdf&mode=chat`;
 
       // Play Intro button → this app's final-result page
-      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}`;
+      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}${resumeUrlParam}`;
 
       const hasVideo = !!videoUrl;
 
-      // Use a local proxy path to avoid CORS issues when fetching the actual PDF bytes
-      let proxiedUrl = resumeUrlStr;
-      if (resumeUrlStr.includes('applywizz-prod.s3.us-east-2.amazonaws.com')) {
-        proxiedUrl = resumeUrlStr.replace(/^https?:\/\/applywizz-prod\.s3\.us-east-2\.amazonaws\.com\//, '/proxy-s3/');
-      }
+      // Use our robust proxy path to avoid CORS issues when fetching the actual PDF bytes
+      const proxiedUrl = getProxiedUrl(resumeUrlStr);
 
       let response = await fetch(proxiedUrl);
       if (!response.ok) response = await fetch(proxiedUrl, { credentials: 'include' });
@@ -687,15 +709,18 @@ const FinalResult: React.FC = () => {
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
 
-      const btnW_play = 100;
-      const btnW_chat = 97;
-      const btnH = 28;
-      const gap = 12;
+      const btnW_play = 85;
+      const btnW_chat = 82;
+      const btnH = 20;
+      const gap = 10;
       const margin = 20;
+
+      const topMargin = 5;
 
       const totalW = (hasVideo ? (btnW_play + gap) : 0) + (hasPortfolio ? btnW_chat : 0);
       let currentX = width - totalW - margin;
-      const btnY = height - btnH - margin;
+
+      const btnY = height - btnH - topMargin;
 
       const context = pdfDoc.context;
 
