@@ -80,18 +80,48 @@ const ChatPage: React.FC = () => {
                 // 1. Initial Fetch from Supabase (Resumes & User Info)
                 // We run these in parallel, but handle their results individually to be robust.
                 const [crmResult, regularResult] = await Promise.all([
-                    supabase.from("crm_job_requests").select("resume_url, user_id, email, company_application_email").eq("id", resumeId).maybeSingle(),
-                    supabase.from("job_requests").select("resume_path, user_id, recordings(storage_path)").eq("id", resumeId).maybeSingle()
+                    supabase.from("crm_job_requests").select("resume_url, user_id, email").eq("id", resumeId).maybeSingle(),
+                    supabase.from("job_requests").select("resume_path, user_id, candidate_email, recordings(storage_path)").eq("id", resumeId).maybeSingle()
                 ]);
 
                 // 2. Resolve URLs & Identity from Supabase
                 const dbData = crmResult.data || regularResult.data;
+                let dbEmail = params.get("email");
+
                 if (dbData) {
                     foundOwnerId = dbData.user_id || null;
-                    setOwnerId(foundOwnerId);
+                    if (foundOwnerId) setOwnerId(foundOwnerId);
 
                     // Resolve Resume URL from DB
                     let rUrl = (dbData as any).resume_url || (dbData as any).resume_path || null;
+                    dbEmail = (dbData as any).email || (dbData as any).candidate_email || dbEmail;
+
+                    // Fallback: If email is missing, lookup from profiles via ownerId
+                    if (!dbEmail && foundOwnerId) {
+                        const { data: profile } = await supabase.from('profiles').select('email').eq('id', foundOwnerId).maybeSingle();
+                        if (profile?.email) dbEmail = profile.email;
+                    }
+
+                    // Fallback 1: Check crm_resumes table if URL is missing in the request
+                    if (!rUrl && dbEmail) {
+                        const { data: crmRes } = await supabase.from('crm_resumes')
+                            .select('resume_url')
+                            .eq('email', dbEmail)
+                            .order('created_at', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+                        if (crmRes?.resume_url) rUrl = crmRes.resume_url;
+                    }
+
+                    // Fallback 2: Check digital_resume_by_crm table
+                    if (!rUrl && dbEmail) {
+                        const { data: crmUser } = await supabase.from('digital_resume_by_crm')
+                            .select('resume_url')
+                            .eq('email', dbEmail)
+                            .maybeSingle();
+                        if (crmUser?.resume_url) rUrl = crmUser.resume_url;
+                    }
+
                     if (rUrl && !rUrl.startsWith('http')) {
                         const bucket = crmResult.data ? "CRM_users_resumes" : "resumes";
                         rUrl = supabase.storage.from(bucket).getPublicUrl(rUrl).data.publicUrl;
@@ -136,10 +166,9 @@ const ChatPage: React.FC = () => {
                 // 4. ✅ Vercel API Fallback (Crucial for discovery when DB record is missing URL/Portfolio)
                 if (!foundResumeUrl || !foundPortfolioUrl) {
                     const emailsToTry = [
+                        dbEmail as string,
                         crmResult.data?.email,
-                        crmResult.data?.company_application_email,
                         (regularResult.data as any)?.candidate_email,
-                        (regularResult.data as any)?.email,
                         params.get("email")
                     ].filter(Boolean) as string[];
 
