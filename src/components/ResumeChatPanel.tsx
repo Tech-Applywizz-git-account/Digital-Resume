@@ -107,7 +107,7 @@ const ResumeChatPanel = ({
         return url;
     };
 
-    const extractTextFromPdf = async (url: string) => {
+    const extractTextFromPdf = async (url: string): Promise<string> => {
         try {
             setIsExtracting(true);
             console.log("📄 Starting PDF text extraction:", url);
@@ -148,8 +148,10 @@ const ResumeChatPanel = ({
             }
 
             console.log("✅ PDF extraction complete. Length:", cleanText.length);
+            return cleanText;
         } catch (error) {
             console.error("❌ PDF text extraction failed:", error);
+            return "";
         } finally {
             setIsExtracting(false);
         }
@@ -180,21 +182,29 @@ const ResumeChatPanel = ({
         try {
             console.log("📤 Sending Resume Chat Request...");
 
-            if (isExtracting) {
+            let currentResumeText = resumeText;
+
+            // ✅ Fallback: If text is missing but URL exists, try to extract it now
+            if (!currentResumeText && resumeUrl) {
+                console.log("🔄 Resume text missing. Attempting on-demand extraction...");
+                currentResumeText = await extractTextFromPdf(resumeUrl);
+            }
+
+            if (isExtracting && !currentResumeText) {
                 throw new Error("I'm still reading the resume. Please wait a moment...");
             }
 
-            if (!resumeText && resumeUrl) {
-                throw new Error("I couldn't read the resume content. Please ensure it's a valid PDF.");
-            }
-
-            if (!resumeText) {
-                throw new Error("No resume content found to analyze.");
+            if (!currentResumeText) {
+                if (resumeUrl) {
+                    throw new Error("I couldn't read the resume content. Please ensure it's a valid PDF.");
+                } else {
+                    throw new Error("No resume content found to analyze.");
+                }
             }
 
             const { data, error } = await supabase.functions.invoke('resume-chat', {
                 body: {
-                    resumeText: resumeText,
+                    resumeText: currentResumeText,
                     messages: messages.map(m => ({ role: m.sender === 'bot' ? 'assistant' : 'user', content: m.text })),
                     question: text,
                     recruiterMode: recruiterMode,
