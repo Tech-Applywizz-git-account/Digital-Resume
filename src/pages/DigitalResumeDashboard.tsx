@@ -698,10 +698,90 @@ export default function DigitalResumeDashboard() {
     const handleRefreshUser = async (email: string) => {
         setRefreshingEmail(email);
         try {
-            await fetchUsers(); // This re-fetches everything, which is safest to keep data in sync
-            setMessage({ type: 'success', text: `Data refreshed for ${email}` });
+            const targetUser = users.find(u => u.email === email);
+            if (!targetUser) return;
+
+            // Emails to try (personal + app email)
+            const emailsToTry = [
+                targetUser.email,
+                targetUser.company_application_email
+            ].filter(Boolean) as string[];
+
+            let vResumeUrl: string | null = null;
+            let vPortfolioUrl: string | null = null;
+
+            // Call Vercel API for each email until we find data
+            for (const e of emailsToTry) {
+                try {
+                    const res = await fetch(`/api/proxy-applywizz?email=${encodeURIComponent(e.trim().toLowerCase())}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        const userData = Array.isArray(json) ? json[0] : json;
+                        const rUrl = userData?.data?.resume?.pdf_path?.[0] || userData?.resume?.pdf_path?.[0];
+                        const pUrl = userData?.data?.portfolio?.link || userData?.portfolio?.link;
+                        if (rUrl && !vResumeUrl) vResumeUrl = rUrl;
+                        if (pUrl && !vPortfolioUrl) vPortfolioUrl = pUrl;
+                    }
+                } catch (_) { /* silent */ }
+                if (vResumeUrl && vPortfolioUrl) break;
+            }
+
+            // --- Persist to Supabase ---
+            // 1. Update resume path in crm_job_requests (upsert by email)
+            if (vResumeUrl) {
+                const { data: existingReq } = await supabase
+                    .from('crm_job_requests')
+                    .select('id')
+                    .eq('email', email)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (existingReq) {
+                    await supabase.from('crm_job_requests')
+                        .update({ resume_url: vResumeUrl })
+                        .eq('id', existingReq.id);
+                }
+            }
+
+            // 2. Upsert portfolio by user_id (no duplicates)
+            if (vPortfolioUrl && targetUser.user_id) {
+                const { data: existingPortfolio } = await supabase
+                    .from('portfolio_settings')
+                    .select('id')
+                    .eq('user_id', targetUser.user_id)
+                    .maybeSingle();
+
+                if (existingPortfolio) {
+                    await supabase.from('portfolio_settings')
+                        .update({ url: vPortfolioUrl })
+                        .eq('user_id', targetUser.user_id);
+                } else {
+                    await supabase.from('portfolio_settings')
+                        .insert({ url: vPortfolioUrl, user_id: targetUser.user_id });
+                }
+            }
+
+            // --- Update only this row in local state ---
+            setUsers(prev => prev.map(u => {
+                if (u.email !== email) return u;
+                return {
+                    ...u,
+                    resume_url: vResumeUrl || u.resume_url,
+                    resume_name: vResumeUrl
+                        ? (u.resume_name || vResumeUrl.split('?')[0].split('/').pop() || 'Resume.pdf')
+                        : u.resume_name,
+                    vercel_portfolio_url: vPortfolioUrl || u.vercel_portfolio_url,
+                };
+            }));
+
+            setMessage({
+                type: 'success',
+                text: `✅ Refreshed ${email}${vResumeUrl ? ' — resume updated' : ''}${vPortfolioUrl ? ', portfolio updated' : ''}`
+            });
+
         } catch (error) {
-            console.error('Failed to refresh data:', error);
+            console.error('Failed to refresh user:', error);
             setMessage({ type: 'error', text: 'Failed to refresh user data' });
         } finally {
             setRefreshingEmail(null);
@@ -813,6 +893,13 @@ export default function DigitalResumeDashboard() {
                         >
                             <Sparkles className="w-4 h-4" />
                             AI Usage
+                        </button>
+                        <button
+                            onClick={() => navigate('/admin-sync')}
+                            className="flex items-center gap-2 px-4 md:px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap text-slate-500 hover:text-[#0B4F6C] hover:bg-slate-50"
+                        >
+                            <RefreshCcw className="w-4 h-4" />
+                            Admin Sync
                         </button>
                     </div>
 

@@ -34,6 +34,34 @@ export default defineConfig({
             }
             return;
           }
+          if (req.url && req.url.startsWith('/api/proxy-pdf')) {
+            try {
+              const url = new URL(req.url, 'http://localhost');
+              const targetUrl = url.searchParams.get('url');
+              if (!targetUrl) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'Missing URL parameter' }));
+                return;
+              }
+              const fetchMethod = globalThis.fetch;
+              const fetchResponse = await fetchMethod(decodeURIComponent(targetUrl));
+
+              if (!fetchResponse.ok) {
+                res.statusCode = fetchResponse.status;
+                res.end(JSON.stringify({ error: `Fetch failed: ${fetchResponse.statusText}` }));
+                return;
+              }
+
+              res.setHeader('Content-Type', 'application/pdf');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              const arrayBuffer = await fetchResponse.arrayBuffer();
+              res.end(Buffer.from(arrayBuffer));
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: err.message }));
+            }
+            return;
+          }
           next();
         });
       }
