@@ -894,13 +894,6 @@ export default function DigitalResumeDashboard() {
                             <Sparkles className="w-4 h-4" />
                             AI Usage
                         </button>
-                        <button
-                            onClick={() => navigate('/admin-sync')}
-                            className="flex items-center gap-2 px-4 md:px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap text-slate-500 hover:text-[#0B4F6C] hover:bg-slate-50"
-                        >
-                            <RefreshCcw className="w-4 h-4" />
-                            Admin Sync
-                        </button>
                     </div>
 
                     {activeTab === 'users' ? (
@@ -1007,6 +1000,11 @@ export default function DigitalResumeDashboard() {
                                                                             <div className="flex items-center gap-2">
                                                                                 <button
                                                                                     onClick={() => {
+                                                                                        if (!user_row.email) return;
+                                                                                        // Refresh first as requested
+
+
+                                                                                        // Then navigate
                                                                                         if (user_row.latest_job_request_id) {
                                                                                             navigate(`/final-result/${user_row.latest_job_request_id}?resumeUrl=${encodeURIComponent(user_row.resume_url || '')}`);
                                                                                         } else if (user_row.resume_url) {

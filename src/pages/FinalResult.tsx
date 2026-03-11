@@ -546,12 +546,23 @@ const FinalResult: React.FC = () => {
           setResumeFileName(rawResumeUrl.split('/').pop() || "Resume.pdf");
         }
 
-        // Handle Candidate Name
+        // Handle Candidate Name & Portfolio Override
         if (data.user_id) {
           setResumeOwnerUserId(data.user_id);
           setResumeOwnerEmail((data as any).email || (data as any).candidate_email || null);
-          const { data: profile } = await supabase.from('profiles').select('first_name').eq('id', data.user_id).maybeSingle();
-          if (profile) setCandidateName(profile.first_name || "Candidate");
+
+          // Parallel fetch for profile and portfolio settings
+          const [profileRes, portfolioRes] = await Promise.all([
+            supabase.from('profiles').select('first_name').eq('id', data.user_id).maybeSingle(),
+            supabase.from('portfolio_settings').select('url').eq('user_id', data.user_id).maybeSingle()
+          ]);
+
+          if (profileRes.data) setCandidateName(profileRes.data.first_name || "Candidate");
+          if (portfolioRes.data?.url) {
+            console.log("📍 Found portfolio override in Supabase:", portfolioRes.data.url);
+            setPortfolioUrl(portfolioRes.data.url);
+            setTempPortfolioUrl(portfolioRes.data.url);
+          }
         }
 
         // --- Fetch Video URL (Checking both tables for robustness) ---
@@ -652,13 +663,29 @@ const FinalResult: React.FC = () => {
         return;
       }
 
-      // Supabase portfolio_settings upsert removed (Source of Truth is Vercel API)
-      console.log("📍 Portfolio updated in local session.");
+      // ✅ Upsert portfolio to Supabase (Source of Truth includes manual overrides)
+      if (targetUserId) {
+        console.log("🔄 Saving portfolio to Supabase for user:", targetUserId);
+        const { data: existing } = await supabase.from('portfolio_settings')
+          .select('id')
+          .eq('user_id', targetUserId)
+          .maybeSingle();
 
+        if (existing) {
+          await supabase.from('portfolio_settings')
+            .update({ url: trimmedUrl })
+            .eq('user_id', targetUserId);
+          console.log("✅ Updated portfolio in Supabase");
+        } else {
+          await supabase.from('portfolio_settings')
+            .insert({ url: trimmedUrl, user_id: targetUserId });
+          console.log("✅ Inserted new portfolio record in Supabase");
+        }
+      }
 
       setPortfolioUrl(trimmedUrl);
       setIsEditingPortfolio(false);
-      showToast("Portfolio updated locally", "success");
+      showToast("Portfolio updated successfully", "success");
 
 
     } catch (err: any) {
@@ -826,8 +853,10 @@ const FinalResult: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b shadow-sm z-[100] h-16 md:h-14">
-        <div className="max-w-7xl mx-auto h-full flex items-center gap-3 px-4 overflow-x-auto no-scrollbar flex-nowrap">
+
+
+      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b shadow-md z-[100] h-24 md:h-20">
+        <div className="max-w-7xl mx-auto h-full flex items-center gap-3 px-4 shadow-none">
           {user && !isFromPdf && (
             <Button
               variant="outline"
@@ -841,8 +870,7 @@ const FinalResult: React.FC = () => {
               <span className="text-sm font-medium">Back to Dashboard</span>
             </Button>
           )}
-
-          {user && !isFromPdf && (
+          {user && !isFromPdf && portfolioUrl && (
             <div className="flex items-center shrink-0">
               {isEditingPortfolio ? (
                 <div className="flex items-center gap-2 bg-white border border-blue-400 rounded-xl p-1 pr-2 shadow-md animate-in fade-in zoom-in duration-200 h-11">
@@ -980,17 +1008,18 @@ const FinalResult: React.FC = () => {
             </button>
           )}
 
-          {user && !isFromPdf && (
-            <Button variant="outline" onClick={handleLogout} className="h-10 px-4 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
-              <LogOut className="h-4 w-4 mr-2" />
-              <span className="text-sm font-medium">Logout</span>
-            </Button>
-          )}
+          <div className="flex items-center gap-3 ml-auto">
+            {user && !isFromPdf && (
+              <Button variant="outline" onClick={handleLogout} className="h-10 px-4 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
+                <LogOut className="h-4 w-4 mr-2" />
+                <span className="text-sm font-medium">Logout</span>
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
-
-      <div className="relative pt-32 pb-10 min-h-screen scrollbar-hide">
+      <div className="relative pt-28 md:pt-24 pb-10 min-h-screen scrollbar-hide">
         <div className="w-full max-w-7xl mx-auto px-4 pt-5">
           {resumeUrl ? (
             <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden relative">
@@ -1025,6 +1054,8 @@ const FinalResult: React.FC = () => {
           )}
         </div>
       </div>
+
+
 
       {
         isPanelOpen && (
