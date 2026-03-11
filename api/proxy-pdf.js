@@ -1,6 +1,4 @@
-const fetch = require('node-fetch');
-
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
     const { url } = req.query;
 
     if (!url) {
@@ -10,12 +8,12 @@ module.exports = async (req, res) => {
     try {
         const decodedUrl = decodeURIComponent(url);
 
-        // Security check: only allow certain domains if needed, but for now we'll allow S3 and Vercel Blob
+        // Security check: only allow certain domains if needed, but for now we'll allow common storage providers
         if (!decodedUrl.includes('.s3.') && !decodedUrl.includes('vercel-storage.com')) {
-            // Log it but allow for now if it looks like a resume
             console.warn('Proxying potentially non-S3/Blob URL:', decodedUrl);
         }
 
+        // Use global fetch (available in Node.js 18+)
         const response = await fetch(decodedUrl);
 
         if (!response.ok) {
@@ -23,14 +21,15 @@ module.exports = async (req, res) => {
         }
 
         // Pass through relevant headers
-        res.setHeader('Content-Type', response.headers.get('Content-Type') || 'application/pdf');
+        const contentType = response.headers.get('Content-Type');
+        res.setHeader('Content-Type', contentType || 'application/pdf');
         res.setHeader('Access-Control-Allow-Origin', '*'); // Enable CORS for the frontend
 
-        const buffer = await response.buffer();
-        res.send(buffer);
+        const blob = await response.arrayBuffer();
+        res.send(Buffer.from(blob));
 
     } catch (error) {
         console.error('PDF Proxy Error:', error);
         res.status(500).json({ error: 'Internal Server Error' });
     }
-};
+}
