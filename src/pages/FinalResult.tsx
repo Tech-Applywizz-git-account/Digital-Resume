@@ -9,6 +9,7 @@ import { showToast } from "../components/ui/toast";
 import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
+import { extractTextFromBuffer } from "../utils/textExtraction";
 
 // --- Play Intro Button Canvas Generator ---
 // Layout: inline-flex, h=28px, padding: 6px 8px 5px 8px, align-items: flex-start, gap: 6px
@@ -172,6 +173,8 @@ const FinalResult: React.FC = () => {
   const initialMode = searchParams.get('mode') as 'chat' | 'video' | 'resume' | null;
   const [isPanelOpen, setIsPanelOpen] = useState(isFromPdf && !!initialMode);
   const [panelMode, setPanelMode] = useState<'chat' | 'video' | 'resume'>(initialMode || 'chat');
+  const [showDownloadPrompt, setShowDownloadPrompt] = useState(false); // shown only after download completes
+  const pendingAutoDownload = React.useRef(new URLSearchParams(location.search).get('autoDownload') === 'true');
 
   // ✅ Tracking Implementation
   useEffect(() => {
@@ -253,12 +256,16 @@ const FinalResult: React.FC = () => {
             // Also try to get the application email for this user
             supabase
               .from('digital_resume_by_crm')
-              .select('company_application_email')
+              .select('company_application_email, first_name, full_name, last_name')
               .eq('email', decodedEmail)
               .maybeSingle()
               .then(({ data: crmUser }) => {
                 if (crmUser?.company_application_email) {
                   setResumeOwnerAppEmail(crmUser.company_application_email);
+                }
+                const name = crmUser?.full_name || (crmUser?.first_name ? `${crmUser.first_name} ${crmUser.last_name || ''}`.trim() : null);
+                if (name && candidateName === "Candidate") {
+                  setCandidateName(name);
                 }
               });
             setJobTitle('Resume');
@@ -282,6 +289,83 @@ const FinalResult: React.FC = () => {
 
     loadData();
   }, [user, castId, location.search]);
+
+  // ✅ Auto-Download Logic — Fires when data is ready and name is resolved (or timeout)
+  useEffect(() => {
+    if (!pendingAutoDownload.current || !resumeUrl || loading || isSyncingWithVercel) return;
+
+    const tryDownload = () => {
+      if (!pendingAutoDownload.current) return;
+      pendingAutoDownload.current = false;
+      console.log("📥 Auto-downloading for:", candidateName);
+      handleDownloadEnhanced();
+      
+      const newParams = new URLSearchParams(location.search);
+      newParams.delete('autoDownload');
+      navigate(`${location.pathname}?${newParams.toString()}`, { replace: true });
+    };
+
+    // If name is already resolved, download immediately
+    if (candidateName && candidateName !== "Candidate") {
+      tryDownload();
+      return;
+    }
+
+    // Otherwise, wait up to 4s for name resolution
+    const timeout = setTimeout(() => {
+      if (pendingAutoDownload.current) {
+        console.log("📥 Auto-download timeout: falling back to current name:", candidateName);
+        tryDownload();
+      }
+    }, 4000);
+
+    return () => clearTimeout(timeout);
+  }, [resumeUrl, loading, isSyncingWithVercel, candidateName]);
+
+  // ✅ Extract Candidate Name from Resume Text if still missing
+  useEffect(() => {
+    const extractNameFromResume = async () => {
+      // Only run if we have a resume and don't have a resolved name yet
+      if (resumeUrl && candidateName === "Candidate") {
+        try {
+          console.log("🔍 Attempting to extract name from resume text...");
+          const res = await fetch(resumeUrl);
+          const buffer = await res.arrayBuffer();
+          const text = await extractTextFromBuffer(buffer, resumeFileName);
+          
+          if (text) {
+            // Heuristic for name: first 30 characters often contain the name
+            // We split by space and take the first few chunks, filtering out non-alpha characters
+            const words = text.split(/\s+/).filter(w => w.length > 1);
+            
+            // Common resume headers to skip
+            const stopWords = ['resume', 'profile', 'summary', 'contact', 'curriculum', 'vitae', 'cv'];
+            let startIndex = 0;
+            while (startIndex < words.length && stopWords.includes(words[startIndex].toLowerCase())) {
+              startIndex++;
+            }
+
+            // Take the next 2-4 words as the name
+            const nameWords = words.slice(startIndex, startIndex + 4);
+            const extractedName = nameWords.join(" ").trim();
+
+            if (extractedName.length > 3 && extractedName.length < 50) {
+               console.log("✨ Best guess name from resume:", extractedName);
+               // Sanitize name: remove non-alphanumeric (keep spaces)
+               const sanitized = extractedName.replace(/[^a-zA-Z\s]/g, '').trim();
+               if (sanitized.length > 3) {
+                 setCandidateName(sanitized);
+               }
+            }
+          }
+        } catch (err) {
+          console.error("Error extracting name from resume:", err);
+        }
+      }
+    };
+
+    extractNameFromResume();
+  }, [resumeUrl, candidateName, resumeFileName]);
 
   // ✅ Sync with Vercel User Details API (ONLY source for resume/portfolio)
   useEffect(() => {
@@ -571,15 +655,19 @@ const FinalResult: React.FC = () => {
         setResumeOwnerEmail(ownerEmail);
         console.log("📍 Email detected, Vercel sync will handle resume and portfolio.");
 
-        // Fetch CRM record to get application email
+        // Fetch CRM record to get application email and name
         supabase
           .from('digital_resume_by_crm')
-          .select('company_application_email')
+          .select('company_application_email, first_name, last_name, full_name')
           .eq('email', ownerEmail)
           .maybeSingle()
           .then(({ data: crmUser }) => {
             if (crmUser?.company_application_email) {
               setResumeOwnerAppEmail(crmUser.company_application_email);
+            }
+            const name = crmUser?.full_name || (crmUser?.first_name ? `${crmUser.first_name} ${crmUser.last_name || ''}`.trim() : null);
+            if (name && candidateName === "Candidate") {
+              setCandidateName(name);
             }
           });
       }
@@ -621,6 +709,10 @@ const FinalResult: React.FC = () => {
             setPortfolioUrl(portfolioRes.data.url);
             setTempPortfolioUrl(portfolioRes.data.url);
           }
+        } else if (ownerEmail) {
+          // Fallback: If no user_id but we have email, try to find a profile by email
+          const { data: profile } = await supabase.from('profiles').select('first_name, full_name').eq('email', ownerEmail).maybeSingle();
+          if (profile) setCandidateName(profile.full_name || profile.first_name || "Candidate");
         }
 
         // --- Fetch Video URL (Checking both tables for robustness) ---
@@ -872,14 +964,24 @@ const FinalResult: React.FC = () => {
       const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
 
       // Build the download filename using the candidate's name from the resume
-      const resolvedName = candidateName && candidateName !== "Candidate"
+      let resolvedName = candidateName && candidateName !== "Candidate"
         ? candidateName
         : (resumeFileName && resumeFileName !== "Resume.pdf"
-          ? resumeFileName.split('.')[0].split('?')[0].replace(/_Digitalresume|_resume/gi, '')
-          : "DigitalResume");
+          ? resumeFileName.split('.')[0].split('?')[0]
+              .replace(/^user_careercast_\d+(_|$)/i, '') // Remove technical prefix with optional trailing underscore
+              .replace(/_Digitalresume|_resume/gi, '')
+          : "Candidate");
+      
+      // Safety: If name is empty or only whitespace/underscores, fallback to Candidate or raw filename
+      if (!resolvedName || resolvedName.trim() === "" || resolvedName === "_") {
+        resolvedName = resumeFileName && resumeFileName !== "Resume.pdf" 
+          ? resumeFileName.split('.')[0].split('?')[0] 
+          : "Candidate";
+      }
+      
       // Sanitize: remove spaces and any characters not safe for filenames
-      const safeFileName = resolvedName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
-      const downloadFileName = `${safeFileName}_Digitalresume.pdf`;
+      const safeFileName = resolvedName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+      const downloadFileName = `${safeFileName}_digitalresume.pdf`;
 
       const isPdf = resumeUrl.toLowerCase().split('?')[0].endsWith('.pdf') || resumeUrl.includes('.pdf?');
 
@@ -911,9 +1013,9 @@ const FinalResult: React.FC = () => {
         a.download = downloadFileName;
         document.body.appendChild(a);
         a.click();
-
         document.body.removeChild(a);
         window.URL.revokeObjectURL(downloadUrl);
+        setShowDownloadPrompt(true); // ✅ Show banner only after successful download
       } catch (enhanceErr) {
         console.error("❌ Enhancement failed, falling back to original download:", enhanceErr);
 
@@ -927,6 +1029,7 @@ const FinalResult: React.FC = () => {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        setShowDownloadPrompt(true); // ✅ Show banner even for fallback download
         showToast("Downloaded original resume (enhancement failed)", "warning");
       }
     } catch (err) {
@@ -1127,6 +1230,26 @@ const FinalResult: React.FC = () => {
 
       <div className="relative pt-28 md:pt-24 pb-10 min-h-screen scrollbar-hide">
         <div className="w-full max-w-7xl mx-auto px-4 pt-5">
+          {/* Success Onboarding Banner */}
+          {showDownloadPrompt && !isExternalVisitor && !isFromPdf && (
+            <div className="mb-5 flex justify-start">
+              <div className="inline-flex items-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl px-4 py-3 shadow-lg relative pr-10 animate-in fade-in slide-in-from-top-2 duration-500">
+                <div className="bg-white/20 p-1.5 rounded-lg shrink-0">
+                  <CheckCircle className="w-4 h-4 text-white" />
+                </div>
+                <p className="text-white text-sm font-bold whitespace-nowrap">
+                  Your digital resume is downloaded! 🎉
+                </p>
+                <button
+                  onClick={() => setShowDownloadPrompt(false)}
+                  className="absolute top-1.5 right-1.5 text-white/60 hover:text-white transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {resumeUrl ? (
             <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden relative">
               {/* Optional: Add a notice for Word docs */}
