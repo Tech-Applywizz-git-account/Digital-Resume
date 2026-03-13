@@ -4,6 +4,7 @@ import { supabase } from "../integrations/supabase/client";
 import { useAuth } from "../contexts/AuthContext";
 import { showToast } from "../components/ui/toast";
 import { getUserInfo } from "../utils/crmHelpers";
+import { X } from "lucide-react";
 
 const Record: React.FC = () => {
   const navigate = useNavigate();
@@ -20,12 +21,8 @@ const Record: React.FC = () => {
   const [state, setState] = useState<"idle" | "recording">("idle");
   const [timer, setTimer] = useState("0:00");
   const [startTime, setStartTime] = useState<number>(0);
-  const [scrollInterval, setScrollInterval] = useState<NodeJS.Timeout | null>(
-    null
-  );
-  const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(
-    null
-  );
+  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [teleprompterText, setTeleprompterText] = useState("");
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
@@ -37,6 +34,8 @@ const Record: React.FC = () => {
       localStorage.getItem("teleprompterText") ||
       "Please complete Step 3 to generate your introduction script.";
     setTeleprompterText(text);
+    // Ensure teleprompter is at the start on mount
+    setTimeout(resetTeleprompterPosition, 100);
   }, []);
 
   // 🔹 Check user credits on mount (CRM Aware)
@@ -164,20 +163,31 @@ const Record: React.FC = () => {
     };
 
     setupCamera();
-
+    
     // Cleanup
     return () => {
-      if (scrollInterval) clearInterval(scrollInterval);
-      if (timerInterval) clearInterval(timerInterval);
-
-      // stop camera tracks on unmount using ref for reliability
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
+      if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      stopCamera();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const stopCamera = () => {
+    // Stop all tracks in the stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        track.stop();
+        track.enabled = false;
+      });
+      streamRef.current = null;
+    }
+    // Clear the video element source
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    console.log("📷 Camera stopped and tracks released");
+  };
 
   // 🔹 Timer
   const startTimer = () => {
@@ -188,17 +198,20 @@ const Record: React.FC = () => {
       const minutes = Math.floor(seconds / 60);
       setTimer(`${minutes}:${String(seconds % 60).padStart(2, "0")}`);
     }, 1000);
-    setTimerInterval(interval);
+    timerIntervalRef.current = interval;
   };
 
   const resetTimer = () => {
-    if (timerInterval) clearInterval(timerInterval);
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
     setTimer("0:00");
   };
 
   // 🔹 Teleprompter scroll
   const startTeleprompterScroll = () => {
-    let y = 100; // starts below Record button
+    let y = 0; // starts at the reading line
     const speed = parseFloat(localStorage.getItem("teleprompterSpeed") || "1");
     const interval = setInterval(() => {
       y -= 0.08 * speed;
@@ -209,7 +222,7 @@ const Record: React.FC = () => {
         clearInterval(interval);
       }
     }, 40);
-    setScrollInterval(interval);
+    scrollIntervalRef.current = interval;
   };
 
   const resetTeleprompterPosition = () => {
@@ -254,8 +267,9 @@ const Record: React.FC = () => {
     // STOP recording
     if (state === "recording") {
       try {
-        mediaRecorder.requestData();
-        mediaRecorder.stop();
+        if (mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+        }
         console.log("🛑 Recording stopped:", Date.now());
         setState("idle");
       } catch (err) {
@@ -264,21 +278,43 @@ const Record: React.FC = () => {
     }
   };
 
+  const handleCancel = () => {
+    if (state === "recording") {
+      const confirmCancel = window.confirm("Stop recording and discard video?");
+      if (!confirmCancel) return;
+      
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.onstop = null; // Prevent upload
+        mediaRecorder.stop();
+      }
+    }
+    
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    
+    stopCamera();
+    navigate("/step3");
+  };
+
   // 🔹 When Recording Stops
   const handleRecordingStop = async () => {
-    if (scrollInterval) clearInterval(scrollInterval);
-    if (timerInterval) clearInterval(timerInterval);
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
     resetTimer();
     resetTeleprompterPosition();
-
-    // Turn camera off completely
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
+    stopCamera();
 
     console.log("📹 Finalizing recording...");
     await new Promise((res) => setTimeout(res, 300));
@@ -365,6 +401,13 @@ const Record: React.FC = () => {
           .getPublicUrl(filePath);
         publicUrl = publicData?.publicUrl;
 
+        // Check if this cast already has a video to avoid duplicate credit deduction
+        const { data: existingRecording } = await supabase
+          .from("crm_recordings")
+          .select("id")
+          .eq("job_request_id", jobRequestId)
+          .maybeSingle();
+
         await supabase.from("crm_recordings").insert({
           email: crmEmail,
           user_id: currentUser.id,
@@ -382,7 +425,7 @@ const Record: React.FC = () => {
           })
           .eq("id", jobRequestId);
 
-        if (creditsRemaining !== null && creditsRemaining > 0) {
+        if (!existingRecording && creditsRemaining !== null && creditsRemaining > 0) {
           await supabase.from('digital_resume_by_crm')
             .update({ credits_remaining: creditsRemaining - 1 })
             .eq('email', crmEmail);
@@ -405,6 +448,13 @@ const Record: React.FC = () => {
           .getPublicUrl(filePath);
         publicUrl = publicData?.publicUrl;
 
+        // Check if this cast already has a video to avoid duplicate credit deduction
+        const { data: existingRecording } = await supabase
+          .from("recordings")
+          .select("id")
+          .eq("job_request_id", jobRequestId)
+          .maybeSingle();
+
         await supabase.from("recordings").insert({
           job_request_id: jobRequestId,
           email: currentUser.email,
@@ -417,7 +467,7 @@ const Record: React.FC = () => {
           .update({ status: "recorded", updated_at: new Date().toISOString() })
           .eq("id", jobRequestId);
 
-        if (creditsRemaining !== null && creditsRemaining > 0) {
+        if (!existingRecording && creditsRemaining !== null && creditsRemaining > 0) {
           await supabase.from('profiles')
             .update({ credits_remaining: creditsRemaining - 1 })
             .eq('id', currentUser.id);
@@ -427,7 +477,7 @@ const Record: React.FC = () => {
 
       showToast("Recording uploaded successfully!", "success");
       localStorage.setItem("recordedVideoUrl", publicUrl || "");
-      navigate(`/final-result/${jobRequestId}`);
+      navigate(`/final-result/${jobRequestId}?autoDownload=true`);
     } catch (err: any) {
       console.error("❌ Upload failed:", err.message);
       showToast(err.message || "Upload failed. Please try again.", "error");
@@ -467,20 +517,29 @@ const Record: React.FC = () => {
           </div>
         )}
 
-        <div className="absolute top-3 right-4 text-white font-semibold text-xl flex items-center">
-          <span
-            className={`w-2 h-2 rounded-full mr-2 ${state === "recording" ? "bg-red-500" : "bg-gray-400"
-              }`}
-          />
-          <span ref={timerRef}>{isUploading ? "Uploading..." : timer}</span>
+        <div className="absolute top-3 right-4 text-white font-semibold text-xl flex items-center gap-3">
+          <div className="flex items-center">
+            <span
+              className={`w-2 h-2 rounded-full mr-2 ${state === "recording" ? "bg-red-500 animate-pulse" : "bg-gray-400"
+                }`}
+            />
+            <span ref={timerRef}>{isUploading ? "Uploading..." : timer}</span>
+          </div>
+          
+          <button 
+            onClick={handleCancel}
+            className="p-1.5 bg-black/40 hover:bg-black/60 rounded-full transition-colors border border-white/20"
+            title="Cancel and Exit"
+          >
+            <X className="w-5 h-5 text-white" />
+          </button>
         </div>
 
         <div
           ref={teleprompterRef}
-          className="absolute bottom-[8rem] left-1/2 transform -translate-x-1/2 
+          className="absolute top-[44%] left-1/2 transform -translate-x-1/2 
              w-[100%] text-white font-sans text-xl md:text-2xl leading-relaxed 
-             font-medium text-center bg-gradient-to-b from-black/80 to-black/40 
-             px-6 py-8 rounded-lg pointer-events-none overflow-hidden"
+             font-medium text-center px-6 py-8 pointer-events-none overflow-hidden"
         >
           <div className="flex flex-col gap-6 pb-10">
             {teleprompterText.split(/\n\s*\n/).map((para, i) => (
@@ -500,14 +559,15 @@ const Record: React.FC = () => {
             ${recordingDisabled
               ? "opacity-40 cursor-not-allowed"
               : state === "recording"
-                ? "bg-red-500 shadow-[0_0_0_6px_rgba(255,59,48,0.35),0_0_24px_rgba(255,59,48,0.8)]"
-                : "bg-red-500 hover:scale-105 active:scale-95"
+                ? "bg-white/10 shadow-[0_0_0_6px_rgba(255,255,255,0.2),0_0_24px_rgba(255,59,48,0.4)]"
+                : "bg-red-500 hover:scale-105 active:scale-95 shadow-lg"
             }`}
         >
-          <div
-            className={`w-8 h-8 rounded-full ${state === "recording" ? "bg-red-700" : "bg-red-400"
-              }`}
-          />
+          {state === "recording" ? (
+            <div className="w-8 h-8 bg-red-600 rounded-sm animate-pulse shadow-sm" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-white shadow-sm" />
+          )}
         </button>
       </div>
     </div>

@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import {
   Video,
-  Eye,
   CheckCircle,
   Plus,
   FileText,
@@ -16,6 +15,9 @@ import {
   FileUp,
   BarChart3,
   Link,
+  ExternalLink,
+  Wallet,
+  Sparkles,
 } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,8 +29,15 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [careercasts, setcareercasts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [careercasts, setcareercasts] = useState<any[]>(() => {
+    const saved = localStorage.getItem('last_careercasts');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [loading, setLoading] = useState(() => {
+    // If we have saved data, don't show the initial full-page loader
+    const saved = localStorage.getItem('last_careercasts');
+    return !saved;
+  });
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showPricingPopup, setShowPricingPopup] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -40,8 +49,8 @@ export default function Dashboard() {
   const [analyticsTitle, setAnalyticsTitle] = useState('');
 
   // New: Premium plan tracking
-  const [isPremiumActive, setIsPremiumActive] = useState(false);
-  const [credits, setCredits] = useState<number>(0);
+  const [isPremiumActive, setIsPremiumActive] = useState(() => localStorage.getItem('last_premium_active') === 'true');
+  const [credits, setCredits] = useState<number>(() => parseInt(localStorage.getItem('last_credits') || '0'));
 
   // CRM user tracking
   const [isCRM, setIsCRM] = useState(false);
@@ -50,6 +59,8 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [replacingId, setReplacingId] = useState<string | null>(null);
   const [isReplacing, setIsReplacing] = useState(false);
+  const [showReplaceModal, setShowReplaceModal] = useState(false);
+  const [selectedReplaceFile, setSelectedReplaceFile] = useState<File | null>(null);
 
   const handleLogout = () => navigate('/');
 
@@ -108,6 +119,8 @@ export default function Dashboard() {
 
         setIsPremiumActive(active);
         setCredits(credits);
+        localStorage.setItem('last_premium_active', active.toString());
+        localStorage.setItem('last_credits', credits.toString());
         console.log('CRM User credits:', credits);
         return;
       }
@@ -126,6 +139,8 @@ export default function Dashboard() {
 
       setIsPremiumActive(active);
       setCredits(credits);
+      localStorage.setItem('last_premium_active', active.toString());
+      localStorage.setItem('last_credits', credits.toString());
       console.log('Regular User credits:', credits);
     } catch (err) {
       console.error('Error fetching plan:', err);
@@ -240,6 +255,7 @@ export default function Dashboard() {
             })
           );
           setcareercasts(jobsWithDetails);
+          localStorage.setItem('last_careercasts', JSON.stringify(jobsWithDetails));
         }
       } else {
         // Regular User branch — these users are NOT in the Vercel/ApplyWizz system
@@ -283,6 +299,7 @@ export default function Dashboard() {
         );
 
         setcareercasts(jobsWithViews);
+        localStorage.setItem('last_careercasts', JSON.stringify(jobsWithViews));
       }
     } catch (error) {
       console.error('Error fetching Network Notes:', error);
@@ -296,12 +313,20 @@ export default function Dashboard() {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !replacingId || !user) return;
+    
+    setSelectedReplaceFile(file);
+    setShowReplaceModal(true);
+  };
+
+  const confirmReplace = async () => {
+    if (!selectedReplaceFile || !replacingId || !user) return;
 
     try {
       setIsReplacing(true);
+      const file = selectedReplaceFile;
       const fileExt = file.name.split('.').pop()?.toLowerCase();
       const timestamp = Date.now();
       const fileName = `replaced_resume_${timestamp}.${fileExt}`;
@@ -374,12 +399,14 @@ export default function Dashboard() {
 
       showToast("Resume replaced successfully!", "success");
       fetchcareercasts(); // Refresh the list
+      setShowReplaceModal(false);
     } catch (err: any) {
       console.error("❌ Replace failed:", err);
       showToast("Failed to replace resume: " + err.message, "error");
     } finally {
       setIsReplacing(false);
       setReplacingId(null);
+      setSelectedReplaceFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -388,7 +415,15 @@ export default function Dashboard() {
   const handleNewCast = () => {
     if (credits > 0) {
       // ✅ Has credits → allow recording
-      navigate('/step1');
+      // Clear previous session data to ensure a fresh record is created
+      localStorage.removeItem('current_job_request_id');
+      localStorage.removeItem('uploadedResumeUrl');
+      localStorage.removeItem('resumeFileName');
+      localStorage.removeItem('resumeFullText');
+      localStorage.removeItem('teleprompterText');
+      
+      // Skip Step 1 and go directly to Step 2 — mark as new so history is hidden
+      navigate('/step2?mode=new');
     } else {
       // ⛔ No credits → show upgrade popup
       setShowPricingPopup(true);
@@ -409,11 +444,10 @@ export default function Dashboard() {
 
     const videoPath = cast.recordings?.[0]?.storage_path || null;
     if (videoPath) {
-      // If video exists, they can go straight to record page to re-record
       navigate(`/record/${cast.id}`);
     } else {
-      // If no video, take them back to Step 3 to generate script/complete flow
-      navigate('/step3');
+      // Take them to Step 2 in "continue" mode — shows history panel
+      navigate('/step2?mode=continue');
     }
   };
   const handleViewDetails = (id: string, resumePath?: string) => {
@@ -509,321 +543,453 @@ export default function Dashboard() {
         </div>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-4 bg-gray-50">
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-            {/* Header */}
-            <div className="border-b border-gray-200 bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] px-4 py-4 sm:px-8 sm:py-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-8 bg-gray-50">
+          <div className="max-w-7xl mx-auto">
+            {/* New Header Section */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
               <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-white">Your Digital Resume</h2>
-                <p className="text-white/80 text-xs sm:text-sm mt-1">
-                  Track progress and manage your recordings
-                </p>
+                <h1 className="text-3xl sm:text-4xl font-black text-[#0B4F6C] tracking-tight">
+                  Digital Resume Dashboard
+                </h1>
+                <p className="text-gray-500 mt-1 font-medium">Manage your professional presence in one place.</p>
               </div>
-              <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto">
-                {isPremiumActive ? (
-                  <span className="text-white text-xs bg-emerald-500 px-2 py-1 rounded-md self-start sm:self-auto">
-                    Credits: {credits}
-                  </span>
-                ) : (
-                  <span className="text-white text-xs bg-red-500/30 px-2 py-1 rounded-md self-start sm:self-auto">
-                    No Credits (Top up needed)
-                  </span>
-                )}
-                <button
+              <div className="flex flex-wrap items-center gap-3">
+                {/* <button
                   onClick={() => {
                     setAnalyticsId('');
                     setAnalyticsTitle('Overall Performance');
                     setAnalyticsOpen(true);
                   }}
-                  className="bg-[#0B4F6C] text-white px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold hover:bg-[#0B4F6C]/90 transition-all shadow-md flex items-center justify-center gap-2 text-sm sm:text-base w-full sm:w-auto"
+                  className="flex items-center gap-2 bg-white border-2 border-[#0B4F6C] text-[#0B4F6C] px-4 py-2 rounded-xl font-bold hover:bg-[#0B4F6C] hover:text-white transition-all shadow-sm"
                 >
-                  <BarChart3 className="w-4 h-4" />
+                  <BarChart3 className="w-5 h-5" />
                   Analytics
-                </button>
-                <button
-                  onClick={handleNewCast}
-                  className="bg-white text-[#0B4F6C] px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold hover:bg-white/90 transition-all shadow-md flex items-center justify-center gap-2 text-sm sm:text-base w-full sm:w-auto"
-                >
-                  <Plus className="w-4 h-4" />
-                  New Digital Resume
-                </button>
+                </button> */}
               </div>
             </div>
 
-            {/* Body */}
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-16 px-4">
-                <Loader2 className="animate-spin text-[#01796F] h-8 w-8 mb-4" />
-                <p className="text-gray-600 text-center">Loading your Digital Resume...</p>
-              </div>
-            ) : careercasts.length === 0 ? (
-              <div className="text-center py-16 px-4">
-                <div className="bg-[#01796F]/10 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
-                  <Video className="h-10 w-10 text-[#01796F]" />
-                </div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">No Digital Resume Yet</h3>
-                <p className="text-gray-600 mb-6 text-sm max-w-md mx-auto">
-                  Create your first professional video resume and make your profile shine.
-                </p>
-                <button
-                  onClick={handleNewCast}
-                  className="bg-[#01796F] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#016761] transition-colors shadow-md flex items-center justify-center mx-auto gap-2"
-                >
-                  <Plus className="w-5 h-5" /> Create Digital Resume
-                </button>
+            {loading && careercasts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <Loader2 className="animate-spin text-[#0B4F6C] h-12 w-12 mb-4" />
+                <p className="text-gray-600 font-medium italic">Setting up your profile...</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-gray-50 text-[#0B4F6C] uppercase tracking-wide font-semibold hidden md:table-header-group">
-                    <tr>
-                      <th className="py-3 px-4">Job Title</th>
-                      <th className="py-3 px-4">Resume</th>
-                      <th className="py-3 px-4">Video</th>
-                      <th className="py-3 px-4">Views</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4">Created</th>
-                      <th className="py-3 px-4 text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {careercasts.map((cast) => {
-                      const videoPath = cast.recordings?.[0]?.storage_path || null;
-                      // Convert storage path to public URL if needed
-                      let video = null;
-                      if (videoPath) {
-                        if (videoPath.startsWith('http')) {
-                          video = videoPath;
-                        } else {
-                          // Determine bucket based on whether this is CRM user
-                          const bucket = isCRM ? 'CRM_users_recordings' : 'recordings';
-                          video = supabase.storage.from(bucket).getPublicUrl(videoPath).data.publicUrl;
+              <>
+                {/* Status Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  {/* Card 1: Resume */}
+                  <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group flex items-center gap-4">
+                    <div className="bg-blue-50 w-10 h-10 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
+                      <FileText className="text-blue-600 w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-gray-400 font-bold text-xs uppercase tracking-wider mb-0.5">User Resume</h3>
+                      {careercasts.length > 0 && careercasts[0].resume_path ? (
+                        <a
+                          href={careercasts[0].resume_path}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#0B4F6C] font-bold text-sm flex items-center gap-1.5 hover:underline truncate"
+                        >
+                          View Resume <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <div className="flex flex-col">
+                          <p className="text-red-500 font-medium text-[9px] italic leading-tight">your resume not prepared yet</p>
+                          <button
+                            onClick={handleNewCast}
+                            className="text-[#159A9C] text-[8px] font-bold hover:underline text-left mt-0.5"
+                          >
+                            please upload your resume to record and add portfolio link
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card 2: Portfolio */}
+                  <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group flex items-center gap-4">
+                    <div className="bg-purple-50 w-10 h-10 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
+                      <Link className="text-purple-600 w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-gray-400 font-bold text-xs uppercase tracking-wider mb-0.5">User Portfolio</h3>
+                      {careercasts.length > 0 && careercasts[0].vercel_portfolio_url ? (
+                        <a
+                          href={careercasts[0].vercel_portfolio_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-purple-600 font-bold text-sm flex items-center gap-1.5 hover:underline truncate"
+                        >
+                          View Portfolio <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <div className="flex flex-col max-w-[150px]">
+                          <p className="text-red-500 font-medium text-[9px] italic leading-tight">your portfolio not prepared yet</p>
+                          <p className="text-gray-400 text-[8px] leading-tight mt-0.5 truncate">
+                            otherwise you can add you portoflio link and add in your resume
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card 3: Video Status */}
+                  <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group flex items-center gap-4">
+                    <div className="bg-emerald-50 w-10 h-10 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
+                      <Video className="text-emerald-600 w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-gray-400 font-bold text-xs uppercase tracking-wider mb-0.5">Video Status</h3>
+                      {(() => {
+                        const latest = careercasts[0];
+                        const videoPath = latest?.recordings?.[0]?.storage_path;
+                        if (videoPath) {
+                          let video = videoPath.startsWith('http')
+                            ? videoPath
+                            : supabase.storage.from(isCRM ? 'CRM_users_recordings' : 'recordings').getPublicUrl(videoPath).data.publicUrl;
+
+                          return (
+                            <button
+                              onClick={() => setSelectedVideo(video)}
+                              className="text-emerald-600 font-bold text-sm flex items-center gap-1.5 hover:underline truncate"
+                            >
+                              Recorded <Play className="w-3 h-3 fill-emerald-600" />
+                            </button>
+                          );
                         }
-                      }
-                      const both = cast.resume_path && video;
+                        return (
+                          <button
+                            onClick={() => {
+                              if (latest) handleReRecord(latest);
+                              else handleNewCast();
+                            }}
+                            className="text-orange-600 font-bold text-[9px] hover:underline text-left leading-tight"
+                          >
+                            reocrd your video to add in resume
+                          </button>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-8 gap-6">
+                  <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-10">
+                    {(() => {
+                      // Filter for items that actually have a recording (i.e. used a credit)
+                      const usedCount = careercasts.filter(c => c.recordings && c.recordings.length > 0).length;
+                      // Total pool is currently available + historically used
+                      const totalCerts = credits + usedCount;
+                      
                       return (
-                        <React.Fragment key={cast.id}>
-                          {/* Desktop view */}
-                          <tr className="border-b hover:bg-gray-50 hidden md:table-row">
-                            <td className="py-3 px-4 font-medium">{cast.job_title || 'Untitled'}</td>
-                            <td className="py-3 px-4">
-                              {cast.resume_path ? (
-                                <>
-                                  <a
-                                    href={cast.resume_path}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-[#01796F] hover:underline flex items-center gap-1"
-                                  >
-                                    <FileText className="w-4 h-4" /> View
-                                  </a>
-                                  {cast.vercel_portfolio_url && (
-                                    <a
-                                      href={cast.vercel_portfolio_url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-blue-600 hover:underline flex items-center gap-1 mt-1 text-xs"
-                                    >
-                                      <Link className="w-3.5 h-3.5" /> Portfolio
-                                    </a>
-                                  )}
-                                </>
-                              ) : (
-                                <span className="text-gray-400 text-xs italic">No resume</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              {video ? (
-                                <button
-                                  onClick={() => setSelectedVideo(video)}
-                                  className="text-[#01796F] hover:underline flex items-center gap-1"
-                                >
-                                  <Play className="w-4 h-4" /> Play
-                                </button>
-                              ) : (
-                                <span className="text-gray-400 text-xs italic">No video</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-1.5 font-bold text-[#0B4F6C]">
-                                <Eye className="w-4 h-4 text-slate-400" />
-                                {cast.view_count || 0}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">{getBadge(cast.status)}</td>
-                            <td className="py-3 px-4">{formatDate(cast.created_at)}</td>
-                            <td className="py-3 px-4 text-center">
-                              <div className="flex justify-center gap-2">
-                                <button
-                                  onClick={() => {
-                                    if (!cast.resume_path) return;
-                                    if (cast.is_api_resume) {
-                                      // Navigate to FinalResult with profile email so it loads the same way
-                                      const email = cast.owner_email || crmEmail || user?.email || '';
-                                      navigate(`/final-result/profile?email=${encodeURIComponent(email)}&resumeUrl=${encodeURIComponent(cast.resume_path || '')}`);
-                                    } else {
-                                      handleViewDetails(cast.id, cast.resume_path);
-                                    }
-                                  }}
-                                  disabled={!cast.resume_path}
-                                  className={`${cast.resume_path
-                                    ? 'bg-[#01796F] hover:bg-[#016761] text-white'
-                                    : 'bg-gray-200 text-gray-400'
-                                    } px-3 py-1.5 rounded-md font-semibold text-xs transition-colors`}
-                                >
-                                  View
-                                </button>
-                                {cast.resume_path && (
-                                  <button
-                                    onClick={() => handleReplaceClick(cast.id)}
-                                    disabled={isReplacing && replacingId === cast.id}
-                                    className="border-2 border-emerald-500 text-emerald-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-emerald-500 hover:text-white transition-colors flex items-center gap-1"
-                                  >
-                                    {isReplacing && replacingId === cast.id ? (
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                    ) : (
-                                      <FileUp className="w-3 h-3" />
-                                    )}
-                                    Replace
-                                  </button>
-                                )}
-                                {both ? (
-                                  <button
-                                    onClick={() => handleReRecord(cast)}
-                                    className="border-2 border-[#0B4F6C] text-[#0B4F6C] px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white transition-colors"
-                                  >
-                                    Re-record
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => handleReRecord(cast)}
-                                    className="border-2 border-orange-500 text-orange-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-orange-500 hover:text-white transition-colors"
-                                  >
-                                    Continue
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-
-                          {/* Mobile view */}
-                          <tr key={`mobile-${cast.id}`} className="border-b border-gray-100 hover:bg-gray-50 md:hidden">
-                            <td className="py-4 px-4" colSpan={6}>
-                              <div className="flex flex-col gap-3">
-                                <div className="flex justify-between items-start">
-                                  <div className="flex-1 min-w-0">
-                                    <h3 className="font-semibold text-gray-900 text-base truncate">{cast.job_title || 'Untitled'}</h3>
-                                    <p className="text-xs text-gray-500 mt-1">{formatDate(cast.created_at)}</p>
-                                  </div>
-                                  <div className="flex-shrink-0 ml-2">
-                                    {getBadge(cast.status)}
-                                  </div>
-                                </div>
-
-                                <div className="flex gap-3 mt-1">
-                                  {cast.resume_path ? (
-                                    <a
-                                      href={cast.resume_path}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-[#01796F] hover:text-[#016761] flex items-center gap-1 text-xs font-medium"
-                                    >
-                                      <FileText className="w-4 h-4" />
-                                      <span>Resume</span>
-                                    </a>
-                                  ) : (
-                                    <span className="text-gray-400 text-xs flex items-center gap-1">
-                                      <FileText className="w-4 h-4" />
-                                      <span>No resume</span>
-                                    </span>
-                                  )}
-
-                                  {video ? (
-                                    <button
-                                      onClick={() => setSelectedVideo(video)}
-                                      className="text-[#01796F] hover:text-[#016761] flex items-center gap-1 text-xs font-medium"
-                                    >
-                                      <Play className="w-4 h-4" />
-                                      <span>Video</span>
-                                    </button>
-                                  ) : (
-                                    <span className="text-gray-400 text-xs flex items-center gap-1">
-                                      <Play className="w-4 h-4" />
-                                      <span>No video</span>
-                                    </span>
-                                  )}
-
-                                  {cast.vercel_portfolio_url && (
-                                    <a
-                                      href={cast.vercel_portfolio_url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-xs font-medium"
-                                    >
-                                      <Link className="w-4 h-4" />
-                                      <span>Portfolio</span>
-                                    </a>
-                                  )}
-                                </div>
-
-                                <div className="flex gap-2 mt-2">
-                                  <button
-                                    onClick={() => {
-                                      if (!cast.resume_path) return;
-                                      if (cast.is_api_resume) {
-                                        const email = cast.owner_email || crmEmail || user?.email || '';
-                                        navigate(`/final-result/profile?email=${encodeURIComponent(email)}&resumeUrl=${encodeURIComponent(cast.resume_path || '')}`);
-                                      } else {
-                                        handleViewDetails(cast.id, cast.resume_path);
-                                      }
-                                    }}
-                                    disabled={!cast.resume_path}
-                                    className={`flex-1 ${cast.resume_path
-                                      ? 'bg-[#01796F] hover:bg-[#016761] text-white'
-                                      : 'bg-gray-100 text-gray-400'
-                                      } px-3 py-2 rounded-lg font-medium text-sm transition-colors`}
-                                  >
-                                    View Details
-                                  </button>
-                                  {cast.resume_path && (
-                                    <button
-                                      onClick={() => handleReplaceClick(cast.id)}
-                                      disabled={isReplacing && replacingId === cast.id}
-                                      className="flex-1 border border-emerald-500 text-emerald-600 px-3 py-2 rounded-lg font-medium text-sm hover:bg-emerald-500 hover:text-white transition-colors flex items-center justify-center gap-1"
-                                    >
-                                      {isReplacing && replacingId === cast.id ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                      ) : (
-                                        <FileUp className="w-4 h-4" />
-                                      )}
-                                      Replace
-                                    </button>
-                                  )}
-                                  {both ? (
-                                    <button
-                                      onClick={() => handleReRecord(cast)}
-                                      className="flex-1 border border-[#0B4F6C] text-[#0B4F6C] px-3 py-2 rounded-lg font-medium text-sm hover:bg-[#0B4F6C] hover:text-white transition-colors"
-                                    >
-                                      Re-record
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => handleReRecord(cast)}
-                                      className="flex-1 border border-orange-500 text-orange-600 px-3 py-2 rounded-lg font-medium text-sm hover:bg-orange-500 hover:text-white transition-colors"
-                                    >
-                                      Continue
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        </React.Fragment>
+                        <>
+                          <div className="flex flex-col items-center lg:items-start group cursor-help transition-all" title="Total credits your account has received">
+                            <span className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1 group-hover:text-[#0B4F6C]">Lifetime Credits</span>
+                            <span className="text-2xl font-black text-[#0B4F6C]">{totalCerts}</span>
+                          </div>
+                          <div className="w-px h-8 bg-gray-100 hidden sm:block"></div>
+                          <div className="flex flex-col items-center lg:items-start group cursor-help transition-all" title="Credits spent on published digital resumes">
+                            <span className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1 group-hover:text-orange-600">Spent</span>
+                            <span className="text-2xl font-black text-orange-500">{usedCount}</span>
+                          </div>
+                          <div className="w-px h-8 bg-gray-100 hidden sm:block"></div>
+                          <div className="flex flex-col items-center lg:items-start group cursor-help transition-all" title="Credits available to use for new digital resumes">
+                            <span className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1 group-hover:text-emerald-600">Balance</span>
+                            <span className="text-2xl font-black text-emerald-500">{credits}</span>
+                          </div>
+                        </>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                    })()}
+                  </div>
+
+                  <div className="relative group">
+                    <button
+                      onClick={handleNewCast}
+                      className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white px-8 py-4 rounded-2xl font-bold hover:shadow-xl transition-all shadow-lg active:scale-95 text-base w-full sm:w-auto"
+                    >
+                      <Plus className="w-5 h-5 stroke-[3]" />
+                      <span>New Digital Resume</span>
+                    </button>
+                    
+                    {/* Premium Tooltip */}
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 p-3 bg-gray-900 text-white text-xs rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 shadow-2xl z-50 text-center">
+                      <div className="font-bold mb-1 text-cyan-400">Create New Digital Resume</div>
+                      <p className="text-gray-300 leading-relaxed">Build a professional profile by uploading your resume and recording a video introduction.</p>
+                      {/* Triangle Arrow */}
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Details Table Section */}
+                {careercasts.length > 0 && (
+                  <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                      <h3 className="font-bold text-[#0B4F6C]">All Digital Resumes</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-50/50 text-[#0B4F6C] uppercase tracking-wide font-bold text-xs hidden md:table-header-group">
+                          <tr>
+                            <th className="py-4 px-6 text-center">S.No</th>
+                            <th className="py-4 px-6">Recordings</th>
+                            <th className="py-4 px-6">Resume</th>
+                            <th className="py-4 px-6">Video</th>
+                            <th className="py-4 px-6 text-center">Status</th>
+                            <th className="py-4 px-6 text-center">Created</th>
+                            <th className="py-4 px-6 text-center">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {careercasts.map((cast, index) => {
+                            const videoPath = cast.recordings?.[0]?.storage_path || null;
+                            // Convert storage path to public URL if needed
+                            let video = null;
+                            if (videoPath) {
+                              if (videoPath.startsWith('http')) {
+                                video = videoPath;
+                              } else {
+                                // Determine bucket based on whether this is CRM user
+                                const bucket = isCRM ? 'CRM_users_recordings' : 'recordings';
+                                video = supabase.storage.from(bucket).getPublicUrl(videoPath).data.publicUrl;
+                              }
+                            }
+                            const both = cast.resume_path && video;
+                            return (
+                              <React.Fragment key={cast.id}>
+                                {/* Desktop view */}
+                                <tr className="border-b hover:bg-gray-50 hidden md:table-row">
+                                  <td className="py-3 px-4 text-center font-bold text-gray-400">{careercasts.length - index}</td>
+                                  <td className="py-3 px-4 font-bold text-[#0B4F6C]">Recording-{careercasts.length - index}</td>
+                                  <td className="py-3 px-4">
+                                    {cast.resume_path ? (
+                                      <>
+                                        <a
+                                          href={cast.resume_path}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-[#01796F] hover:underline flex items-center gap-1"
+                                        >
+                                          <FileText className="w-4 h-4" /> View
+                                        </a>
+                                        {cast.vercel_portfolio_url && (
+                                          <a
+                                            href={cast.vercel_portfolio_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-blue-600 hover:underline flex items-center gap-1 mt-1 text-xs"
+                                          >
+                                            <Link className="w-3.5 h-3.5" /> Portfolio
+                                          </a>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <span className="text-gray-400 text-xs italic">No resume</span>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    {video ? (
+                                      <button
+                                        onClick={() => setSelectedVideo(video)}
+                                        className="text-[#01796F] hover:underline flex items-center gap-1"
+                                      >
+                                        <Play className="w-4 h-4" /> Play
+                                      </button>
+                                    ) : (
+                                      <span className="text-gray-400 text-xs italic">No video</span>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 text-center">{getBadge(cast.status)}</td>
+                                  <td className="py-3 px-4 text-center font-medium text-gray-500">{formatDate(cast.created_at)}</td>
+                                  <td className="py-3 px-4 text-center">
+                                    <div className="flex justify-center gap-2">
+                                      <button
+                                        onClick={() => {
+                                          if (!cast.resume_path) return;
+                                          if (cast.is_api_resume) {
+                                            // Navigate to FinalResult with profile email so it loads the same way
+                                            const email = cast.owner_email || crmEmail || user?.email || '';
+                                            navigate(`/final-result/profile?email=${encodeURIComponent(email)}&resumeUrl=${encodeURIComponent(cast.resume_path || '')}`);
+                                          } else {
+                                            handleViewDetails(cast.id, cast.resume_path);
+                                          }
+                                        }}
+                                        disabled={!cast.resume_path}
+                                        className={`${cast.resume_path
+                                          ? 'bg-[#01796F] hover:bg-[#016761] text-white'
+                                          : 'bg-gray-200 text-gray-400'
+                                          } px-3 py-1.5 rounded-md font-semibold text-xs transition-colors`}
+                                      >
+                                        View
+                                      </button>
+                                      {cast.resume_path && (
+                                        <button
+                                          onClick={() => handleReplaceClick(cast.id)}
+                                          disabled={isReplacing && replacingId === cast.id}
+                                          className="border-2 border-emerald-500 text-emerald-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-emerald-500 hover:text-white transition-colors flex items-center gap-1"
+                                        >
+                                          {isReplacing && replacingId === cast.id ? (
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                          ) : (
+                                            <FileUp className="w-3 h-3" />
+                                          )}
+                                          Replace
+                                        </button>
+                                      )}
+                                      {both ? (
+                                        <button
+                                          onClick={() => handleReRecord(cast)}
+                                          className="border-2 border-[#0B4F6C] text-[#0B4F6C] px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white transition-colors"
+                                        >
+                                          Re-record
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={() => handleReRecord(cast)}
+                                          className="border-2 border-orange-500 text-orange-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-orange-500 hover:text-white transition-colors"
+                                        >
+                                          Continue
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Mobile view */}
+                                <tr key={`mobile-${cast.id}`} className="border-b border-gray-100 hover:bg-gray-50 md:hidden">
+                                  <td className="py-6 px-4" colSpan={6}>
+                                    <div className="flex flex-col gap-5">
+                                      <div className="flex justify-between items-start">
+                                        <div className="flex-1 min-w-0">
+                                          <h3 className="font-bold text-[#0B4F6C] text-lg leading-tight mb-1">Recording-{careercasts.length - index}</h3>
+                                          <p className="text-xs text-gray-400 font-medium flex items-center gap-1">
+                                            <Clock className="w-3 h-3" />
+                                            {formatDate(cast.created_at)}
+                                          </p>
+                                        </div>
+                                        <div className="flex-shrink-0">
+                                          {getBadge(cast.status)}
+                                        </div>
+                                      </div>
+
+                                      <div className="bg-gray-50/80 rounded-xl p-4 flex justify-around border border-gray-100">
+                                        <div className="flex flex-col items-center gap-2">
+                                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Resume</span>
+                                          {cast.resume_path ? (
+                                            <a
+                                              href={cast.resume_path}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="bg-emerald-50 text-emerald-700 p-2.5 rounded-full hover:bg-emerald-100 transition-colors"
+                                            >
+                                              <FileText className="w-5 h-5" />
+                                            </a>
+                                          ) : (
+                                            <div className="bg-gray-100 text-gray-400 p-2.5 rounded-full cursor-not-allowed">
+                                              <FileText className="w-5 h-5" />
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        <div className="flex flex-col items-center gap-2">
+                                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Video</span>
+                                          {video ? (
+                                            <button
+                                              onClick={() => setSelectedVideo(video)}
+                                              className="bg-blue-50 text-blue-700 p-2.5 rounded-full hover:bg-blue-100 transition-colors"
+                                            >
+                                              <Play className="w-5 h-5 fill-current" />
+                                            </button>
+                                          ) : (
+                                            <div className="bg-gray-100 text-gray-400 p-2.5 rounded-full cursor-not-allowed">
+                                              <Play className="w-5 h-5" />
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {cast.vercel_portfolio_url && (
+                                          <div className="flex flex-col items-center gap-2">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Portfolio</span>
+                                            <a
+                                              href={cast.vercel_portfolio_url}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="bg-purple-50 text-purple-700 p-2.5 rounded-full hover:bg-purple-100 transition-colors"
+                                            >
+                                              <Link className="w-5 h-5" />
+                                            </a>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div className="grid grid-cols-1 gap-3">
+                                        <button
+                                          onClick={() => {
+                                            if (!cast.resume_path) return;
+                                            if (cast.is_api_resume) {
+                                              const email = cast.owner_email || crmEmail || user?.email || '';
+                                              navigate(`/final-result/profile?email=${encodeURIComponent(email)}&resumeUrl=${encodeURIComponent(cast.resume_path || '')}`);
+                                            } else {
+                                              handleViewDetails(cast.id, cast.resume_path);
+                                            }
+                                          }}
+                                          disabled={!cast.resume_path}
+                                          className={`w-full ${cast.resume_path
+                                            ? 'bg-[#0B4F6C] text-white shadow-md'
+                                            : 'bg-gray-100 text-gray-400'
+                                            } py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transform active:scale-95 transition-all`}
+                                        >
+                                          <ExternalLink className="w-4 h-4" />
+                                          View Details
+                                        </button>
+                                        
+                                        <div className="flex gap-3">
+                                          {cast.resume_path && (
+                                            <button
+                                              onClick={() => handleReplaceClick(cast.id)}
+                                              disabled={isReplacing && replacingId === cast.id}
+                                              className="flex-1 border-2 border-emerald-500 text-emerald-600 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-50 transition-colors"
+                                            >
+                                              {isReplacing && replacingId === cast.id ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                              ) : (
+                                                <FileUp className="w-4 h-4" />
+                                              )}
+                                              Replace
+                                            </button>
+                                          )}
+                                          
+                                          {both ? (
+                                            <button
+                                              onClick={() => handleReRecord(cast)}
+                                              className="flex-1 border-2 border-[#0B4F6C] text-[#0B4F6C] py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-50 transition-colors"
+                                            >
+                                              <Redo className="w-4 h-4" />
+                                              Re-record
+                                            </button>
+                                          ) : (
+                                            <button
+                                              onClick={() => handleReRecord(cast)}
+                                              className="flex-1 border-2 border-orange-500 text-orange-600 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-orange-50 transition-colors"
+                                            >
+                                              <Play className="w-4 h-4" />
+                                              Continue
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </main>
@@ -912,6 +1078,89 @@ export default function Dashboard() {
                     <source src={selectedVideo} type="video/mp4" />
                     Your browser does not support the video tag.
                   </video>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Replace Resume Confirmation Modal */}
+        {showReplaceModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden mx-4 animate-in fade-in zoom-in duration-200">
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5 flex justify-between items-center">
+                <h3 className="text-white font-black text-lg flex items-center gap-2">
+                  <FileUp className="w-6 h-6" />
+                  Replace Resume
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowReplaceModal(false);
+                    setSelectedReplaceFile(null);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="text-white hover:bg-white/20 rounded-lg p-1 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="p-6">
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-6">
+                  <p className="text-emerald-800 text-sm font-medium leading-relaxed">
+                    You are about to update the resume for:
+                    <span className="block text-emerald-900 font-black text-lg mt-1">
+                      Recording-{careercasts.length - careercasts.findIndex(c => c.id === replacingId)}
+                    </span>
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 p-4 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
+                    <div className="bg-white p-3 rounded-lg shadow-sm">
+                      <FileText className="w-8 h-8 text-emerald-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">New File Selected</p>
+                      <p className="text-sm font-bold text-gray-700 truncate">{selectedReplaceFile?.name}</p>
+                      <p className="text-[10px] text-gray-400">{(selectedReplaceFile?.size || 0) / 1024 > 1024 
+                        ? ((selectedReplaceFile?.size || 0) / (1024 * 1024)).toFixed(2) + ' MB' 
+                        : ((selectedReplaceFile?.size || 0) / 1024).toFixed(2) + ' KB'}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500 italic text-center">
+                    Note: Replacing the resume will update the document recruiters see when viewing this digital resume.
+                  </p>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => {
+                        setShowReplaceModal(false);
+                        setSelectedReplaceFile(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-all active:scale-95"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={confirmReplace}
+                      disabled={isReplacing}
+                      className="flex-1 px-4 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
+                    >
+                      {isReplacing ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-5 h-5" />
+                          Confirm Upload
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
