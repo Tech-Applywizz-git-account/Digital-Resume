@@ -149,7 +149,8 @@ const FinalResult: React.FC = () => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [jobTitle, setJobTitle] = useState<string>("");
   const [loading, setLoading] = useState(!urlFromQuery && !!(castId || idFromQuery));
-  const [candidateName, setCandidateName] = useState<string>("Candidate");
+  const nameParamFromUrl = searchParams.get('candidateName') || searchParams.get('name');
+  const [candidateName, setCandidateName] = useState<string>(nameParamFromUrl || "Candidate");
 
   const [portfolioUrl, setPortfolioUrl] = useState("");
   const [isEditingPortfolio, setIsEditingPortfolio] = useState(false);
@@ -307,6 +308,11 @@ const FinalResult: React.FC = () => {
 
             const vResumeUrl = userData?.data?.resume?.pdf_path?.[0] || userData?.resume?.pdf_path?.[0];
             const vPortfolioUrl = userData?.data?.portfolio?.link || userData?.portfolio?.link;
+            const vName = userData?.first_name || userData?.full_name || userData?.name || userData?.data?.first_name;
+
+            if (vName && candidateName === "Candidate") {
+              setCandidateName(vName);
+            }
 
             if (vResumeUrl && typeof vResumeUrl === "string") {
               setResumeUrl(current => {
@@ -455,7 +461,7 @@ const FinalResult: React.FC = () => {
               setResumeOwnerEmail(data.email || null);
               setResumeOwnerUserId(data.user_id || null);
               const { data: profile } = await supabase.from('profiles').select('first_name, last_name, full_name').eq('id', data.user_id).single();
-              if (profile) setCandidateName(profile.first_name || profile.full_name?.split(' ')[0] || "Candidate");
+              if (profile) setCandidateName(profile.full_name || profile.first_name || "Candidate");
             }
 
             return;
@@ -520,7 +526,7 @@ const FinalResult: React.FC = () => {
               // Regular job_requests might have email if we check the table schema
               setResumeOwnerEmail((data as any).email || (data as any).candidate_email || null);
               const { data: profile } = await supabase.from('profiles').select('first_name, last_name, full_name').eq('id', data.user_id).single();
-              if (profile) setCandidateName(profile.first_name || profile.full_name?.split(' ')[0] || "Candidate");
+              if (profile) setCandidateName(profile.full_name || profile.first_name || "Candidate");
             }
 
             return;
@@ -605,11 +611,11 @@ const FinalResult: React.FC = () => {
 
           // Parallel fetch for profile and portfolio settings
           const [profileRes, portfolioRes] = await Promise.all([
-            supabase.from('profiles').select('first_name').eq('id', data.user_id).maybeSingle(),
+            supabase.from('profiles').select('first_name, full_name').eq('id', data.user_id).maybeSingle(),
             supabase.from('portfolio_settings').select('url').eq('user_id', data.user_id).maybeSingle()
           ]);
 
-          if (profileRes.data) setCandidateName(profileRes.data.first_name || "Candidate");
+          if (profileRes.data) setCandidateName(profileRes.data.full_name || profileRes.data.first_name || "Candidate");
           if (portfolioRes.data?.url) {
             console.log("📍 Found portfolio override in Supabase:", portfolioRes.data.url);
             setPortfolioUrl(portfolioRes.data.url);
@@ -865,13 +871,23 @@ const FinalResult: React.FC = () => {
       if (!resumeUrl) return;
       const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
 
+      // Build the download filename using the candidate's name from the resume
+      const resolvedName = candidateName && candidateName !== "Candidate"
+        ? candidateName
+        : (resumeFileName && resumeFileName !== "Resume.pdf"
+          ? resumeFileName.split('.')[0].split('?')[0].replace(/_Digitalresume|_resume/gi, '')
+          : "DigitalResume");
+      // Sanitize: remove spaces and any characters not safe for filenames
+      const safeFileName = resolvedName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+      const downloadFileName = `${safeFileName}_Digitalresume.pdf`;
+
       const isPdf = resumeUrl.toLowerCase().split('?')[0].endsWith('.pdf') || resumeUrl.includes('.pdf?');
 
       if (!isPdf) {
         showToast("Enhancement is only available for PDF files. Downloading original resume.", "warning");
         const a = document.createElement("a");
         a.href = resumeUrl;
-        a.download = resumeFileName;
+        a.download = downloadFileName;
         a.target = "_blank";
         document.body.appendChild(a);
         a.click();
@@ -885,11 +901,6 @@ const FinalResult: React.FC = () => {
       try {
         const enhancedUrl = await enhancePDF(resumeUrl, currentCastId);
 
-        const userName =
-          candidateName !== "Candidate"
-            ? candidateName
-            : (user?.firstName || user?.name || "Candidate");
-
         const response = await fetch(enhancedUrl);
         const blob = await response.blob();
 
@@ -897,7 +908,7 @@ const FinalResult: React.FC = () => {
 
         const a = document.createElement("a");
         a.href = downloadUrl;
-        a.download = `${userName}_DIGITALRESUME.pdf`;
+        a.download = downloadFileName;
         document.body.appendChild(a);
         a.click();
 
@@ -909,8 +920,8 @@ const FinalResult: React.FC = () => {
         // Final fallback: Direct download of the original resume
         const a = document.createElement("a");
         a.href = resumeUrl;
-        a.download = resumeFileName;
-        // For cross-origin S3 URLs, download attribute might be ignored. 
+        a.download = downloadFileName;
+        // For cross-origin S3 URLs, download attribute might be ignored.
         // target="_blank" ensures it at least opens in a new tab if it can't download.
         a.target = "_blank";
         document.body.appendChild(a);
@@ -935,7 +946,13 @@ const FinalResult: React.FC = () => {
               variant="outline"
               onClick={() => {
                 const isAdmin = sessionStorage.getItem('digital_resume_admin_access') === 'true';
-                navigate(isAdmin ? "/digital-resume-dashboard" : "/dashboard");
+                if (isAdmin) {
+                  // Use browser back — keeps the dashboard mounted with its scroll position intact
+                  sessionStorage.setItem('skip_admin_sync', 'true');
+                  navigate(-1);
+                } else {
+                  navigate("/dashboard");
+                }
               }}
               className="flex items-center gap-2 border-gray-300 text-gray-700 h-10 shrink-0 px-3"
             >

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import {
     Users,
@@ -74,10 +74,23 @@ interface UsageLog {
 export default function DigitalResumeDashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const [loading, setLoading] = useState(true);
-    const [users, setUsers] = useState<CRMUser[]>([]);
-    const [admins, setAdmins] = useState<CRMAdmin[]>([]);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [loading, setLoading] = useState(() => {
+        const cached = sessionStorage.getItem('cached_crm_users');
+        return !cached;
+    });
+    const [users, setUsers] = useState<CRMUser[]>(() => {
+        try {
+            const cached = sessionStorage.getItem('cached_crm_users');
+            return cached ? JSON.parse(cached) : [];
+        } catch (e) { return []; }
+    });
+    const [admins, setAdmins] = useState<CRMAdmin[]>(() => {
+        try {
+            const cached = sessionStorage.getItem('cached_crm_admins');
+            return cached ? JSON.parse(cached) : [];
+        } catch (e) { return []; }
+    });
+    const [searchTerm, setSearchTerm] = useState(() => sessionStorage.getItem('admin_dashboard_searchTerm') || '');
     const [showAddAdminModal, setShowAddAdminModal] = useState(false);
     const [showAddUserModal, setShowAddUserModal] = useState(false);
     const [isAdminAdding, setIsAdminAdding] = useState(false);
@@ -97,7 +110,7 @@ export default function DigitalResumeDashboard() {
     const [replacingResumeEmail, setReplacingResumeEmail] = useState<string | null>(null);
     const [resumeToConfirmReplace, setResumeToConfirmReplace] = useState<string | null>(null);
     const [isReplacingResume, setIsReplacingResume] = useState(false);
-    const resumeFileInputRef = React.useRef<HTMLInputElement>(null);
+    const resumeFileInputRef = useRef<HTMLInputElement>(null);
 
     // Refresh row state
     const [refreshingEmail, setRefreshingEmail] = useState<string | null>(null);
@@ -108,10 +121,59 @@ export default function DigitalResumeDashboard() {
     const [analyticsTitle, setAnalyticsTitle] = useState('');
 
     // AI Usage state
-    const [activeTab, setActiveTab] = useState<'users' | 'ai-usage'>('users');
-    const [usageLogs, setUsageLogs] = useState<UsageLog[]>([]);
-    const [usageStats, setUsageStats] = useState({ totalCalls: 0, totalTokens: 0, totalCost: 0 });
+    const [activeTab, setActiveTab] = useState<'users' | 'ai-usage'>(() => (sessionStorage.getItem('admin_dashboard_activeTab') as 'users' | 'ai-usage') || 'users');
+    const [usageLogs, setUsageLogs] = useState<UsageLog[]>(() => {
+        try {
+            const cached = sessionStorage.getItem('cached_usage_logs');
+            return cached ? JSON.parse(cached) : [];
+        } catch (e) { return []; }
+    });
+    const [usageStats, setUsageStats] = useState(() => {
+        try {
+            const cached = sessionStorage.getItem('cached_usage_stats');
+            return cached ? JSON.parse(cached) : { totalCalls: 0, totalTokens: 0, totalCost: 0 };
+        } catch (e) { return { totalCalls: 0, totalTokens: 0, totalCost: 0 }; }
+    });
     const [isUsageLoading, setIsUsageLoading] = useState(false);
+
+    // Scroll position tracking
+    const tableScrollRef = useRef<HTMLDivElement>(null);
+
+    // Cache persistence effects - debounced for cleanup/syncing
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (users.length > 0) sessionStorage.setItem('cached_crm_users', JSON.stringify(users));
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [users]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (admins.length > 0) sessionStorage.setItem('cached_crm_admins', JSON.stringify(admins));
+            if (usageLogs.length > 0) sessionStorage.setItem('cached_usage_logs', JSON.stringify(usageLogs));
+            sessionStorage.setItem('cached_usage_stats', JSON.stringify(usageStats));
+        }, 800);
+        return () => clearTimeout(timer);
+    }, [admins, usageLogs, usageStats]);
+
+    useEffect(() => {
+        sessionStorage.setItem('admin_dashboard_searchTerm', searchTerm);
+    }, [searchTerm]);
+
+    useEffect(() => {
+        sessionStorage.setItem('admin_dashboard_activeTab', activeTab);
+    }, [activeTab]);
+
+    // Restore scroll position after data loads
+    useEffect(() => {
+        if (!loading && tableScrollRef.current) {
+            const savedScroll = sessionStorage.getItem('admin_dashboard_scroll');
+            if (savedScroll) {
+                tableScrollRef.current.scrollTop = parseInt(savedScroll, 10);
+                sessionStorage.removeItem('admin_dashboard_scroll');
+            }
+        }
+    }, [loading]);
 
     useEffect(() => {
         const checkAccess = async () => {
@@ -122,13 +184,16 @@ export default function DigitalResumeDashboard() {
 
             const currentUserEmail = adminEmail || authEmail;
 
-            console.log('Session Flag:', hasSessionAccess);
-            console.log('Admin Email:', adminEmail);
-            console.log('Auth Email:', authEmail);
-
             if (!hasSessionAccess && !currentUserEmail) {
-                console.log('No credentials found, redirecting to login...');
                 navigate('/DigitalResumeLogin');
+                return;
+            }
+
+            // --- Skip sync if coming back from a "View" action ---
+            const shouldSkipSync = sessionStorage.getItem('skip_admin_sync') === 'true';
+            if (shouldSkipSync) {
+                sessionStorage.removeItem('skip_admin_sync');
+                setLoading(false);
                 return;
             }
 
@@ -143,20 +208,17 @@ export default function DigitalResumeDashboard() {
 
                     if (error) {
                         console.error('Database check error:', error);
-                        // If DB errors (table missing), trust the session flag
                         if (hasSessionAccess) {
-                            loadData();
+                            loadData(!!sessionStorage.getItem('cached_crm_users'));
                             return;
                         }
                     }
 
                     if (!data && !hasSessionAccess) {
-                        console.log('Not an admin, redirecting...');
                         navigate('/DigitalResumeLogin');
                         return;
                     }
                 } catch (err) {
-                    console.error('Access check failed:', err);
                     if (!hasSessionAccess) {
                         navigate('/DigitalResumeLogin');
                         return;
@@ -164,14 +226,14 @@ export default function DigitalResumeDashboard() {
                 }
             }
 
-            loadData();
+            loadData(!!sessionStorage.getItem('cached_crm_users'));
         };
 
         checkAccess();
     }, [user, navigate]);
 
-    const loadData = async () => {
-        setLoading(true);
+    const loadData = async (background = false) => {
+        if (!background) setLoading(true);
         await Promise.all([fetchUsers(), fetchAdmins(), fetchUsageLogs()]);
         setLoading(false);
     };
@@ -268,6 +330,7 @@ export default function DigitalResumeDashboard() {
                     };
                 });
                 setUsers(initialUsersWithDetails);
+                sessionStorage.setItem('cached_crm_users', JSON.stringify(initialUsersWithDetails));
 
                 // Start background streaming logic to prevent hanging UI
                 (async () => {
@@ -349,6 +412,7 @@ export default function DigitalResumeDashboard() {
 
             if (error) throw error;
             setAdmins(data || []);
+            if (data) sessionStorage.setItem('cached_crm_admins', JSON.stringify(data));
         } catch (error: any) {
             console.error('Error fetching admins:', error);
         }
@@ -399,6 +463,10 @@ export default function DigitalResumeDashboard() {
                     totalCost: acc.totalCost + (Number(curr.cost) || 0)
                 }), { totalCalls: 0, totalTokens: 0, totalCost: 0 });
                 setUsageStats(totals);
+                
+                // Immediate persist
+                sessionStorage.setItem('cached_usage_logs', JSON.stringify(formattedLogs));
+                sessionStorage.setItem('cached_usage_stats', JSON.stringify(totals));
             }
         } catch (error: any) {
             console.error('Error fetching usage logs:', error);
@@ -791,6 +859,13 @@ export default function DigitalResumeDashboard() {
     const handleAdminLogout = () => {
         sessionStorage.removeItem('digital_resume_admin_access');
         sessionStorage.removeItem('admin_email');
+        sessionStorage.removeItem('cached_crm_users');
+        sessionStorage.removeItem('cached_crm_admins');
+        sessionStorage.removeItem('cached_usage_logs');
+        sessionStorage.removeItem('cached_usage_stats');
+        sessionStorage.removeItem('admin_dashboard_scroll');
+        sessionStorage.removeItem('admin_dashboard_searchTerm');
+        sessionStorage.removeItem('admin_dashboard_activeTab');
         navigate('/DigitalResumeLogin');
     };
 
@@ -945,7 +1020,7 @@ export default function DigitalResumeDashboard() {
 
                             {/* Table container */}
                             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0">
-                                <div className="overflow-y-auto flex-1">
+                                <div ref={tableScrollRef} className="overflow-y-auto flex-1">
                                     {loading ? (
                                         <div className="flex flex-col items-center justify-center h-full">
                                             <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin mb-3" />
@@ -1001,14 +1076,14 @@ export default function DigitalResumeDashboard() {
                                                                                 <button
                                                                                     onClick={() => {
                                                                                         if (!user_row.email) return;
-                                                                                        // Refresh first as requested
-
-
-                                                                                        // Then navigate
+                                                                                        // Save scroll position before navigating away
+                                                                                        if (tableScrollRef.current) {
+                                                                                            sessionStorage.setItem('admin_dashboard_scroll', String(tableScrollRef.current.scrollTop));
+                                                                                        }
                                                                                         if (user_row.latest_job_request_id) {
-                                                                                            navigate(`/final-result/${user_row.latest_job_request_id}?resumeUrl=${encodeURIComponent(user_row.resume_url || '')}`);
+                                                                                            sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/${user_row.latest_job_request_id}?resumeUrl=${encodeURIComponent(user_row.resume_url || '')}&candidateName=${encodeURIComponent(cName)}`);
                                                                                         } else if (user_row.resume_url) {
-                                                                                            navigate(`/final-result/profile?email=${encodeURIComponent(user_row.email)}&resumeUrl=${encodeURIComponent(user_row.resume_url)}`);
+                                                                                            sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/profile?email=${encodeURIComponent(user_row.email)}&resumeUrl=${encodeURIComponent(user_row.resume_url)}&candidateName=${encodeURIComponent(cName)}`);
                                                                                         }
                                                                                     }}
                                                                                     className="flex items-center gap-1.5 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg hover:bg-[#0B4F6C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
@@ -1183,8 +1258,12 @@ export default function DigitalResumeDashboard() {
                                                                     <>
                                                                         <button
                                                                             onClick={() => {
+                                                                                // Save scroll position before navigating away
+                                                                                if (tableScrollRef.current) {
+                                                                                    sessionStorage.setItem('admin_dashboard_scroll', String(tableScrollRef.current.scrollTop));
+                                                                                }
                                                                                 if (user_row.latest_job_request_id) {
-                                                                                    navigate(`/final-result/${user_row.latest_job_request_id}`);
+                                                                                    sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/${user_row.latest_job_request_id}?resumeUrl=${encodeURIComponent(user_row.resume_url || '')}&candidateName=${encodeURIComponent(cName)}`);
                                                                                 } else if (user_row.resume_url) {
                                                                                     window.open(user_row.resume_url, '_blank');
                                                                                 }
