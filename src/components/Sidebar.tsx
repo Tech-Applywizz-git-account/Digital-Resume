@@ -249,9 +249,10 @@ import {
   ChevronRight,
   Briefcase,
   Globe,
-  Search,
-  ChevronLeft
+  ChevronLeft,
+  Search
 } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 interface SidebarProps {
   userEmail?: string;
@@ -260,6 +261,7 @@ interface SidebarProps {
 
 export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const location = useLocation();
 
   // collapsed = icon-only rail (like 2nd screenshot)
@@ -552,7 +554,10 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
       {/* Logout */}
       <div className="px-2 pb-4 border-t border-slate-100 pt-3">
         <button
-          onClick={onLogout}
+          onClick={() => {
+            logout();
+            onLogout();
+          }}
           className={`${baseItemClasses} ${collapsed ? "justify-center" : ""
             } text-slate-500 hover:bg-slate-100`}
         >

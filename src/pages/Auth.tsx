@@ -625,10 +625,10 @@ export default function Auth() {
   return (
     <div className="min-h-screen bg-slate-50 py-10">
       {/* page padding changed to match landing (less empty side area) */}
-      <div className="w-full px-8 lg:px-16">
+      <div className="w-full px-4 sm:px-8 lg:px-16">
         <div className="flex justify-center">
           <div className="w-full max-w-md">
-            <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
+            <Card className="p-6 sm:p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
               <div className="text-center mb-6">
                 <div className="flex items-center justify-center gap-3 mb-3">
                   {/* <div className="h-10 w-10 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center">

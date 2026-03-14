@@ -487,7 +487,7 @@ export default function Billing() {
         <div id="toast-container" className="fixed top-4 right-4 z-50" />
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
-          <div className="w-full px-8 lg:px-16">
+          <div className="w-full px-0 sm:px-8 lg:px-16">
             <div className="max-w-6xl mx-auto">
               {/* Header */}
               <div className="mb-6 sm:mb-8">
@@ -781,7 +781,7 @@ export default function Billing() {
                     <p className="mt-2 text-slate-600">Loading payment history...</p>
                   </div>
                 ) : paymentHistory.length > 0 ? (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
                     <table className="min-w-full divide-y divide-slate-200">
                       <thead className="bg-slate-50">
                         <tr>

@@ -27,16 +27,28 @@ import AnalyticsPanel from '../components/AnalyticsPanel';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
-  const [careercasts, setcareercasts] = useState<any[]>(() => {
-    const saved = localStorage.getItem('last_careercasts');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Synchronous initialization helper to prevent UI flickers
+  const getInitialValue = (keySuffix: string, fallback: any) => {
+    const userData = localStorage.getItem('userData');
+    if (!userData) return fallback;
+    try {
+      const parsed = JSON.parse(userData);
+      if (!parsed.email) return fallback;
+      const emailKey = parsed.email.replace(/[^a-zA-Z0-9]/g, '_');
+      const saved = localStorage.getItem(`last_${keySuffix}_${emailKey}`);
+      if (saved === null) return fallback;
+      if (typeof fallback === 'number') return parseInt(saved);
+      if (typeof fallback === 'boolean') return saved === 'true';
+      return JSON.parse(saved);
+    } catch { return fallback; }
+  };
+
+  const [careercasts, setcareercasts] = useState<any[]>(() => getInitialValue('careercasts', []));
   const [loading, setLoading] = useState(() => {
-    // If we have saved data, don't show the initial full-page loader
-    const saved = localStorage.getItem('last_careercasts');
-    return !saved;
+    const data = getInitialValue('careercasts', null);
+    return data === null; // Only show loader if we have NO cached data at all for this user
   });
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showPricingPopup, setShowPricingPopup] = useState(false);
@@ -49,8 +61,8 @@ export default function Dashboard() {
   const [analyticsTitle, setAnalyticsTitle] = useState('');
 
   // New: Premium plan tracking
-  const [isPremiumActive, setIsPremiumActive] = useState(() => localStorage.getItem('last_premium_active') === 'true');
-  const [credits, setCredits] = useState<number>(() => parseInt(localStorage.getItem('last_credits') || '0'));
+  const [isPremiumActive, setIsPremiumActive] = useState(() => getInitialValue('premium_active', false));
+  const [credits, setCredits] = useState<number>(() => getInitialValue('credits', 0));
 
   // CRM user tracking
   const [isCRM, setIsCRM] = useState(false);
@@ -62,7 +74,34 @@ export default function Dashboard() {
   const [showReplaceModal, setShowReplaceModal] = useState(false);
   const [selectedReplaceFile, setSelectedReplaceFile] = useState<File | null>(null);
 
-  const handleLogout = () => navigate('/');
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
+
+  // ✅ Initialize user-specific data once user is available
+  useEffect(() => {
+    if (!user) return;
+    
+    // Clear state if we previously had data for a different user (redundant but safe)
+    const emailKey = user.email.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    const savedCasts = localStorage.getItem(`last_careercasts_${emailKey}`);
+    if (savedCasts) {
+      setcareercasts(JSON.parse(savedCasts));
+      setLoading(false);
+    } else {
+      setcareercasts([]);
+      setLoading(true);
+    }
+
+    const savedActive = localStorage.getItem(`last_premium_active_${emailKey}`);
+    if (savedActive) setIsPremiumActive(savedActive === 'true');
+
+    const savedCredits = localStorage.getItem(`last_credits_${emailKey}`);
+    if (savedCredits) setCredits(parseInt(savedCredits));
+
+  }, [user]);
 
   // 🟢 Check plan on mount + realtime updates
   useEffect(() => {
@@ -119,8 +158,9 @@ export default function Dashboard() {
 
         setIsPremiumActive(active);
         setCredits(credits);
-        localStorage.setItem('last_premium_active', active.toString());
-        localStorage.setItem('last_credits', credits.toString());
+        const emailKey = user.email.replace(/[^a-zA-Z0-9]/g, '_');
+        localStorage.setItem(`last_premium_active_${emailKey}`, active.toString());
+        localStorage.setItem(`last_credits_${emailKey}`, credits.toString());
         console.log('CRM User credits:', credits);
         return;
       }
@@ -139,8 +179,9 @@ export default function Dashboard() {
 
       setIsPremiumActive(active);
       setCredits(credits);
-      localStorage.setItem('last_premium_active', active.toString());
-      localStorage.setItem('last_credits', credits.toString());
+      const emailKey = user.email.replace(/[^a-zA-Z0-9]/g, '_');
+      localStorage.setItem(`last_premium_active_${emailKey}`, active.toString());
+      localStorage.setItem(`last_credits_${emailKey}`, credits.toString());
       console.log('Regular User credits:', credits);
     } catch (err) {
       console.error('Error fetching plan:', err);
@@ -255,7 +296,8 @@ export default function Dashboard() {
             })
           );
           setcareercasts(jobsWithDetails);
-          localStorage.setItem('last_careercasts', JSON.stringify(jobsWithDetails));
+          const emailKey = user.email.replace(/[^a-zA-Z0-9]/g, '_');
+          localStorage.setItem(`last_careercasts_${emailKey}`, JSON.stringify(jobsWithDetails));
         }
       } else {
         // Regular User branch — these users are NOT in the Vercel/ApplyWizz system
@@ -299,7 +341,8 @@ export default function Dashboard() {
         );
 
         setcareercasts(jobsWithViews);
-        localStorage.setItem('last_careercasts', JSON.stringify(jobsWithViews));
+        const emailKey = user.email.replace(/[^a-zA-Z0-9]/g, '_');
+        localStorage.setItem(`last_careercasts_${emailKey}`, JSON.stringify(jobsWithViews));
       }
     } catch (error) {
       console.error('Error fetching Network Notes:', error);
@@ -731,12 +774,12 @@ export default function Dashboard() {
                       <table className="w-full text-sm text-left">
                         <thead className="bg-gray-50/50 text-[#0B4F6C] uppercase tracking-wide font-bold text-xs hidden md:table-header-group">
                           <tr>
-                            <th className="py-4 px-6 text-center">S.No</th>
-                            <th className="py-4 px-6">Recordings</th>
-                            <th className="py-4 px-6">Resume</th>
-                            <th className="py-4 px-6">Video</th>
-                            <th className="py-4 px-6 text-center">Status</th>
-                            <th className="py-4 px-6 text-center">Created</th>
+                            <th className="py-4 px-6 text-center w-16">S.No</th>
+                            <th className="py-4 px-6 text-left w-48">Recordings</th>
+                            <th className="py-4 px-6 text-left w-32">Resume</th>
+                            <th className="py-4 px-6 text-left w-32">Video</th>
+                            <th className="py-4 px-6 text-left w-40">Status</th>
+                            <th className="py-4 px-6 text-left w-32">Created</th>
                             <th className="py-4 px-6 text-center">Actions</th>
                           </tr>
                         </thead>
@@ -758,17 +801,17 @@ export default function Dashboard() {
                             return (
                               <React.Fragment key={cast.id}>
                                 {/* Desktop view */}
-                                <tr className="border-b hover:bg-gray-50 hidden md:table-row">
-                                  <td className="py-3 px-4 text-center font-bold text-gray-400">{careercasts.length - index}</td>
-                                  <td className="py-3 px-4 font-bold text-[#0B4F6C]">Recording-{careercasts.length - index}</td>
-                                  <td className="py-3 px-4">
+                                <tr className="border-b hover:bg-gray-50/80 transition-colors hidden md:table-row">
+                                  <td className="py-4 px-6 text-center font-bold text-gray-400">{careercasts.length - index}</td>
+                                  <td className="py-4 px-6 text-left font-bold text-[#0B4F6C]">Recording-{careercasts.length - index}</td>
+                                  <td className="py-4 px-6 text-left">
                                     {cast.resume_path ? (
-                                      <>
+                                      <div className="flex flex-col gap-1.5">
                                         <a
                                           href={cast.resume_path}
                                           target="_blank"
                                           rel="noreferrer"
-                                          className="text-[#01796F] hover:underline flex items-center gap-1"
+                                          className="text-[#01796F] hover:text-[#016761] font-bold flex items-center gap-1.5 transition-colors"
                                         >
                                           <FileText className="w-4 h-4" /> View
                                         </a>
@@ -777,31 +820,31 @@ export default function Dashboard() {
                                             href={cast.vercel_portfolio_url}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="text-blue-600 hover:underline flex items-center gap-1 mt-1 text-xs"
+                                            className="text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1.5 mt-0.5 text-xs transition-colors"
                                           >
                                             <Link className="w-3.5 h-3.5" /> Portfolio
                                           </a>
                                         )}
-                                      </>
+                                      </div>
                                     ) : (
-                                      <span className="text-gray-400 text-xs italic">No resume</span>
+                                      <span className="text-gray-400 text-xs italic text-left font-medium">No resume</span>
                                     )}
                                   </td>
-                                  <td className="py-3 px-4">
+                                  <td className="py-4 px-6 text-left">
                                     {video ? (
                                       <button
                                         onClick={() => setSelectedVideo(video)}
-                                        className="text-[#01796F] hover:underline flex items-center gap-1"
+                                        className="text-[#01796F] hover:text-[#016761] font-bold flex items-center gap-1.5 transition-colors"
                                       >
-                                        <Play className="w-4 h-4" /> Play
+                                        <Play className="w-4 h-4 fill-current" /> Play
                                       </button>
                                     ) : (
-                                      <span className="text-gray-400 text-xs italic">No video</span>
+                                      <span className="text-gray-400 text-xs italic text-left font-medium">No video</span>
                                     )}
                                   </td>
-                                  <td className="py-3 px-4 text-center">{getBadge(cast.status)}</td>
-                                  <td className="py-3 px-4 text-center font-medium text-gray-500">{formatDate(cast.created_at)}</td>
-                                  <td className="py-3 px-4 text-center">
+                                  <td className="py-4 px-6 text-left">{getBadge(cast.status)}</td>
+                                  <td className="py-4 px-6 text-left font-bold text-gray-500 whitespace-nowrap">{formatDate(cast.created_at)}</td>
+                                  <td className="py-4 px-6 text-center">
                                     <div className="flex justify-center gap-2">
                                       <button
                                         onClick={() => {
@@ -996,8 +1039,8 @@ export default function Dashboard() {
 
         {/* Upgrade popup */}
         {!isPremiumActive && showPricingPopup && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden mx-4">
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden mx-2 sm:mx-4">
               <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] p-4 sm:p-5 flex justify-between items-center">
                 <h3 className="text-white font-bold text-lg">Upgrade to Premium</h3>
                 <button
@@ -1051,8 +1094,8 @@ export default function Dashboard() {
 
         {/* Video Player Modal */}
         {selectedVideo && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 overflow-hidden">
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4 text-center">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-auto overflow-hidden">
               <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] p-4 flex justify-between items-center">
                 <h3 className="text-white font-bold text-lg flex items-center gap-2">
                   <Play className="w-5 h-5" fill="white" />
@@ -1086,8 +1129,8 @@ export default function Dashboard() {
 
         {/* Replace Resume Confirmation Modal */}
         {showReplaceModal && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden mx-4 animate-in fade-in zoom-in duration-200">
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden mx-2 sm:mx-4 animate-in fade-in zoom-in duration-200">
               <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5 flex justify-between items-center">
                 <h3 className="text-white font-black text-lg flex items-center gap-2">
                   <FileUp className="w-6 h-6" />

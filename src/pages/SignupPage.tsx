@@ -1857,13 +1857,13 @@ const SignupPage: React.FC = () => {
         </button>
       </div>
 
-      <div className="mx-auto mt-8 w-full max-w-3xl px-4 pb-12">
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.06)]">
-          <div className="p-8 sm:p-12">
-            <h1 className="text-center text-3xl font-extrabold tracking-tight text-gray-900">
+      <div className="mx-auto mt-4 sm:mt-8 w-full max-w-3xl px-3 sm:px-4 pb-12">
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.06)] overflow-hidden">
+          <div className="p-6 sm:p-10 md:p-12">
+            <h1 className="text-center text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900 leading-tight">
               Create your account
             </h1>
-            <p className="mt-3 text-center text-base text-gray-500">
+            <p className="mt-2 text-center text-sm sm:text-base text-gray-500">
               You will be charged{" "}
               <span className="font-semibold">{amountDisplay}</span> (
               {plan === "UK" ? "UK plan" : "US plan"})

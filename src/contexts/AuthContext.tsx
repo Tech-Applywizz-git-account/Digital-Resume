@@ -81,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<void> => {
     setLoading(true);
     clearError();
+    clearSessionCache(); // Clear everything BEFORE logging in as a new user
     try {
       const normalizedEmail = email.trim().toLowerCase();
       console.log('Attempting login for:', normalizedEmail);
@@ -152,6 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (userData: SignupData): Promise<void> => {
     setLoading(true);
     clearError();
+    clearSessionCache(); // Clear everything BEFORE signing up as a new user
 
     try {
       // Require verified OTP before signup
@@ -255,12 +257,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const isOTPVerified = (email: string): boolean => verifiedEmails.has(email);
+  
+  const clearSessionCache = () => {
+    // 1. Identify current user info for specific cache clearing
+    const userDataStr = localStorage.getItem('userData');
+    let emailKey = '';
+    if (userDataStr) {
+      try {
+        const pd = JSON.parse(userDataStr);
+        if (pd.email) emailKey = pd.email.replace(/[^a-zA-Z0-9]/g, '_');
+      } catch (e) {}
+    }
+
+    // 2. Define global keys to clear
+    const globalKeys = [
+      'authToken', 
+      'userData', 
+      'is_crm_user', 
+      'crm_user_email',
+      'last_careercasts', 
+      'last_premium_active', 
+      'last_credits',
+      'current_job_request_id', 
+      'uploadedResumeUrl', 
+      'resumeFileName', 
+      'resumeFullText',
+      'teleprompterText', 
+      'teleprompterSpeed',
+      'careercast_jobTitle', 
+      'careercast_jobDescription',
+      'recordedVideoUrl',
+      'userCountry'
+    ];
+    
+    globalKeys.forEach(key => localStorage.removeItem(key));
+
+    // 3. Define user-specific keys to clear if we found an email
+    if (emailKey) {
+      const userKeys = [
+        `last_careercasts_${emailKey}`,
+        `last_premium_active_${emailKey}`,
+        `last_credits_${emailKey}`
+      ];
+      userKeys.forEach(key => localStorage.removeItem(key));
+    }
+  };
 
   const logout = () => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('userData');
-    localStorage.removeItem('is_crm_user');
-    localStorage.removeItem('crm_user_email');
+    clearSessionCache();
     setIsAuthenticated(false);
     setUser(null);
   };

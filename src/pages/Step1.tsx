@@ -13,7 +13,7 @@ import { getUserInfo } from '../utils/crmHelpers';
 
 const Step1: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -21,6 +21,7 @@ const Step1: React.FC = () => {
   const [jobDescription, setJobDescription] = useState('');
 
   const handleLogout = () => {
+    logout();
     navigate('/');
   };
 
@@ -199,34 +200,34 @@ const Step1: React.FC = () => {
             <Card className="w-full">
               <CardHeader>
                 {/* Step Indicator */}
-                <div className="flex justify-between items-center mb-6 relative px-4 sm:px-8">
-                  <div className="absolute top-4 left-12 sm:left-16 right-12 sm:right-16 h-0.5 bg-gray-300 -z-10"></div>
+                <div className="flex justify-between items-center mb-10 relative px-6 sm:px-16 max-w-4xl mx-auto">
+                  <div className="absolute top-4 left-10 sm:left-20 right-10 sm:right-20 h-0.5 bg-gray-300 -z-10"></div>
 
                   {/* Step 1 - Active */}
                   <div className="flex flex-col items-center relative z-10">
-                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-semibold">
+                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-blue-200">
                       1
                     </div>
-                    <span className="text-xs mt-1 text-blue-600 font-medium hidden sm:block">Job Details</span>
-                    <span className="text-xs mt-1 text-blue-600 font-medium sm:hidden">Step 1</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-bold hidden min-[450px]:block">Job Details</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-bold min-[450px]:hidden text-center leading-tight">Details</span>
                   </div>
 
                   {/* Step 2 - Inactive */}
                   <div className="flex flex-col items-center relative z-10">
-                    <div className="w-8 h-8 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-semibold">
+                    <div className="w-8 h-8 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-bold">
                       2
                     </div>
-                    <span className="text-xs mt-1 text-gray-500 hidden sm:block">Upload Resume</span>
-                    <span className="text-xs mt-1 text-gray-500 sm:hidden">Step 2</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-gray-400 font-bold hidden min-[450px]:block">Upload Resume</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-gray-400 font-bold min-[450px]:hidden text-center leading-tight">Resume</span>
                   </div>
 
                   {/* Step 3 - Inactive */}
                   <div className="flex flex-col items-center relative z-10">
-                    <div className="w-8 h-8 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-semibold">
+                    <div className="w-8 h-8 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-bold">
                       3
                     </div>
-                    <span className="text-xs mt-1 text-gray-500 hidden sm:block">Record Video</span>
-                    <span className="text-xs mt-1 text-gray-500 sm:hidden">Step 3</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-gray-400 font-bold hidden min-[450px]:block">Record Video</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-gray-400 font-bold min-[450px]:hidden text-center leading-tight">Video</span>
                   </div>
                 </div>
 
