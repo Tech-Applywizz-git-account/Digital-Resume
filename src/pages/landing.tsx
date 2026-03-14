@@ -5626,9 +5626,9 @@ export default function Landing() {
   const closeTermsModal = () => setShowTermsModal(false);
 
   return (
-    <div ref={mainRef} className="fixed inset-0 bg-slate-50 text-slate-900 overflow-x-hidden">
+    <div ref={mainRef} className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden">
       <motion.header className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 shadow-sm" style={{ backdropFilter: useTransform(headerBlur, (v) => `blur(${v}px)`) }}>
-        <div className="w-full px-8 lg:px-16 py-3.5">
+        <div className="w-full px-4 sm:px-8 lg:px-16 py-3.5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate("/")}>
               {/* <div className="h-8 w-8 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
@@ -5702,10 +5702,10 @@ export default function Landing() {
       </motion.header>
 
       <section className="relative py-16 lg:py-24">
-        <div className="w-full px-8 lg:px-16">
+        <div className="w-full px-4 sm:px-8 lg:px-16">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <motion.div initial={{ opacity: 0, x: -50 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.8 }}>
-              <h1 className="text-6xl lg:text-6xl font-black tracking-tight mb-5 leading-tight text-slate-900">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight mb-5 leading-tight text-slate-900">
                 <TypeAnimation sequence={["YOUR DIGITAL RESUME.", 1000]} speed={0.2 as any} repeat={0} cursor={true} className="text-slate-900" />
               </h1>
 
@@ -5733,7 +5733,7 @@ export default function Landing() {
       </section>
 
       <section className="py-16">
-        <div className="w-full px-8 lg:px-16">
+        <div className="w-full px-4 sm:px-8 lg:px-16">
           <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }} className="relative rounded-3xl bg-white border border-slate-200 shadow-md p-6 lg:p-10">
             <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
               <div className="flex-1">
@@ -5750,7 +5750,7 @@ export default function Landing() {
       </section>
 
       <section className="py-14 bg-white border-y border-slate-200">
-        <div className="w-full px-8 lg:px-16">
+        <div className="w-full px-4 sm:px-8 lg:px-16">
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="text-center mb-10">
             <h3 className="text-xl font-semibold mb-2 text-slate-900">Over 200 candidates have landed interviews globally through Network Note</h3>
           </motion.div>
@@ -5765,7 +5765,7 @@ export default function Landing() {
       </section>
 
       <section id="solutions" className="py-20 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-        <div className="w-full px-8 lg:px-16">
+        <div className="w-full px-4 sm:px-8 lg:px-16">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <motion.div initial={{ opacity: 0, x: -50 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
               <h2 className="text-3xl lg:text-4xl font-black mb-5 leading-tight text-white">GET HIRED FASTER WITH A PERSONALIZED VIDEO RESUME</h2>
@@ -5874,7 +5874,7 @@ export default function Landing() {
 
       {/* REST OF THE PAGE (testimonials, faq, footer) unchanged below */}
       <section className="py-20 bg-white">
-        <div className="w-full px-8 lg:px-16">
+        <div className="w-full px-4 sm:px-8 lg:px-16">
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="text-center mb-14">
             <h2 className="text-3xl lg:text-4xl font-black mb-3 text-slate-900">HOW NETWORK NOTE HELPED JOB SEEKERS GET HIRED</h2>
           </motion.div>
@@ -5913,7 +5913,7 @@ export default function Landing() {
       </section>
 
       <footer id="company" className="border-t border-slate-200 bg-slate-50">
-        <div className="w-full px-8 lg:px-16 py-14">
+        <div className="w-full px-4 sm:px-8 lg:px-16 py-14">
           <div className="grid md:grid-cols-3 gap-10 mb-10">
             <div>
               <div className="flex items-center gap-3 mb-4">

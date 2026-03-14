@@ -1478,9 +1478,9 @@ export default function DigitalResumeDashboard() {
             {/* Add User Modal */}
             {
                 showAddUserModal && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
-                        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-                            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-emerald-600 text-white">
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white w-full max-w-md rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                            <div className="p-6 sm:p-8 border-b border-slate-100 flex justify-between items-center bg-emerald-600 text-white">
                                 <div>
                                     <h3 className="text-xl font-bold flex items-center gap-2">
                                         <UserPlus className="w-6 h-6" />
@@ -1496,7 +1496,7 @@ export default function DigitalResumeDashboard() {
                                 </button>
                             </div>
 
-                            <form onSubmit={handleAddUser} className="p-8 space-y-6">
+                            <form onSubmit={handleAddUser} className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                                 <div className="space-y-4">
                                     <div>
                                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">User Email Address</label>
@@ -1554,9 +1554,9 @@ export default function DigitalResumeDashboard() {
             {/* Add Admin Modal */}
             {
                 showAddAdminModal && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
-                        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-                            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-[#0f172a] text-white">
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white w-full max-w-md rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                            <div className="p-6 sm:p-8 border-b border-slate-100 flex justify-between items-center bg-[#0f172a] text-white">
                                 <div>
                                     <h3 className="text-xl font-bold flex items-center gap-2">
                                         <ShieldCheck className="w-6 h-6" />
@@ -1572,7 +1572,7 @@ export default function DigitalResumeDashboard() {
                                 </button>
                             </div>
 
-                            <form onSubmit={handleAddAdmin} className="p-8 space-y-6">
+                            <form onSubmit={handleAddAdmin} className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                                 <div className="space-y-4">
                                     <div>
                                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Admin Email Address</label>

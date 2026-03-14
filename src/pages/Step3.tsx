@@ -12,7 +12,7 @@ import { extractTextFromBuffer } from "../utils/textExtraction";
 
 const Step3: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [teleprompterText, setTeleprompterText] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -25,7 +25,10 @@ const Step3: React.FC = () => {
     return saved ? parseFloat(saved) : 1;
   });
 
-  const handleLogout = () => navigate('/');
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   useEffect(() => {
     const checkRecording = async () => {
@@ -164,16 +167,19 @@ const Step3: React.FC = () => {
           <div className="max-w-4xl mx-auto">
             <Card className="w-full">
               <CardHeader>
-                <div className="flex justify-between items-center mb-6 relative px-4 sm:px-8">
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center"><Check className="h-4 w-4" /></div>
-                    <span className="text-xs mt-1 text-green-600 font-medium hidden sm:block">Upload Resume</span>
-                    <span className="text-xs mt-1 text-green-600 font-medium sm:hidden">Step 1</span>
+                <div className="flex justify-center items-center mb-10 relative gap-x-20 sm:gap-x-32 max-w-4xl mx-auto">
+                  <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-300 -z-10 w-[60%] sm:w-[40%] mx-auto"></div>
+                  <div className="flex flex-col items-center relative z-10">
+                    <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm">
+                      <Check className="h-4 w-4" />
+                    </div>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-emerald-600 font-bold hidden min-[450px]:block">Upload Resume</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-emerald-600 font-bold min-[450px]:hidden text-center leading-tight">Resume</span>
                   </div>
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">2</div>
-                    <span className="text-xs mt-1 text-blue-600 font-medium hidden sm:block">Record Video</span>
-                    <span className="text-xs mt-1 text-blue-600 font-medium sm:hidden">Step 2</span>
+                  <div className="flex flex-col items-center relative z-10">
+                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-blue-200">2</div>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-bold hidden min-[450px]:block">Record Video</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-bold min-[450px]:hidden text-center leading-tight">Video</span>
                   </div>
                 </div>
                 <CardTitle className="text-xl sm:text-2xl font-bold text-center">Record Your Digital Resume Video</CardTitle>

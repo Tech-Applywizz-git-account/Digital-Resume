@@ -70,7 +70,7 @@ export default function DigitalResumeLogin() {
 
     return (
         <div className="min-h-screen bg-[#f3f7fb] flex items-center justify-center p-6 font-sans">
-            <div className="w-full max-w-[480px] bg-white rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.04)] border border-slate-100 p-10 md:p-14">
+        <div className="w-full max-w-[480px] bg-white rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.04)] border border-slate-100 p-6 sm:p-10 md:p-14">
                 {/* Header Section */}
                 <div className="text-center mb-10">
                     <h1 className="text-3xl font-bold text-[#1e293b] tracking-tight">Digital Resume</h1>

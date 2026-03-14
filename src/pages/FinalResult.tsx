@@ -1042,8 +1042,8 @@ const FinalResult: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
 
 
-      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b shadow-md z-[100] h-24 md:h-20">
-        <div className="max-w-7xl mx-auto h-full flex items-center gap-3 px-4 shadow-none">
+      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b shadow-md z-[100] h-auto min-h-[4.5rem] md:h-20">
+        <div className="max-w-7xl mx-auto h-full flex flex-wrap md:flex-nowrap items-center justify-between md:justify-start gap-2 md:gap-3 px-3 sm:px-4 py-2.5 md:py-0 shadow-none">
           {user && !isFromPdf && (
             <Button
               variant="outline"
@@ -1057,22 +1057,22 @@ const FinalResult: React.FC = () => {
                   navigate("/dashboard");
                 }
               }}
-              className="flex items-center gap-2 border-gray-300 text-gray-700 h-10 shrink-0 px-3"
+              className="flex items-center gap-1.5 border-gray-300 text-gray-700 h-9 md:h-10 shrink-0 px-2.5 md:px-3"
             >
               <ArrowLeft className="h-4 w-4" />
-              <span className="text-sm font-medium">Back to Dashboard</span>
+              <span className="text-xs md:text-sm font-medium">Back<span className="hidden sm:inline"> to Dashboard</span></span>
             </Button>
           )}
           {user && !isFromPdf && portfolioUrl && (
             <div className="flex items-center shrink-0">
               {isEditingPortfolio ? (
-                <div className="flex items-center gap-2 bg-white border border-blue-400 rounded-xl p-1 pr-2 shadow-md animate-in fade-in zoom-in duration-200 h-11">
+                <div className="flex items-center gap-2 bg-white border border-blue-400 rounded-xl p-1 pr-2 shadow-md animate-in fade-in zoom-in duration-200 h-11 w-full sm:w-auto">
                   <input
                     type="text"
                     placeholder="https://yourportfolio.com"
                     value={tempPortfolioUrl}
                     onChange={(e) => setTempPortfolioUrl(e.target.value)}
-                    className="h-full px-3 bg-transparent border-none text-sm focus:outline-none w-48 xl:w-64"
+                    className="h-full px-3 bg-transparent border-none text-sm focus:outline-none flex-1 sm:w-48 xl:w-64"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSavePortfolio();
@@ -1104,28 +1104,28 @@ const FinalResult: React.FC = () => {
                     setIsEditingPortfolio(true);
                   }}
                 >
-                  <div className="bg-white rounded-[11px] h-11 px-4 flex items-center gap-3 transition-colors">
-                    <div className="flex items-center justify-center w-8 h-8 bg-gray-50 rounded-lg transition-all duration-300">
-                      <Link2 className="h-4 w-4 text-gray-400 transition-all duration-300" />
+                  <div className="bg-white rounded-[11px] h-9 md:h-11 px-3 md:px-4 flex items-center gap-2 md:gap-3 transition-colors">
+                    <div className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 bg-gray-50 rounded-lg transition-all duration-300">
+                      <Link2 className="h-3.5 w-3.5 md:h-4 md:w-4 text-gray-400 transition-all duration-300" />
                     </div>
 
                     <div className="flex flex-col justify-center min-w-0">
-                      <span className="text-[10px] uppercase tracking-wider font-bold text-gray-400 leading-tight">
+                      <span className="text-[8px] md:text-[10px] uppercase tracking-wider font-bold text-gray-400 leading-tight">
                         Portfolio
                       </span>
                       {portfolioUrl ? (
-                        <div className="text-sm font-bold text-gray-800 truncate max-w-[120px] xl:max-w-[220px] leading-tight">
+                        <div className="text-[11px] md:text-sm font-bold text-gray-800 truncate max-w-[80px] min-[400px]:max-w-[120px] sm:max-w-[180px] xl:max-w-[300px] leading-tight">
                           {portfolioUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}
                         </div>
                       ) : (
-                        <span className="text-sm font-semibold text-gray-300 leading-tight">
-                          No portfolio added
+                        <span className="text-[11px] md:text-sm font-semibold text-gray-300 leading-tight">
+                          No portfolio
                         </span>
                       )}
                     </div>
 
-                    <div className="ml-auto p-1.5 text-gray-400 rounded-lg transition-all hover:bg-gray-100">
-                      <Pencil className="h-3.5 w-3.5" />
+                    <div className="ml-auto p-1 md:p-1.5 text-gray-400 rounded-lg transition-all hover:bg-gray-100">
+                      <Pencil className="h-3 w-3 md:h-3.5 md:w-3.5" />
                     </div>
                   </div>
                 </div>
@@ -1135,100 +1135,102 @@ const FinalResult: React.FC = () => {
 
           {/* Primary Action Group: Visible to both owner and visitor */}
           {!isFromPdf && (user || isExternalVisitor) && (
-            <>
-              <Button
-                variant="outline"
-                onClick={handleDownloadEnhanced}
-                className="flex items-center gap-2 border-blue-500 text-blue-600 h-10 px-3 md:px-4 shrink-0 transition-opacity"
-                disabled={!resumeUrl || loading || isSyncingWithVercel}
-              >
-                {loading || isSyncingWithVercel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                <span className="text-sm font-semibold hidden sm:inline">Download Enhanced Resume</span>
-                <span className="text-sm font-semibold sm:hidden">Download</span>
-              </Button>
+                <div className="flex items-center gap-2 md:contents">
+                  <Button
+                    variant="outline"
+                    onClick={handleDownloadEnhanced}
+                    className="flex items-center gap-1.5 border-blue-500 text-blue-600 h-9 md:h-10 px-2.5 md:px-4 shrink-0 transition-opacity"
+                    disabled={!resumeUrl || loading || isSyncingWithVercel}
+                  >
+                    {loading || isSyncingWithVercel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    <span className="text-xs md:text-sm font-semibold hidden lg:inline">Download Enhanced Resume</span>
+                    <span className="text-xs md:text-sm font-semibold lg:hidden">Download</span>
+                  </Button>
 
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const currentCastId = castId || idFromQuery || localStorage.getItem("current_job_request_id");
-                  const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
-                  const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
-                  const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
-                  navigator.clipboard.writeText(shareableLink).then(() => showToast('Link copied to clipboard! Share the link.', 'success'));
-                }}
-                className="flex items-center gap-2 border-green-500 text-green-600 h-10 px-3 md:px-4 shrink-0"
-              >
-                <Link className="h-4 w-4" />
-                <span className="text-sm font-semibold hidden sm:inline">Copy Link</span>
-                <span className="text-sm font-semibold sm:hidden">Copy</span>
-              </Button>
-            </>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const currentCastId = castId || idFromQuery || localStorage.getItem("current_job_request_id");
+                      const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+                      const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
+                      const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
+                      navigator.clipboard.writeText(shareableLink).then(() => showToast('Link copied to clipboard! Share the link.', 'success'));
+                    }}
+                    className="flex items-center gap-1.5 border-green-500 text-green-600 h-9 md:h-10 px-2.5 md:px-4 shrink-0"
+                  >
+                    <Link className="h-4 w-4" />
+                    <span className="text-xs md:text-sm font-semibold hidden sm:inline">Copy Link</span>
+                    <span className="text-xs md:text-sm font-semibold sm:hidden">Copy</span>
+                  </Button>
+                </div>
           )}
 
           {videoUrl && (
-            <button
-              onClick={() => {
-                const currentCastId = castId || idFromQuery || "profile";
-                trackEvent('play_intro', currentCastId);
-                const params = new URLSearchParams(location.search);
-                params.set('mode', 'video');
-                navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-                setPanelMode('video');
-                setIsPanelOpen(true);
-              }}
-              className="inline-flex items-center justify-center gap-[8px] h-10 px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[2px_2px_4.1px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
-              style={{
-                fontFamily: 'Poppins, sans-serif',
-                fontSize: '13px',
-                fontWeight: 600,
-                letterSpacing: '-0.006px',
-                color: '#FFF',
-                textAlign: 'center'
-              }}
-            >
-              <img src="/Frame 215.svg" alt="Play" style={{ width: '20px', height: '20px', flexShrink: 0 }} />
-              <span>Play Intro</span>
-            </button>
+              <button
+                onClick={() => {
+                  const currentCastId = castId || idFromQuery || "profile";
+                  trackEvent('play_intro', currentCastId);
+                  const params = new URLSearchParams(location.search);
+                  params.set('mode', 'video');
+                  navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+                  setPanelMode('video');
+                  setIsPanelOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[2px_2px_4.1px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
+                style={{
+                  fontFamily: 'Poppins, sans-serif',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  letterSpacing: '-0.006px',
+                  color: '#FFF',
+                  textAlign: 'center'
+                }}
+              >
+                <img src="/Frame 215.svg" alt="Play" className="w-3.5 h-3.5 md:w-5 md:h-5 shrink-0" />
+                <span className="hidden min-[400px]:inline">Play Intro</span>
+                <span className="min-[400px]:hidden text-[11px]">Intro</span>
+              </button>
           )}
 
           {!!portfolioUrl && (
-            <button
-              onClick={() => {
-                const currentCastId = castId || idFromQuery || "profile";
-                const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
-                const emailParamValue = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
-                const resumeUrlParam = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
-                trackEvent('lets_talk', currentCastId);
-                const chatUrl = `/chat?resumeId=${currentCastId}${emailParamValue}${resumeUrlParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`;
-                navigate(chatUrl);
-              }}
-              className="flex items-center justify-center gap-[8px] h-10 px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[-1px_1px_4px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
-              style={{
-                fontFamily: 'Poppins, sans-serif',
-                fontSize: '13px',
-                fontWeight: 600,
-                letterSpacing: '-0.006px',
-                color: '#FFF',
-                textAlign: 'center'
-              }}
-            >
-              <img src="/Vector.svg" alt="Chat" style={{ width: '18px', height: '16px', flexShrink: 0 }} />
-              <span>Let's Talk</span>
-            </button>
+              <button
+                onClick={() => {
+                  const currentCastId = castId || idFromQuery || "profile";
+                  const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+                  const emailParamValue = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
+                  const resumeUrlParam = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
+                  trackEvent('lets_talk', currentCastId);
+                  const chatUrl = `/chat?resumeId=${currentCastId}${emailParamValue}${resumeUrlParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`;
+                  navigate(chatUrl);
+                }}
+                className="flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[-1px_1px_4px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
+                style={{
+                  fontFamily: 'Poppins, sans-serif',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  letterSpacing: '-0.006px',
+                  color: '#FFF',
+                  textAlign: 'center'
+                }}
+              >
+                <img src="/Vector.svg" alt="Chat" className="w-3.5 h-3 md:w-[18px] md:h-[16px] shrink-0" />
+                <span className="hidden min-[400px]:inline">Let's Talk</span>
+                <span className="min-[400px]:hidden text-[11px]">Talk</span>
+              </button>
           )}
 
           <div className="flex items-center gap-3 ml-auto">
             {user && !isFromPdf && (
-              <Button variant="outline" onClick={handleLogout} className="h-10 px-4 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
-                <LogOut className="h-4 w-4 mr-2" />
-                <span className="text-sm font-medium">Logout</span>
+              <Button variant="outline" onClick={handleLogout} className="h-9 md:h-10 px-3 md:px-4 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
+                <LogOut className="h-4 w-4 md:mr-2" />
+                <span className="text-xs md:text-sm font-medium hidden sm:inline">Logout</span>
               </Button>
             )}
           </div>
         </div>
       </header>
 
-      <div className="relative pt-28 md:pt-24 pb-10 min-h-screen scrollbar-hide">
+      <div className="relative pt-[120px] min-[520px]:pt-[100px] md:pt-24 pb-10 min-h-screen scrollbar-hide">
         <div className="w-full max-w-7xl mx-auto px-4 pt-5">
           {/* Success Onboarding Banner */}
           {showDownloadPrompt && !isExternalVisitor && !isFromPdf && (
@@ -1269,7 +1271,7 @@ const FinalResult: React.FC = () => {
                     : `${resumeUrl}#zoom=100&view=FitH`
                 }
                 title="Resume Preview"
-                className="w-full border-0 min-h-[1100px]"
+                className="w-full border-0 min-h-[500px] md:min-h-[1100px] h-[70vh] md:h-auto"
                 style={{ display: 'block', width: '100%' }}
                 allowFullScreen
               />
