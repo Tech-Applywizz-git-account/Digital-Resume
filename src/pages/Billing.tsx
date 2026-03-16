@@ -500,7 +500,7 @@ export default function Billing() {
               </div>
 
               {/* Credits Status Banner */}
-              <div className="mb-8 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center justify-between">
+              {/* <div className="mb-8 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Credits Remaining</h2>
                   <p className="text-slate-600">Use credits to create new Digital Resumes</p>
@@ -511,7 +511,7 @@ export default function Billing() {
                     {credits}
                   </span>
                 </div>
-              </div>
+              </div> */}
 
               {/* Success / Active Premium Card */}
               {shouldShowSuccessCard && effectiveTransaction && (

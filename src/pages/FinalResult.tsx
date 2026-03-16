@@ -174,6 +174,7 @@ const FinalResult: React.FC = () => {
   const [isPanelOpen, setIsPanelOpen] = useState(isFromPdf && !!initialMode);
   const [panelMode, setPanelMode] = useState<'chat' | 'video' | 'resume'>(initialMode || 'chat');
   const [showDownloadPrompt, setShowDownloadPrompt] = useState(false); // shown only after download completes
+  const [copied, setCopied] = useState(false);
   const pendingAutoDownload = React.useRef(new URLSearchParams(location.search).get('autoDownload') === 'true');
 
   // ✅ Tracking Implementation
@@ -1154,19 +1155,29 @@ const FinalResult: React.FC = () => {
                       const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
                       const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
                       const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
+                      
                       navigator.clipboard.writeText(shareableLink).then(() => {
+                        setCopied(true);
                         showToast('Link copied to clipboard! Share the link.', 'success');
+                        setTimeout(() => setCopied(false), 2000);
                       }).catch(err => {
                         console.error('Copy failed:', err);
-                        // Fallback message for user
-                        alert('Link copied to clipboard!');
+                        showToast('Failed to copy link. Please try again.', 'error');
                       });
                     }}
-                    className="flex items-center gap-1.5 border-green-500 text-green-600 h-9 md:h-10 px-2.5 md:px-4 shrink-0"
+                    className={`flex items-center gap-1.5 h-9 md:h-10 px-2.5 md:px-4 shrink-0 transition-all duration-300 ${
+                      copied 
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-600 shadow-inner' 
+                      : 'border-green-500 text-green-600 hover:bg-green-50'
+                    }`}
                   >
-                    <Link className="h-4 w-4" />
-                    <span className="text-xs md:text-sm font-semibold hidden sm:inline">Copy Link</span>
-                    <span className="text-xs md:text-sm font-semibold sm:hidden">Copy</span>
+                    {copied ? <CheckCircle className="h-4 w-4 animate-in zoom-in" /> : <Link className="h-4 w-4" />}
+                    <span className="text-xs md:text-sm font-semibold hidden sm:inline">
+                      {copied ? 'Copied!' : 'Copy Link'}
+                    </span>
+                    <span className="text-xs md:text-sm font-semibold sm:hidden">
+                      {copied ? 'Copied' : 'Copy'}
+                    </span>
                   </Button>
                 </div>
           )}

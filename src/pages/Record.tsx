@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../integrations/supabase/client";
 import { useAuth } from "../contexts/AuthContext";
 import { showToast } from "../components/ui/toast";
@@ -11,6 +11,8 @@ import { X, Loader2 } from "lucide-react";
  */
 const Record: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const mode = new URLSearchParams(location.search).get('mode');
   const { user } = useAuth();
 
   // Refs
@@ -253,7 +255,7 @@ const Record: React.FC = () => {
       }
     }
     stopCamera();
-    navigate("/step2");
+    navigate(`/step2${mode ? `?mode=${mode}` : ''}`);
   };
 
   const handleRecordingStop = async () => {

@@ -34,6 +34,7 @@ import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import AnalyticsPanel from '../components/AnalyticsPanel';
+import { viewDocumentSafe } from '../utils/documentUtils';
 
 interface CRMUser {
     email: string;
@@ -1081,9 +1082,9 @@ export default function DigitalResumeDashboard() {
                                                                                             sessionStorage.setItem('admin_dashboard_scroll', String(tableScrollRef.current.scrollTop));
                                                                                         }
                                                                                         if (user_row.latest_job_request_id) {
-                                                                                            sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/${user_row.latest_job_request_id}?resumeUrl=${encodeURIComponent(user_row.resume_url || '')}&candidateName=${encodeURIComponent(cName)}`);
+                                                                                            sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/${user_row.latest_job_request_id}?candidateName=${encodeURIComponent(cName)}`);
                                                                                         } else if (user_row.resume_url) {
-                                                                                            sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/profile?email=${encodeURIComponent(user_row.email)}&resumeUrl=${encodeURIComponent(user_row.resume_url)}&candidateName=${encodeURIComponent(cName)}`);
+                                                                                            viewDocumentSafe(user_row.resume_url, user_row.profiles?.full_name || "Resume");
                                                                                         }
                                                                                     }}
                                                                                     className="flex items-center gap-1.5 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg hover:bg-[#0B4F6C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
@@ -1263,9 +1264,9 @@ export default function DigitalResumeDashboard() {
                                                                                     sessionStorage.setItem('admin_dashboard_scroll', String(tableScrollRef.current.scrollTop));
                                                                                 }
                                                                                 if (user_row.latest_job_request_id) {
-                                                                                    sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/${user_row.latest_job_request_id}?resumeUrl=${encodeURIComponent(user_row.resume_url || '')}&candidateName=${encodeURIComponent(cName)}`);
+                                                                                    sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/${user_row.latest_job_request_id}?candidateName=${encodeURIComponent(cName)}`);
                                                                                 } else if (user_row.resume_url) {
-                                                                                    window.open(user_row.resume_url, '_blank');
+                                                                                    viewDocumentSafe(user_row.resume_url, user_row.profiles?.full_name || "Resume");
                                                                                 }
                                                                             }}
                                                                             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#0B4F6C] text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"

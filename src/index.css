@@ -90,12 +90,15 @@ body {
   }
 }
 
-.animate-fadeIn {
-  animation: fadeIn 0.3s ease-in-out;
+@keyframes flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-.animate-fadeOut {
-  animation: fadeOut 0.3s ease-in-out;
+.animate-flow {
+  background-size: 200% auto;
+  animation: flow 3s linear infinite;
 }
 
 @font-face {
