@@ -69,6 +69,7 @@ export default function Dashboard() {
   // CRM user tracking
   const [isCRM, setIsCRM] = useState(false);
   const [crmEmail, setCRMEmail] = useState<string | null>(null);
+  const [portfolioSettingsUrl, setPortfolioSettingsUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [replacingId, setReplacingId] = useState<string | null>(null);
@@ -201,6 +202,10 @@ export default function Dashboard() {
     if (!user) return;
     try {
       setLoading(true);
+
+      // Fetch global portfolio settings
+      const { data: portData } = await supabase.from('portfolio_settings').select('url').eq('user_id', user.id).maybeSingle();
+      if (portData?.url) setPortfolioSettingsUrl(portData.url);
 
       // Check if CRM user
       const userInfo = await getUserInfo(user.id);
@@ -626,6 +631,9 @@ export default function Dashboard() {
                   const latestWithPortfolio = careercasts.find(c => c.vercel_portfolio_url);
                   const latestWithVideo = careercasts.find(c => c.recordings && c.recordings.length > 0);
                   
+                  // Final portfolio to show: record-specific first, then global fallback
+                  const displayPortfolio = latestWithPortfolio?.vercel_portfolio_url || portfolioSettingsUrl;
+                  
                   return (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   {/* Card 1: Resume */}
@@ -664,9 +672,9 @@ export default function Dashboard() {
                     <div className="min-w-0">
                       <h3 className="text-gray-400 font-bold text-xs uppercase tracking-wider mb-0.5">User Portfolio</h3>
                       <div className="flex flex-col gap-1.5">
-                        {latestWithPortfolio && (
+                        {displayPortfolio && (
                           <a
-                            href={latestWithPortfolio.vercel_portfolio_url}
+                            href={displayPortfolio}
                             target="_blank"
                             rel="noreferrer"
                             className="text-purple-600 font-bold text-sm flex items-center gap-1.5 hover:underline truncate"
@@ -674,7 +682,7 @@ export default function Dashboard() {
                             Latest Portfolio <ExternalLink className="w-3 h-3" />
                           </a>
                         )}
-                        {(!careercasts[0]?.vercel_portfolio_url || !latestWithPortfolio) && (
+                        {!displayPortfolio && (
                           <div className="flex flex-col">
                             <p className="text-red-500 font-medium text-[9px] italic leading-tight">your portfolio has not been prepared yet</p>
                             <p className="text-orange-500 font-bold text-[8px] leading-tight truncate">
