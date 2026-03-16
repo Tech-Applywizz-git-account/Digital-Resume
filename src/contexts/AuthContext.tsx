@@ -79,11 +79,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ✅ LOGIN
   const login = async (email: string, password: string): Promise<void> => {
+    const normalizedEmail = email.trim().toLowerCase();
     setLoading(true);
     clearError();
     clearSessionCache(); // Clear everything BEFORE logging in as a new user
     try {
-      const normalizedEmail = email.trim().toLowerCase();
       console.log('Attempting login for:', normalizedEmail);
       const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
       if (error) throw error;
@@ -127,16 +127,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(true);
       setUser(mockUser);
     } catch (err: any) {
+      const normalizedEmail = email.trim().toLowerCase();
       if (err.message && err.message.toLowerCase().includes('invalid login credentials')) {
-        // Double check if the user exists at all
-        const { data: existingUser } = await supabase
-          .from('profiles')
-          .select('email')
-          .ilike('email', email.trim())
-          .maybeSingle();
+        // Double check if the user exists in profiles or crm_admins table
+        const [{ data: profileUser }, { data: adminUser }] = await Promise.all([
+          supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle(),
+          supabase.from('crm_admins').select('email').eq('email', normalizedEmail).maybeSingle()
+        ]);
 
-        if (existingUser) {
-          setError('Invalid login credentials.');
+        if (profileUser || adminUser) {
+          setError('Invalid login credentials. Please check your password.');
         } else {
           setError('User not found. If you do not have an account, please sign up first.');
         }

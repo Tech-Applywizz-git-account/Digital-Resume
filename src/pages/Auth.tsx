@@ -658,32 +658,8 @@ export default function Auth() {
                 </div>
               )}
 
-              <div className="flex border border-slate-200 rounded-xl p-1 mb-6 bg-slate-50">
-                <button
-                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === "login"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-600 bg-transparent hover:bg-white"
-                    }`}
-                  onClick={() => {
-                    setActiveTab("login");
-                    resetOTPState();
-                  }}
-                >
-                  <span>Login</span>
-                </button>
-
-                {/* <button
-                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === "signup"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-600 bg-transparent hover:bg-white"
-                    }`}
-                  onClick={() => {
-                    setActiveTab("signup");
-                    resetOTPState();
-                  }}
-                >
-                  <span>Sign Up</span>
-                </button> */}
+              <div className="text-center mb-8">
+                <h2 className="text-3xl font-bold text-slate-900">Login</h2>
               </div>
 
               <div className="tab-content">
