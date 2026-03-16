@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Check, Loader2, AlertCircle, Menu, RotateCcw, XCircle, RotateCw } from "lucide-react";
@@ -12,6 +12,8 @@ import { extractTextFromBuffer } from "../utils/textExtraction";
 
 const Step2: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const mode = new URLSearchParams(location.search).get('mode');
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [teleprompterText, setTeleprompterText] = useState("");
@@ -116,7 +118,7 @@ const Step2: React.FC = () => {
     }
     localStorage.setItem("teleprompterText", teleprompterText);
     localStorage.setItem("teleprompterSpeed", teleprompterSpeed.toString());
-    navigate("/record");
+    navigate(`/record${mode ? `?mode=${mode}` : ''}`);
   };
 
   const handleFinishAndSave = () => {
@@ -247,7 +249,7 @@ const Step2: React.FC = () => {
                 </div>
 
                 <div className="flex justify-between pt-6 border-t border-gray-100">
-                  <Button variant="outline" onClick={() => navigate("/step1")} disabled={isGenerating} className="px-8">Back</Button>
+                  <Button variant="outline" onClick={() => navigate(`/step1${mode ? `?mode=${mode}` : ''}`)} disabled={isGenerating} className="px-8">Back</Button>
                   <Button
                     onClick={handleFinishAndSave}
                     disabled={isGenerating || !teleprompterText}

@@ -10,6 +10,7 @@ import { extractTextFromBuffer } from "../utils/textExtraction";
 import Sidebar from "../components/Sidebar";
 import { showToast } from "../components/ui/toast";
 import { getUserInfo } from "../utils/crmHelpers";
+import { viewDocumentSafe } from "../utils/documentUtils";
 
 
 
@@ -18,7 +19,9 @@ const Step1: React.FC = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const showHistory = new URLSearchParams(location.search).get('mode') === 'continue';
+  const searchParams = new URLSearchParams(location.search);
+  const mode = searchParams.get('mode');
+  const showHistory = mode === 'continue';
 
   const handleLogout = () => {
     logout();
@@ -215,7 +218,7 @@ const Step1: React.FC = () => {
       localStorage.setItem("resumeFullText", finalResumeText || "");
 
       showToast("Resume processed and script generated!", "success");
-      navigate("/step2");
+      navigate(`/step2${mode ? `?mode=${mode}` : ''}`);
     } catch (err: any) {
       console.error("❌ Process failed:", err);
       showToast("Failed to process resume: " + err.message, "error");
@@ -235,7 +238,7 @@ const Step1: React.FC = () => {
     localStorage.setItem("current_job_request_id", item.id);
     localStorage.setItem("uploadedResumeUrl", item.resume_url || "");
     localStorage.setItem("resumeFileName", item.resume_url ? item.resume_url.split('/').pop() : "Resume.pdf");
-    navigate("/step2");
+    navigate(`/step2${mode ? `?mode=${mode}` : ""}`);
   };
 
   return (
@@ -280,7 +283,7 @@ const Step1: React.FC = () => {
                     <div 
                       onClick={() => {
                         const url = localStorage.getItem("uploadedResumeUrl") || apiResumeUrl;
-                        if (url) window.open(url, '_blank');
+                        if (url) viewDocumentSafe(url);
                       }}
                       className="mb-6 p-4 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-emerald-100 transition-all group"
                       title="Click to view current resume in new tab"
@@ -360,7 +363,7 @@ const Step1: React.FC = () => {
 
                           <div className="grid grid-cols-3 gap-2">
                             <button
-                              onClick={() => item.resume_url && window.open(item.resume_url, '_blank')}
+                              onClick={() => item.resume_url && viewDocumentSafe(item.resume_url)}
                               disabled={!item.resume_url}
                               className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-blue-200 hover:text-blue-600 transition-colors text-gray-500 disabled:opacity-30"
                               title="View Resume"
