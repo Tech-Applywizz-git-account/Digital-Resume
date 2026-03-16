@@ -161,6 +161,7 @@ const FinalResult: React.FC = () => {
   );
   const [resumeOwnerAppEmail, setResumeOwnerAppEmail] = useState<string | null>(null);
   const [resumeOwnerUserId, setResumeOwnerUserId] = useState<string | null>(null);
+  const [hasManuallyUpdatedPortfolio, setHasManuallyUpdatedPortfolio] = useState(false);
 
   const isFromPdf = searchParams.get('from') === 'pdf' || searchParams.get('source') === 'pdf';
   const initialId = castId || idFromQuery;
@@ -372,7 +373,7 @@ const FinalResult: React.FC = () => {
   useEffect(() => {
     const fetchVercelDetails = async () => {
       const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
-      if (emailsToTry.length === 0) {
+      if (emailsToTry.length === 0 || hasManuallyUpdatedPortfolio) {
         setIsSyncingWithVercel(false);
         return;
       }
@@ -835,8 +836,15 @@ const FinalResult: React.FC = () => {
       }
 
       setPortfolioUrl(trimmedUrl);
+      setHasManuallyUpdatedPortfolio(true);
       setIsEditingPortfolio(false);
       showToast("Portfolio updated successfully", "success");
+
+      // Optional: Update current session's record too if it exists to ensure dashboard picks it up immediately
+      if (currentJobRequestId && currentJobRequestId !== 'profile') {
+        supabase.from('crm_job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId).then(() => {});
+        supabase.from('job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId).then(() => {});
+      }
 
 
     } catch (err: any) {
