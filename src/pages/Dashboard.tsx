@@ -465,8 +465,8 @@ export default function Dashboard() {
       localStorage.removeItem('resumeFullText');
       localStorage.removeItem('teleprompterText');
       
-      // Skip Step 1 and go directly to Step 2 — mark as new so history is hidden
-      navigate('/step2?mode=new');
+      // Skip Step 1 and go directly to Step 1 (Upload Resume) — mark as new so history is hidden
+      navigate('/step1?mode=new');
     } else {
       // ⛔ No credits → show upgrade popup
       setShowPricingPopup(true);
@@ -489,8 +489,8 @@ export default function Dashboard() {
     if (videoPath) {
       navigate(`/record/${cast.id}`);
     } else {
-      // Take them to Step 2 in "continue" mode — shows history panel
-      navigate('/step2?mode=continue');
+      // Take them to Step 1 in "continue" mode — shows history panel
+      navigate('/step1?mode=continue');
     }
   };
   const handleViewDetails = (id: string, resumePath?: string) => {

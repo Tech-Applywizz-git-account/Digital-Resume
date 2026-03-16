@@ -166,9 +166,9 @@ const NetworkPage: React.FC = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex flex-wrap gap-2">
-                  <button className="px-4 py-2 sm:px-8 sm:py-3 bg-[#0B4F6C] text-white font-medium rounded-lg text-sm sm:text-base">
-                    LINKEDIN NETWORKING
-                  </button>
+                  <h1 className="text-xl sm:text-2xl font-bold text-[#0B4F6C] uppercase tracking-wide">
+                    Linkedin Networking
+                  </h1>
                 </div>
                 {/* <div className="flex flex-wrap gap-2">
                   <button className="px-3 py-1.5 sm:px-5 sm:py-2.5 bg-white text-[#0B4F6C] font-medium rounded-lg border-2 border-[#0B4F6C] hover:bg-[#0B4F6C] hover:text-white transition-colors text-xs sm:text-sm">

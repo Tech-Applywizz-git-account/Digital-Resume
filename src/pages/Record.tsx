@@ -253,7 +253,7 @@ const Record: React.FC = () => {
       }
     }
     stopCamera();
-    navigate("/step3");
+    navigate("/step2");
   };
 
   const handleRecordingStop = async () => {

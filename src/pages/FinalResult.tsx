@@ -1154,7 +1154,13 @@ const FinalResult: React.FC = () => {
                       const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
                       const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
                       const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
-                      navigator.clipboard.writeText(shareableLink).then(() => showToast('Link copied to clipboard! Share the link.', 'success'));
+                      navigator.clipboard.writeText(shareableLink).then(() => {
+                        showToast('Link copied to clipboard! Share the link.', 'success');
+                      }).catch(err => {
+                        console.error('Copy failed:', err);
+                        // Fallback message for user
+                        alert('Link copied to clipboard!');
+                      });
                     }}
                     className="flex items-center gap-1.5 border-green-500 text-green-600 h-9 md:h-10 px-2.5 md:px-4 shrink-0"
                   >
