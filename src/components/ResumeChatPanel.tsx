@@ -26,6 +26,7 @@ export interface ResumeChatPanelProps {
     isDataLoading?: boolean;
     recruiterMode?: boolean;
     ownerId?: string | null;
+    hideNavigation?: boolean;
 }
 
 const DEFAULT_QUESTIONS = [
@@ -52,7 +53,8 @@ const ResumeChatPanel = ({
     onDownload,
     isDataLoading,
     recruiterMode = false,
-    ownerId = null
+    ownerId = null,
+    hideNavigation = false
 }: ResumeChatPanelProps) => {
     const [messages, setMessages] = useState<Message[]>([
         {
@@ -99,8 +101,8 @@ const ResumeChatPanel = ({
         // If it's already a relative path (our proxy), return as is
         if (url.startsWith('/proxy-') || url.startsWith('/api/proxy-pdf')) return url;
 
-        // Use our dynamic proxy for any S3 or Vercel Blob URLs to bypass CORS
-        if (url.includes('amazonaws.com') || url.includes('vercel-storage.com')) {
+        // Use our dynamic proxy for any S3, Vercel Blob, or Supabase URLs to bypass CORS
+        if (url.includes('amazonaws.com') || url.includes('vercel-storage.com') || url.includes('supabase.co')) {
             return `/api/proxy-pdf?url=${encodeURIComponent(url)}`;
         }
 
@@ -335,11 +337,55 @@ const ResumeChatPanel = ({
 
             {/* Content Area */}
             <div className={`${mode === 'video' ? 'h-auto' : 'flex-1'} overflow-hidden relative bg-gray-50 flex flex-col`}>
+                
+                {/* Mode Switcher Tabs */}
+                {(videoUrl || resumeUrl) && !isDataLoading && (!hideNavigation || mode !== 'video') && (
+                    <div className="flex bg-slate-900/5 p-1 border-b border-gray-100 shrink-0">
+                        {videoUrl && (
+                            <button
+                                onClick={() => onModeChange('video')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                                    (mode as string) === 'video' 
+                                        ? 'bg-white text-slate-900 shadow-sm' 
+                                        : 'text-slate-500 hover:bg-white/50'
+                                }`}
+                            >
+                                <Play className="w-3.5 h-3.5" />
+                                Video Intro
+                            </button>
+                        )}
+                        <button
+                            onClick={() => onModeChange('chat')}
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                                mode === 'chat' 
+                                    ? 'bg-white text-slate-900 shadow-sm' 
+                                    : 'text-slate-500 hover:bg-white/50'
+                            }`}
+                        >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            Let's Talk
+                        </button>
+                        {resumeUrl && (
+                            <button
+                                onClick={() => onModeChange('resume')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                                    mode === 'resume' 
+                                        ? 'bg-white text-slate-900 shadow-sm' 
+                                        : 'text-slate-500 hover:bg-white/50'
+                                }`}
+                            >
+                                <FileText className="w-3.5 h-3.5" />
+                                Resume
+                            </button>
+                        )}
+                    </div>
+                )}
+
                 {mode === 'video' ? (
                     // Video Mode
                     <div className="w-full bg-black p-0 overflow-hidden flex items-center justify-center min-h-[240px] relative">
                         {isDataLoading ? (
-                            <div className="flex flex-col items-center gap-3">
+                            <div className="flex flex-col items-center gap-3 py-12">
                                 <Loader2 className="w-8 h-8 text-white animate-spin" />
                                 <p className="text-white/70 text-sm">Loading video...</p>
                             </div>
@@ -347,6 +393,7 @@ const ResumeChatPanel = ({
                             <video
                                 key={videoUrl}
                                 controls
+                                autoPlay
                                 preload="metadata"
                                 playsInline
                                 className="w-full h-auto max-h-[85vh] block"

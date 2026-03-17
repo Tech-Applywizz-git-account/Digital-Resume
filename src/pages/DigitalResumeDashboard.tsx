@@ -44,6 +44,7 @@ interface CRMUser {
     is_active: boolean;
     user_id: string | null;
     added_by: string | null;
+    lead_name?: string | null;
     resume_url?: string | null;
     resume_name?: string | null;
     vercel_portfolio_url?: string | null;
@@ -139,6 +140,18 @@ export default function DigitalResumeDashboard() {
 
     // Scroll position tracking
     const tableScrollRef = useRef<HTMLDivElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Click outside listener for profile dropdown
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setShowProfileDropdown(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Cache persistence effects - debounced for cleanup/syncing
     useEffect(() => {
@@ -325,6 +338,7 @@ export default function DigitalResumeDashboard() {
                         resume_url: localResume?.url || null,
                         resume_name: localResume ? localResume.name : null,
                         latest_job_request_id: jobRequestMap.get(user.email) || null,
+                        lead_name: user.lead_name || null,
                         vercel_portfolio_url: null, // to be populated seamlessly in background
                         current_stage: null,
                         assigned_to_email: null
@@ -377,14 +391,26 @@ export default function DigitalResumeDashboard() {
 
                                 const vStage = vDataPersonal?.data?.current_stage || vDataApp?.data?.current_stage || vDataPersonal?.current_stage || vDataApp?.current_stage;
                                 const vAssigned = vDataPersonal?.data?.assigned_to_email || vDataApp?.data?.assigned_to_email || vDataPersonal?.assigned_to_email || vDataApp?.assigned_to_email;
+                                const vName = vDataPersonal?.data?.name || vDataApp?.data?.name || vDataPersonal?.name || vDataApp?.name || null;
 
                                 const finalResumeUrl = user.resume_url || vResumeUrl || null;
                                 const finalResumeName = user.resume_name || (vResumeUrl ? vResumeUrl.split('?')[0].split('/').pop() : null);
+
+                                // If we found a name but Supabase didn't have one, update Supabase in background
+                                if (vName && !user.lead_name) {
+                                    supabase.from('digital_resume_by_crm')
+                                        .update({ lead_name: vName })
+                                        .eq('email', user.email)
+                                        .then(({ error }) => {
+                                            if (error) console.error('Error auto-updating lead_name:', error);
+                                        });
+                                }
 
                                 return {
                                     ...user,
                                     resume_url: finalResumeUrl,
                                     resume_name: finalResumeName,
+                                    lead_name: user.lead_name || vName || null,
                                     vercel_portfolio_url: user.vercel_portfolio_url || finalVercelPortfolio,
                                     current_stage: user.current_stage || vStage || null,
                                     assigned_to_email: user.assigned_to_email || vAssigned || null
@@ -464,7 +490,7 @@ export default function DigitalResumeDashboard() {
                     totalCost: acc.totalCost + (Number(curr.cost) || 0)
                 }), { totalCalls: 0, totalTokens: 0, totalCost: 0 });
                 setUsageStats(totals);
-                
+
                 // Immediate persist
                 sessionStorage.setItem('cached_usage_logs', JSON.stringify(formattedLogs));
                 sessionStorage.setItem('cached_usage_stats', JSON.stringify(totals));
@@ -524,6 +550,19 @@ export default function DigitalResumeDashboard() {
                 }
             }
 
+            // 2.5 Fetch potential name from Applywizz API automatically
+            let fetchedName = null;
+            try {
+                const nameRes = await fetch(`/api/proxy-applywizz?email=${normalizedEmail}`);
+                if (nameRes.ok) {
+                    const nameData = await nameRes.json();
+                    const d = Array.isArray(nameData) ? nameData[0] : nameData;
+                    fetchedName = d?.data?.name || d?.name || null;
+                }
+            } catch (e) {
+                console.error('Initial name fetch failed:', e);
+            }
+
             // 3. Add to digital_resume_by_crm table
             const { error: dbError } = await supabase
                 .from('digital_resume_by_crm')
@@ -532,7 +571,8 @@ export default function DigitalResumeDashboard() {
                     user_id: targetUserId,
                     credits_remaining: 4,
                     added_by: user?.email || sessionStorage.getItem('admin_email'),
-                    is_active: true
+                    is_active: true,
+                    lead_name: fetchedName
                 });
 
             if (dbError) {
@@ -727,19 +767,23 @@ export default function DigitalResumeDashboard() {
                 .eq('email', replacingResumeEmail)
                 .maybeSingle();
 
+            let finalJobId = existingJob?.id;
+
             if (existingJob) {
                 await supabase.from('crm_job_requests')
                     .update({ resume_url: publicUrl, updated_at: new Date().toISOString() })
                     .eq('id', existingJob.id);
             } else {
                 // Create a default job request if none exists so the "Final Result" view works
-                await supabase.from('crm_job_requests').insert({
+                const { data: newJob } = await supabase.from('crm_job_requests').insert({
                     email: replacingResumeEmail,
                     resume_url: publicUrl,
                     job_title: 'Digital Resume',
                     application_status: 'ready',
                     user_id: users.find(u => u.email === replacingResumeEmail)?.user_id || null
-                });
+                }).select('id').single();
+
+                if (newJob) finalJobId = newJob.id;
             }
 
             // 3. Insert/Update crm_resumes record
@@ -752,8 +796,15 @@ export default function DigitalResumeDashboard() {
                 user_id: users.find(u => u.email === replacingResumeEmail)?.user_id || null
             });
 
-            setMessage({ type: 'success', text: `Resume replaced successfully for ${replacingResumeEmail}` });
+            setMessage({ type: 'success', text: `Resume replaced successfully for ${replacingResumeEmail}. Redirecting to download...` });
             fetchUsers();
+
+            // Automatically redirect to download the newly replaced resume
+            if (finalJobId) {
+                setTimeout(() => {
+                    navigate(`/final-result/${finalJobId}?autoDownload=true`);
+                }, 1500);
+            }
         } catch (err: any) {
             console.error("❌ Admin replace failed:", err);
             setMessage({ type: 'error', text: "Failed to replace resume: " + err.message });
@@ -762,6 +813,23 @@ export default function DigitalResumeDashboard() {
             setReplacingResumeEmail(null);
             if (resumeFileInputRef.current) resumeFileInputRef.current.value = '';
         }
+    };
+
+    const handleViewUser = (user_row: CRMUser) => {
+        if (!user_row.email) return;
+
+        // Save scroll position before navigating away
+        if (tableScrollRef.current) {
+            sessionStorage.setItem('admin_dashboard_scroll', String(tableScrollRef.current.scrollTop));
+        }
+
+        sessionStorage.setItem('skip_admin_sync', 'true');
+        const viewId = user_row.latest_job_request_id || 'profile';
+        const cName = user_row.profiles?.full_name || "";
+        const emailPart = user_row.latest_job_request_id ? "" : `&email=${encodeURIComponent(user_row.email)}`;
+        const resumeUrlPart = user_row.resume_url ? `&resumeUrl=${encodeURIComponent(user_row.resume_url)}` : "";
+
+        navigate(`/final-result/${viewId}?candidateName=${encodeURIComponent(cName)}${emailPart}${resumeUrlPart}`);
     };
 
     const handleRefreshUser = async (email: string) => {
@@ -917,7 +985,7 @@ export default function DigitalResumeDashboard() {
 
                     <div className="h-8 w-px bg-white/10 mx-1"></div>
 
-                    <div className="relative">
+                    <div className="relative" ref={dropdownRef}>
                         <button
                             onClick={() => setShowProfileDropdown(!showProfileDropdown)}
                             className="flex items-center gap-3 hover:bg-white/5 p-1 rounded-xl transition-all"
@@ -1040,19 +1108,20 @@ export default function DigitalResumeDashboard() {
                                             <table className="w-full text-left border-collapse table-fixed hidden lg:table">
                                                 <thead className="sticky top-0 bg-slate-50 z-10">
                                                     <tr className="border-b border-slate-200 bg-[#fbfcfd]">
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[23%] text-left">Company Application Email</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[24%] text-left">Personal Email</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[14%] text-center">Resume</th>
+                                                        <th className="px-4 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[15%] text-left">Company Application Email</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[22%] text-left">Personal Email</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[18%] text-left">Name</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Resume</th>
                                                         <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Credits</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Joined</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Status</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[7%] text-center">Audit</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Joined</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[8%] text-center">Status</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[5%] text-center">Audit</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100">
                                                     {filteredUsers.map((user_row) => (
                                                         <tr key={user_row.email} className="hover:bg-slate-50/80 transition-colors group">
-                                                            <td className="px-6 py-5 text-[14px] font-medium text-slate-800">
+                                                            <td className="px-4 py-5 text-[14px] font-medium text-slate-800">
                                                                 <div className="flex flex-col">
                                                                     {user_row.profiles?.full_name && (
                                                                         <span className="font-bold text-slate-900">{user_row.profiles.full_name}</span>
@@ -1062,31 +1131,23 @@ export default function DigitalResumeDashboard() {
                                                                             {user_row.company_application_email}
                                                                         </span>
                                                                     ) : (
-                                                                        <span className="text-slate-400 font-normal">Dashboard Record</span>
+                                                                        <span className="text-slate-400 font-normal">N/A</span>
                                                                     )}
                                                                 </div>
                                                             </td>
                                                             <td className="px-6 py-5">
                                                                 <p className="font-medium text-slate-600 text-[13px] truncate">{user_row.email}</p>
                                                             </td>
+                                                            <td className="px-6 py-5">
+                                                                <p className="font-bold text-slate-800 text-[13px] truncate">{user_row.lead_name || 'N/A'}</p>
+                                                            </td>
                                                             <td className="px-6 py-5 text-center">
                                                                 <div className="flex flex-col items-center gap-2">
-                                                                    {user_row.resume_url ? (
-                                                                        <>
-                                                                            <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        {user_row.resume_url ? (
+                                                                            <>
                                                                                 <button
-                                                                                    onClick={() => {
-                                                                                        if (!user_row.email) return;
-                                                                                        // Save scroll position before navigating away
-                                                                                        if (tableScrollRef.current) {
-                                                                                            sessionStorage.setItem('admin_dashboard_scroll', String(tableScrollRef.current.scrollTop));
-                                                                                        }
-                                                                                        if (user_row.latest_job_request_id) {
-                                                                                            sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/${user_row.latest_job_request_id}?candidateName=${encodeURIComponent(cName)}`);
-                                                                                        } else if (user_row.resume_url) {
-                                                                                            viewDocumentSafe(user_row.resume_url, user_row.profiles?.full_name || "Resume");
-                                                                                        }
-                                                                                    }}
+                                                                                    onClick={() => handleViewUser(user_row)}
                                                                                     className="flex items-center gap-1.5 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg hover:bg-[#0B4F6C]/90 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
                                                                                 >
                                                                                     <FileText className="w-3.5 h-3.5" />
@@ -1104,40 +1165,41 @@ export default function DigitalResumeDashboard() {
                                                                                     )}
                                                                                     Replace
                                                                                 </button>
-                                                                            </div>
-                                                                            {!user_row.resume_name && (
-                                                                                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
-                                                                                    From Profile
-                                                                                </span>
-                                                                            )}
-                                                                            {user_row.vercel_portfolio_url && (
-                                                                                <a
-                                                                                    href={user_row.vercel_portfolio_url}
-                                                                                    target="_blank"
-                                                                                    rel="noopener noreferrer"
-                                                                                    className="text-[10px] text-[#159A9C] font-bold hover:underline flex items-center gap-1 mt-1"
-                                                                                >
-                                                                                    <Link className="w-3 h-3" />
-                                                                                    Vercel Portfolio
-                                                                                </a>
-                                                                            )}
-                                                                        </>
-                                                                    ) : (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setReplacingResumeEmail(user_row.email);
-                                                                                resumeFileInputRef.current?.click();
-                                                                            }}
-                                                                            disabled={isReplacingResume && replacingResumeEmail === user_row.email}
-                                                                            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                                            </>
+                                                                        ) : (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setReplacingResumeEmail(user_row.email);
+                                                                                    resumeFileInputRef.current?.click();
+                                                                                }}
+                                                                                disabled={isReplacingResume && replacingResumeEmail === user_row.email}
+                                                                                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95 disabled:opacity-50"
+                                                                            >
+                                                                                {isReplacingResume && replacingResumeEmail === user_row.email ? (
+                                                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                                ) : (
+                                                                                    <Plus className="w-3.5 h-3.5" />
+                                                                                )}
+                                                                                Add Resume
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                    {user_row.vercel_portfolio_url && (
+                                                                        <a
+                                                                            href={user_row.vercel_portfolio_url}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="text-[11px] text-[#159A9C] font-bold hover:text-[#159A9C]/80 transition-colors flex items-center gap-1.5"
+                                                                            title="View Portfolio"
                                                                         >
-                                                                            {isReplacingResume && replacingResumeEmail === user_row.email ? (
-                                                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                                            ) : (
-                                                                                <Plus className="w-3.5 h-3.5" />
-                                                                            )}
-                                                                            Add Resume
-                                                                        </button>
+                                                                            <Link className="w-3.5 h-3.5" />
+                                                                            Portfolio
+                                                                        </a>
+                                                                    )}
+                                                                    {!user_row.resume_name && user_row.resume_url && (
+                                                                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                                                                            From Profile
+                                                                        </span>
                                                                     )}
                                                                 </div>
                                                             </td>
@@ -1219,7 +1281,10 @@ export default function DigitalResumeDashboard() {
                                                                     <span className="font-bold text-slate-900 text-sm truncate">{user_row.profiles.full_name}</span>
                                                                 )}
                                                                 <span className="text-[13px] text-slate-600 font-medium truncate">
-                                                                    {user_row.company_application_email || 'Dashboard Record'}
+                                                                    {user_row.company_application_email || 'N/A'}
+                                                                </span>
+                                                                <span className="text-[12px] text-[#0B4F6C] font-bold truncate mt-0.5">
+                                                                    Lead: {user_row.lead_name || 'N/A'}
                                                                 </span>
                                                                 <span className="text-[11px] text-slate-400 mt-0.5 truncate">{user_row.email}</span>
                                                             </div>
@@ -1253,52 +1318,54 @@ export default function DigitalResumeDashboard() {
                                                             </div>
                                                         </div>
 
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="flex-1 flex gap-2">
-                                                                {user_row.resume_url ? (
-                                                                    <>
+                                                        <div className="flex flex-col gap-2.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="flex-1 flex gap-2">
+                                                                    {user_row.resume_url ? (
+                                                                        <>
+                                                                            <button
+                                                                                onClick={() => handleViewUser(user_row)}
+                                                                                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#0B4F6C] text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                                                                            >
+                                                                                <FileText className="w-3.5 h-3.5" /> View
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => handleReplaceResumeClick(user_row.email)}
+                                                                                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#159A9C] text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                                                                            >
+                                                                                <FileUp className="w-3.5 h-3.5" /> Replace
+                                                                            </button>
+                                                                        </>
+                                                                    ) : (
                                                                         <button
                                                                             onClick={() => {
-                                                                                // Save scroll position before navigating away
-                                                                                if (tableScrollRef.current) {
-                                                                                    sessionStorage.setItem('admin_dashboard_scroll', String(tableScrollRef.current.scrollTop));
-                                                                                }
-                                                                                if (user_row.latest_job_request_id) {
-                                                                                    sessionStorage.setItem('skip_admin_sync', 'true'); const cName = user_row.profiles?.full_name || ""; navigate(`/final-result/${user_row.latest_job_request_id}?candidateName=${encodeURIComponent(cName)}`);
-                                                                                } else if (user_row.resume_url) {
-                                                                                    viewDocumentSafe(user_row.resume_url, user_row.profiles?.full_name || "Resume");
-                                                                                }
+                                                                                setReplacingResumeEmail(user_row.email);
+                                                                                resumeFileInputRef.current?.click();
                                                                             }}
-                                                                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#0B4F6C] text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                                                                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-500 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
                                                                         >
-                                                                            <FileText className="w-3.5 h-3.5" /> View
+                                                                            <Plus className="w-3.5 h-3.5" /> Add Resume
                                                                         </button>
-                                                                        <button
-                                                                            onClick={() => handleReplaceResumeClick(user_row.email)}
-                                                                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#159A9C] text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
-                                                                        >
-                                                                            <FileUp className="w-3.5 h-3.5" /> Replace
-                                                                        </button>
-                                                                    </>
-                                                                ) : (
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setReplacingResumeEmail(user_row.email);
-                                                                            resumeFileInputRef.current?.click();
-                                                                        }}
-                                                                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-500 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider shadow-sm active:scale-95"
-                                                                    >
-                                                                        <Plus className="w-3.5 h-3.5" /> Add Resume
-                                                                    </button>
-                                                                )}
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => handleRefreshUser(user_row.email)}
+                                                                    disabled={refreshingEmail === user_row.email}
+                                                                    className="p-2.5 text-slate-400 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shrink-0"
+                                                                >
+                                                                    <RefreshCcw className={`w-4 h-4 ${refreshingEmail === user_row.email ? 'animate-spin' : ''}`} />
+                                                                </button>
                                                             </div>
-                                                            <button
-                                                                onClick={() => handleRefreshUser(user_row.email)}
-                                                                disabled={refreshingEmail === user_row.email}
-                                                                className="p-2.5 text-slate-400 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shrink-0"
-                                                            >
-                                                                <RefreshCcw className={`w-4 h-4 ${refreshingEmail === user_row.email ? 'animate-spin' : ''}`} />
-                                                            </button>
+                                                            {user_row.vercel_portfolio_url && (
+                                                                <a
+                                                                    href={user_row.vercel_portfolio_url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-[11px] text-[#159A9C] font-extrabold hover:text-[#159A9C]/80 transition-colors flex items-center gap-1.5 justify-center py-1"
+                                                                >
+                                                                    <Link className="w-3.5 h-3.5" /> Portfolio
+                                                                </a>
+                                                            )}
                                                         </div>
 
                                                         {/* Inline Credit Editor for Mobile */}

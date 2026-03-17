@@ -318,7 +318,10 @@ const ChatPage: React.FC = () => {
                     <div className="chat-column-wrap w-full h-full">
                         <ResumeChatPanel
                             isOpen={isPanelOpen}
-                            onClose={() => setIsPanelOpen(false)}
+                            onClose={() => {
+                                setIsPanelOpen(false);
+                                setPanelMode('chat');
+                            }}
                             mode={panelMode}
                             videoUrl={videoUrl}
                             resumeUrl={resumeUrl}

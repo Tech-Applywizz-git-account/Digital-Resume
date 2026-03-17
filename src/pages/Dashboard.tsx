@@ -450,6 +450,11 @@ export default function Dashboard() {
       showToast("Resume replaced successfully!", "success");
       fetchcareercasts(); // Refresh the list
       setShowReplaceModal(false);
+
+      // Automatically redirect to download the newly replaced resume
+      setTimeout(() => {
+        navigate(`/final-result/${replacingId}?autoDownload=true`);
+      }, 1500);
     } catch (err: any) {
       console.error("❌ Replace failed:", err);
       showToast("Failed to replace resume: " + err.message, "error");
@@ -491,13 +496,32 @@ export default function Dashboard() {
     if (isCRM && crmEmail) {
       localStorage.setItem('crm_user_email', crmEmail);
     }
+    // --- PARSE SPEED AND TEXT ---
+    let actualScript = cast.job_description || '';
+    let savedSpeed = '1.0';
+    
+    if (actualScript.startsWith('[[SPEED:')) {
+      const match = actualScript.match(/^\[\[SPEED:([\d.]+)\]\]\s*([\s\S]*)/);
+      if (match) {
+        savedSpeed = match[1];
+        actualScript = match[2];
+      }
+    }
 
-    const videoPath = cast.recordings?.[0]?.storage_path || null;
-    if (videoPath) {
-      navigate(`/record/${cast.id}`);
+    localStorage.setItem('teleprompterText', actualScript);
+    localStorage.setItem('teleprompterSpeed', savedSpeed);
+    
+    // Check if the script is just the placeholder
+    const isPlaceholder = actualScript === "Generated from resume analysis";
+
+    // If they already have a video AND a real script, jumping directly to record makes sense (Re-record)
+    // If they DON'T have a video, OR the script is missing/placeholder, take them to Step 2
+    const hasVideo = cast.recordings && cast.recordings.length > 0;
+    
+    if (hasVideo && !isPlaceholder) {
+      navigate(`/record${isCRM ? '?mode=crm' : ''}`);
     } else {
-      // Take them to Step 1 in "continue" mode — shows history panel
-      navigate('/step1?mode=continue');
+      navigate('/step2?mode=continue');
     }
   };
   const handleViewDetails = (id: string, resumePath?: string) => {

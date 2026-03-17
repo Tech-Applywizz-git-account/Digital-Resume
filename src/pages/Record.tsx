@@ -32,6 +32,7 @@ const Record: React.FC = () => {
   const [startTime, setStartTime] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
   const [teleprompterText, setTeleprompterText] = useState("");
+  const [teleprompterSpeed, setTeleprompterSpeed] = useState(1.0);
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
   const [checkingCredits, setCheckingCredits] = useState(false);
 
@@ -83,10 +84,17 @@ const Record: React.FC = () => {
 
   // 🔹 Load teleprompter text
   useEffect(() => {
-    const text =
-      localStorage.getItem("teleprompterText") ||
-      "Please complete Step 3 to generate your introduction script.";
+    let text = localStorage.getItem("teleprompterText") || "";
+    
+    // Check for placeholder
+    if (!text || text === "Generated from resume analysis") {
+      text = "Please complete Step 2 to generate your introduction script before recording.";
+    }
+
+    const speed = parseFloat(localStorage.getItem("teleprompterSpeed") || "1.0");
+    
     setTeleprompterText(text);
+    setTeleprompterSpeed(speed);
     setTimeout(resetTeleprompterPosition, 100);
   }, []);
 
@@ -370,6 +378,13 @@ const Record: React.FC = () => {
             </span>
           </div>
         )}
+
+        {/* Speed Indicator */}
+        <div className="absolute top-[35%] right-4 z-40">
+           <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
+              <span className="text-white text-[10px] font-bold uppercase tracking-wider">Speed: {teleprompterSpeed.toFixed(1)}x</span>
+           </div>
+        </div>
 
         <div className="absolute top-3 right-4 text-white font-semibold flex items-center gap-3">
           <div className="flex items-center">

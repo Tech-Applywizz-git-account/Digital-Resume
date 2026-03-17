@@ -62,6 +62,31 @@ const Step2: React.FC = () => {
       const result = await callOpenAI(prompt);
       setTeleprompterText(result);
       localStorage.setItem("teleprompterText", result);
+
+      // --- SAVE TO DATABASE (with speed) ---
+      const jobRequestId = localStorage.getItem("current_job_request_id");
+      const isCRM = localStorage.getItem("is_crm_user") === "true";
+      
+      if (jobRequestId && user) {
+        try {
+          const speedPrefix = `[[SPEED:${teleprompterSpeed.toFixed(1)}]] `;
+          const dbContent = speedPrefix + result;
+          
+          if (isCRM) {
+            await supabase.from('crm_job_requests')
+              .update({ job_description: dbContent })
+              .eq('id', jobRequestId);
+          } else {
+            await supabase.from('job_requests')
+              .update({ job_description: dbContent })
+              .eq('id', jobRequestId);
+          }
+          localStorage.setItem("careercast_jobDescription", dbContent);
+        } catch (dbErr) {
+          console.error("Failed to save script to database:", dbErr);
+        }
+      }
+
       if (rewrite) showToast("Script regenerated!", "success");
     } catch (err: any) {
       setError(err.message || "Something went wrong while generating.");
@@ -74,21 +99,48 @@ const Step2: React.FC = () => {
   useEffect(() => {
     const initTeleprompter = async () => {
       const saved = localStorage.getItem("teleprompterText");
+      const dbSaved = localStorage.getItem("careercast_jobDescription");
       const resumeText = localStorage.getItem("resumeFullText");
       const resumeUrl = localStorage.getItem("uploadedResumeUrl");
 
-      if (saved) {
+      // Check if saved value is just our placeholder
+      const isPlaceholder = dbSaved === "Generated from resume analysis";
+      const isSavedPlaceholder = saved === "Generated from resume analysis";
+
+      if (saved && !isSavedPlaceholder) {
         setTeleprompterText(saved);
+      } else if (dbSaved && !isPlaceholder) {
+        // Parse speed if encoded: [[SPEED:X.X]] Script...
+        let scriptToSet = dbSaved;
+        if (dbSaved.startsWith('[[SPEED:')) {
+            const match = dbSaved.match(/^\[\[SPEED:([\d.]+)\]\]\s*([\s\S]*)/);
+            if (match) {
+                const parsedSpeed = parseFloat(match[1]);
+                const actualScript = match[2];
+                if (!isNaN(parsedSpeed)) {
+                    setTeleprompterSpeed(parsedSpeed);
+                    localStorage.setItem("teleprompterSpeed", parsedSpeed.toString());
+                }
+                scriptToSet = actualScript;
+            }
+        }
+        setTeleprompterText(scriptToSet);
+        localStorage.setItem("teleprompterText", scriptToSet);
       } else if (resumeText) {
         generateIntroduction();
       } else if (resumeUrl) {
         // Handle case where we only have URL (e.g. proceeding from history)
         try {
           setIsGenerating(true);
-          const response = await fetch(resumeUrl);
+          
+          // Use proxy for cross-origin URLs to avoid CORS errors
+          const isProxied = resumeUrl.includes('supabase.co') || resumeUrl.includes('amazonaws.com') || resumeUrl.includes('vercel-storage.com');
+          const fetchUrl = isProxied ? `/api/proxy-pdf?url=${encodeURIComponent(resumeUrl)}` : resumeUrl;
+          
+          const response = await fetch(fetchUrl);
           if (!response.ok) throw new Error("Could not fetch resume file");
           const buffer = await response.arrayBuffer();
-          const fileName = resumeUrl.split('/').pop() || "Resume.pdf";
+          const fileName = resumeUrl.split('/').pop()?.split('?')[0] || "Resume.pdf";
           const extractedText = await extractTextFromBuffer(buffer, fileName);
           localStorage.setItem("resumeFullText", extractedText);
           
@@ -111,11 +163,30 @@ const Step2: React.FC = () => {
     initTeleprompter();
   }, []);
 
-  const handleStartRecording = () => {
+  const handleStartRecording = async () => {
     if (!teleprompterText) {
       showToast("Wait for AI to generate your script first.", "warning");
       return;
     }
+    
+    // Save latest script and speed to DB before leaving
+    const jobRequestId = localStorage.getItem("current_job_request_id");
+    const isCRM = localStorage.getItem("is_crm_user") === "true";
+    if (jobRequestId && user) {
+        const speedPrefix = `[[SPEED:${teleprompterSpeed.toFixed(1)}]] `;
+        const dbContent = speedPrefix + teleprompterText;
+        try {
+            if (isCRM) {
+                await supabase.from('crm_job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
+            } else {
+                await supabase.from('job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
+            }
+            localStorage.setItem("careercast_jobDescription", dbContent);
+        } catch (e) {
+            console.error("Failed to save on start:", e);
+        }
+    }
+
     localStorage.setItem("teleprompterText", teleprompterText);
     localStorage.setItem("teleprompterSpeed", teleprompterSpeed.toString());
     navigate(`/record${mode ? `?mode=${mode}` : ''}`);

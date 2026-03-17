@@ -121,8 +121,8 @@ const getProxiedUrl = (url: string | null) => {
   // If it's already a relative path (our proxy), return as is
   if (url.startsWith('/proxy-') || url.startsWith('/api/proxy-pdf')) return url;
 
-  // Use our dynamic proxy for any S3 or Vercel Blob URLs to bypass CORS
-  if (url.includes('amazonaws.com') || url.includes('vercel-storage.com')) {
+  // Use our dynamic proxy for any S3, Vercel Blob, or Supabase URLs to bypass CORS
+  if (url.includes('amazonaws.com') || url.includes('vercel-storage.com') || url.includes('supabase.co')) {
     return `/api/proxy-pdf?url=${encodeURIComponent(url)}`;
   }
 
@@ -878,7 +878,8 @@ const FinalResult: React.FC = () => {
         : `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}${resumeUrlParam}&source=pdf&mode=chat`;
 
       // Play Intro button → this app's final-result page
-      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}${resumeUrlParam}`;
+      const portfolioParam = hasPortfolio ? `&portfolio=${encodeURIComponent(portfolioUrl)}` : '';
+      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}${resumeUrlParam}${portfolioParam}`;
 
       const hasVideo = !!videoUrl;
 
@@ -894,6 +895,75 @@ const FinalResult: React.FC = () => {
       const pages = pdfDoc.getPages();
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
+      const context = pdfDoc.context;
+
+      // --- Precise Legacy Button Cleanup ---
+      // If this resume was already enhanced, we need to find the specific buttons to erase.
+      let annots = firstPage.node.lookup(PDFName.of("Annots"));
+      const rectsToClear: { x: number, y: number, w: number, h: number }[] = [];
+
+      if (annots instanceof PDFArray) {
+        const remainingAnnots = context.obj([]);
+        for (let i = 0; i < annots.size(); i++) {
+          const annot = annots.lookup(i);
+          const rect = (annot as any).lookup?.(PDFName.of("Rect"));
+          const action = (annot as any).lookup?.(PDFName.of("A"));
+          const uri = action?.lookup?.(PDFName.of("URI"));
+
+          let shouldRemove = false;
+          if (rect instanceof PDFArray && rect.size() === 4) {
+            const rx1 = (rect.lookup(0) as PDFNumber).value();
+            const ry1 = (rect.lookup(1) as PDFNumber).value();
+            const rx2 = (rect.lookup(2) as PDFNumber).value();
+            const ry2 = (rect.lookup(3) as PDFNumber).value();
+
+            // 1. Check if the link is physically in the top-right "button zone"
+            const isInZone = rx1 > (width * 0.4) && ry1 > (height - 150);
+            
+            // 2. Precise Dimension Matching: Our buttons are strictly 28px high.
+            // Resume text links are typically 10-14px.
+            const h = ry2 - ry1;
+            const w = rx2 - rx1;
+            const isButtonSized = h > 24 && h < 32 && w > 80 && w < 120;
+
+            // 3. Fingerprint URI Check: Match our exact internal link schema
+            const uriStr = uri instanceof PDFString ? uri.asString().toLowerCase() : "";
+            const isOurExactLink = 
+              (uriStr.includes("final-result") && uriStr.includes("mode=video") && uriStr.includes("source=pdf")) || 
+              (uriStr.includes("/chat") && uriStr.includes("mode=chat") && (uriStr.includes("resumeid=") || uriStr.includes("castid=")));
+
+            // Only remove if it's in the zone AND matches our physical size AND matches our URL fingerprint
+            if (isInZone && isButtonSized && isOurExactLink) {
+              shouldRemove = true;
+              // Erase with zero padding to protect neighboring text
+              rectsToClear.push({
+                x: rx1,
+                y: ry1,
+                w: (rx2 - rx1),
+                h: (ry2 - ry1)
+              });
+            }
+          }
+
+          if (!shouldRemove) {
+            remainingAnnots.push(annot!);
+          }
+        }
+
+        if (rectsToClear.length > 0) {
+          console.log(`🧹 Clearing ${rectsToClear.length} legacy buttons precisely.`);
+          rectsToClear.forEach(r => {
+            firstPage.drawRectangle({
+              x: r.x,
+              y: r.y,
+              width: r.w,
+              height: r.h,
+              color: rgb(1, 1, 1),
+            });
+          });
+          firstPage.node.set(PDFName.of("Annots"), remainingAnnots);
+        }
+      }
 
       const btnW_play = 105;
       const btnW_chat = 100;
@@ -907,8 +977,6 @@ const FinalResult: React.FC = () => {
       let currentX = width - totalW - margin;
 
       const btnY = height - btnH - topMargin;
-
-      const context = pdfDoc.context;
 
       // Draw Chat Button (Let's talk) — w=97px, h=28px, align-items: flex-end, icon 15x13
       if (hasPortfolio) {
@@ -928,9 +996,12 @@ const FinalResult: React.FC = () => {
             Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
             A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(chatUrl) })
           });
-          let annots = firstPage.node.lookup(PDFName.of("Annots"));
-          if (annots instanceof PDFArray) annots.push(chatLink);
-          else firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
+          const existingAnnots = firstPage.node.lookup(PDFName.of("Annots"));
+          if (existingAnnots instanceof PDFArray) {
+            existingAnnots.push(chatLink);
+          } else {
+            firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
+          }
           currentX += btnW_chat + gap;
         }
       }
@@ -953,9 +1024,12 @@ const FinalResult: React.FC = () => {
             Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
             A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(playIntroUrl) })
           });
-          let annots = firstPage.node.lookup(PDFName.of("Annots"));
-          if (annots instanceof PDFArray) annots.push(playLink);
-          else firstPage.node.set(PDFName.of("Annots"), context.obj([playLink]));
+          const existingAnnots = firstPage.node.lookup(PDFName.of("Annots"));
+          if (existingAnnots instanceof PDFArray) {
+            existingAnnots.push(playLink);
+          } else {
+            firstPage.node.set(PDFName.of("Annots"), context.obj([playLink]));
+          }
         }
       }
 
@@ -977,32 +1051,45 @@ const FinalResult: React.FC = () => {
         ? candidateName
         : (resumeFileName && resumeFileName !== "Resume.pdf"
           ? resumeFileName.split('.')[0].split('?')[0]
-              .replace(/^user_careercast_\d+(_|$)/i, '') // Remove technical prefix with optional trailing underscore
+              .replace(/^user_careercast_\d+(_|$)/i, '')
               .replace(/_Digitalresume|_resume/gi, '')
           : "Candidate");
       
-      // Safety: If name is empty or only whitespace/underscores, fallback to Candidate or raw filename
       if (!resolvedName || resolvedName.trim() === "" || resolvedName === "_") {
         resolvedName = resumeFileName && resumeFileName !== "Resume.pdf" 
           ? resumeFileName.split('.')[0].split('?')[0] 
           : "Candidate";
       }
       
-      // Sanitize: remove spaces and any characters not safe for filenames
-      const safeFileName = resolvedName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+      let safeFileName = resolvedName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+      if (!safeFileName || safeFileName === "" || safeFileName === "_") {
+        safeFileName = "resume";
+      }
       const downloadFileName = `${safeFileName}_digitalresume.pdf`;
 
       const isPdf = resumeUrl.toLowerCase().split('?')[0].endsWith('.pdf') || resumeUrl.includes('.pdf?');
 
       if (!isPdf) {
-        showToast("Enhancement is only available for PDF files. Downloading original resume.", "warning");
-        const a = document.createElement("a");
-        a.href = resumeUrl;
-        a.download = downloadFileName;
-        a.target = "_blank";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        showToast("Enhancement is only available for PDF files. Downloading original.", "warning");
+        try {
+          const proxiedUrl = getProxiedUrl(resumeUrl);
+          const response = await fetch(proxiedUrl);
+          const blob = await response.blob();
+          const downloadUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = downloadUrl;
+          a.download = downloadFileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(downloadUrl);
+        } catch (err) {
+          const a = document.createElement("a");
+          a.href = resumeUrl;
+          a.download = downloadFileName;
+          a.target = "_blank";
+          a.click();
+        }
         return;
       }
 
@@ -1010,11 +1097,11 @@ const FinalResult: React.FC = () => {
       trackEvent('pdf_download', currentCastId);
 
       try {
+        console.log("🛠️ Attempting enhanced PDF generation...");
         const enhancedUrl = await enhancePDF(resumeUrl, currentCastId);
 
         const response = await fetch(enhancedUrl);
         const blob = await response.blob();
-
         const downloadUrl = window.URL.createObjectURL(blob);
 
         const a = document.createElement("a");
@@ -1024,22 +1111,34 @@ const FinalResult: React.FC = () => {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(downloadUrl);
-        setShowDownloadPrompt(true); // ✅ Show banner only after successful download
+        setShowDownloadPrompt(true); 
       } catch (enhanceErr) {
-        console.error("❌ Enhancement failed, falling back to original download:", enhanceErr);
+        console.error("❌ Enhancement failed, trying proxied original download:", enhanceErr);
+        
+        try {
+          const proxiedUrl = getProxiedUrl(resumeUrl);
+          const response = await fetch(proxiedUrl);
+          const blob = await response.blob();
+          const downloadUrl = window.URL.createObjectURL(blob);
 
-        // Final fallback: Direct download of the original resume
-        const a = document.createElement("a");
-        a.href = resumeUrl;
-        a.download = downloadFileName;
-        // For cross-origin S3 URLs, download attribute might be ignored.
-        // target="_blank" ensures it at least opens in a new tab if it can't download.
-        a.target = "_blank";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setShowDownloadPrompt(true); // ✅ Show banner even for fallback download
-        showToast("Downloaded original resume (enhancement failed)", "warning");
+          const a = document.createElement("a");
+          a.href = downloadUrl;
+          a.download = downloadFileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(downloadUrl);
+          setShowDownloadPrompt(true);
+          showToast("Downloaded original resume (enhancement failed)", "warning");
+        } catch (finalErr) {
+          console.error("❌ Final fallback failed:", finalErr);
+          const a = document.createElement("a");
+          a.href = resumeUrl;
+          a.download = downloadFileName;
+          a.target = "_blank";
+          a.click();
+          showToast("Opening original resume in new tab", "warning");
+        }
       }
     } catch (err) {
       console.error("Download process error:", err);
@@ -1222,11 +1321,14 @@ const FinalResult: React.FC = () => {
                 onClick={() => {
                   const currentCastId = castId || idFromQuery || "profile";
                   const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
-                  const emailParamValue = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
-                  const resumeUrlParam = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
+                  const emailParamForChat = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
+                  const resumeUrlParamForChat = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
+                  const portfolioParamForChat = portfolioUrl ? `&portfolio=${encodeURIComponent(portfolioUrl)}` : '';
+                  
+                  // Redirect to the dedicated Portfolio + Chat page
+                  navigate(`/chat?resumeId=${currentCastId}${emailParamForChat}${resumeUrlParamForChat}${portfolioParamForChat}&mode=chat`);
+                  
                   trackEvent('lets_talk', currentCastId);
-                  const chatUrl = `/chat?resumeId=${currentCastId}${emailParamValue}${resumeUrlParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`;
-                  navigate(chatUrl);
                 }}
                 className="flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[-1px_1px_4px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
                 style={{
@@ -1326,6 +1428,7 @@ const FinalResult: React.FC = () => {
             onDownload={handleDownloadEnhanced}
             isDataLoading={loading}
             recruiterMode={true}
+            hideNavigation={true}
           />
         )
       }
