@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (profileUser || adminUser || crmUser) {
           setError('Invalid login credentials. Please check your password.');
         } else {
-          setError('User not found. If you do not have an account, please sign up first.');
+          setError('You did not purchase the Digital Resume. To log in, please purchase the Digital Resume.');
         }
       } else {
         setError(err.message || 'Login failed. Please try again.');
