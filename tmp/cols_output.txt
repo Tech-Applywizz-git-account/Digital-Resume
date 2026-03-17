@@ -1,0 +1,2 @@
+JOB_REQUESTS_COLS:["id","user_id","job_title","job_description","resume_path","resume_original_name","status","created_at","updated_at","email"]
+CRM_JOB_REQUESTS_COLS:["id","email","user_id","job_title","company_name","job_description","job_url","application_status","applied_date","resume_url","cover_letter","created_at","updated_at"]

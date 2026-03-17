@@ -129,13 +129,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err: any) {
       const normalizedEmail = email.trim().toLowerCase();
       if (err.message && err.message.toLowerCase().includes('invalid login credentials')) {
-        // Double check if the user exists in profiles or crm_admins table
-        const [{ data: profileUser }, { data: adminUser }] = await Promise.all([
+        // Double check if the user exists in profiles, crm_admins, or digital_resume_by_crm
+        const [{ data: profileUser }, { data: adminUser }, { data: crmUser }] = await Promise.all([
           supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle(),
-          supabase.from('crm_admins').select('email').eq('email', normalizedEmail).maybeSingle()
+          supabase.from('crm_admins').select('email').eq('email', normalizedEmail).maybeSingle(),
+          supabase.from('digital_resume_by_crm').select('email').eq('email', normalizedEmail).maybeSingle()
         ]);
 
-        if (profileUser || adminUser) {
+        if (profileUser || adminUser || crmUser) {
           setError('Invalid login credentials. Please check your password.');
         } else {
           setError('User not found. If you do not have an account, please sign up first.');

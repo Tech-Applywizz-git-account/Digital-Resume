@@ -65,7 +65,7 @@ const Step1: React.FC = () => {
         if (isCRM) {
           const { data: crmJobs, error } = await supabase
             .from('crm_job_requests')
-            .select('id, job_title, resume_url, application_status, created_at, email')
+            .select('id, job_title, resume_url, job_description, application_status, created_at, email')
             .eq('email', email.trim().toLowerCase())
             .order('created_at', { ascending: false });
 
@@ -205,10 +205,20 @@ const Step1: React.FC = () => {
           const aiPrompt = buildSelectionPrompt(finalResumeText);
           const aiScript = await callOpenAI(aiPrompt);
           localStorage.setItem("teleprompterText", aiScript);
+
+          // Save to database immediately
+          if (activeJobRequestId) {
+            const isCRM = localStorage.getItem("is_crm_user") === "true";
+            if (isCRM) {
+              await supabase.from("crm_job_requests").update({ job_description: aiScript }).eq("id", activeJobRequestId);
+            } else {
+              await supabase.from("job_requests").update({ job_description: aiScript }).eq("id", activeJobRequestId);
+            }
+          }
         } catch (aiErr) {
-          console.error("❌ AI generation failed in Step 2:", aiErr);
+          console.error("❌ AI generation failed in Step 1:", aiErr);
           localStorage.removeItem("teleprompterText");
-          // Don't block the user, Step 3 will try again
+          // Don't block the user, Step 2 or 3 will try again
         }
       }
 
@@ -237,7 +247,15 @@ const Step1: React.FC = () => {
     localStorage.removeItem("resumeFullText");
     localStorage.setItem("current_job_request_id", item.id);
     localStorage.setItem("uploadedResumeUrl", item.resume_url || "");
+    localStorage.setItem("careercast_jobDescription", item.job_description || "");
     localStorage.setItem("resumeFileName", item.resume_url ? item.resume_url.split('/').pop() : "Resume.pdf");
+    
+    // Maintain CRM status if we're in continue mode
+    if (localStorage.getItem('is_crm_user') !== 'true' && item.email) {
+       localStorage.setItem('is_crm_user', 'true');
+       localStorage.setItem('crm_user_email', item.email);
+    }
+
     navigate(`/step2${mode ? `?mode=${mode}` : ""}`);
   };
 
