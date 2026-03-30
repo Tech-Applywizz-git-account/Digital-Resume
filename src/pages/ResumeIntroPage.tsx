@@ -709,7 +709,7 @@ export default function ResumeIntroPage() {
                           setIsVideoPlaying(true);
                         } else {
                           alert("A personalized video intro is not yet available for this profile. Please contact the candidate directly for more details.");
-                          console.warn("No video available for:", primaryEmail);
+                          console.warn("No video available for:", displayEmail);
                         }
                       }}
                       className={`flex items-center gap-2 px-10 py-3 rounded-human font-normal text-xs uppercase tracking-widest transition-all duration-700 shadow-xl group hover:scale-105 active:scale-95 ${isHumanMode ? 'bg-human-primary text-white shadow-human hover:bg-human-primary/90 rotate-1 font-hand text-3xl lowercase tracking-normal' : 'bg-[#0e121b] text-white shadow-slate-200 hover:bg-blue-600'}`}

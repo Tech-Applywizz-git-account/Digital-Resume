@@ -1367,7 +1367,7 @@ export default function DigitalResumeDashboard() {
                                                                                 }}
                                                                                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#0e121b] text-white rounded-xl text-[11px] font-normal uppercase tracking-wider shadow-sm active:scale-95"
                                                                             >
-                                                                                
+
                                                                             </button>
                                                                             <button
                                                                                 onClick={() => handleViewUser(user_row)}
