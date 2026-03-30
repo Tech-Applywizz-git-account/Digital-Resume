@@ -724,7 +724,7 @@ const FinalResult: React.FC = () => {
         const { data: crmVideo } = await supabase
           .from('crm_recordings')
           .select('video_url')
-          .eq('job_request_id', id)
+           .eq('email', ownerEmail)
           .order('created_at', { ascending: false })
           .limit(1);
 
@@ -739,7 +739,7 @@ const FinalResult: React.FC = () => {
           const { data: regVideo } = await supabase
             .from('recordings')
             .select('storage_path')
-            .eq('job_request_id', id)
+             .eq('email', ownerEmail)
             .order('created_at', { ascending: false })
             .limit(1);
 
