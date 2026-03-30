@@ -1428,7 +1428,7 @@ const FinalResult: React.FC = () => {
             onDownload={handleDownloadEnhanced}
             isDataLoading={loading}
             recruiterMode={true}
-            hideNavigation={false}
+            hideNavigation={true}
           />
         )
       }
