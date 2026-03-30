@@ -131,17 +131,16 @@ const NetworkPage: React.FC = () => {
     <div className="min-h-screen bg-white flex">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         ></div>
       )}
 
       {/* Sidebar */}
-      <div 
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
+      <div
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
       >
         <Sidebar userEmail={user?.email || ''} onLogout={handleLogout} />
       </div>
@@ -156,7 +155,7 @@ const NetworkPage: React.FC = () => {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
+          <div className="font-normal text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
 
@@ -166,7 +165,7 @@ const NetworkPage: React.FC = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex flex-wrap gap-2">
-                  <h1 className="text-xl sm:text-2xl font-bold text-[#0B4F6C] uppercase tracking-wide">
+                  <h1 className="text-xl sm:text-2xl font-normal text-[#0B4F6C] uppercase tracking-wide">
                     Linkedin Networking
                   </h1>
                 </div>
@@ -214,7 +213,7 @@ const NetworkPage: React.FC = () => {
                 {selectedGoal ? (
                   <div className="space-y-4 sm:space-y-6">
                     <div>
-                      <h2 className="text-xl sm:text-2xl font-bold text-[#0B4F6C] mb-1 sm:mb-2">Fill in your information</h2>
+                      <h2 className="text-xl sm:text-2xl font-normal text-[#0B4F6C] mb-1 sm:mb-2">Fill in your information</h2>
                       <p className="text-[#0B4F6C] text-xs sm:text-sm leading-relaxed">
                         {getFormDescription()}
                       </p>
@@ -378,7 +377,7 @@ const NetworkPage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="bg-white rounded-lg p-6 sm:p-12 text-center">
-                    <h2 className="text-xl sm:text-2xl font-bold text-[#0B4F6C] mb-3 sm:mb-4">Select your networking goal</h2>
+                    <h2 className="text-xl sm:text-2xl font-normal text-[#0B4F6C] mb-3 sm:mb-4">Select your networking goal</h2>
                     <p className="text-[#0B4F6C] text-xs sm:text-sm mb-6 sm:mb-8">
                       Click on the selection panel above to select your purpose or goal of your networking.
                     </p>
@@ -398,7 +397,7 @@ const NetworkPage: React.FC = () => {
                 {searchUrl ? (
                   <div className="space-y-4 sm:space-y-6">
                     <div>
-                      <h3 className="text-lg sm:text-2xl font-bold text-white mb-2 sm:mb-3">Send your connection request message</h3>
+                      <h3 className="text-lg sm:text-2xl font-normal text-white mb-2 sm:mb-3">Send your connection request message</h3>
                       <p className="text-white text-xs sm:text-sm leading-relaxed">
                         Find a message you like, copy it, go to LinkedIn, click "connect", click "add a note", and paste your message into the box. Click refresh below to generate new messages!
                       </p>
@@ -480,7 +479,7 @@ const NetworkPage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-center p-4">
-                    <h3 className="text-lg sm:text-2xl font-bold text-white mb-2 sm:mb-3">No results yet</h3>
+                    <h3 className="text-lg sm:text-2xl font-normal text-white mb-2 sm:mb-3">No results yet</h3>
                     <p className="text-white text-xs sm:text-sm mb-4 sm:mb-8">
                       To see results, fill in the required fields and hit 'Generate.'
                     </p>
@@ -708,7 +707,7 @@ export default NetworkPage;
 //                 className="h-full w-full object-cover"
 //               />
 //             </div>
-//             <div className="font-bold text-slate-900">NetworkNote</div>
+//             <div className="font-normal text-slate-900">NetworkNote</div>
 //           </div>
 
 //           <div className="w-10" />
@@ -778,7 +777,7 @@ export default NetworkPage;
 //                   {selectedGoal ? (
 //                     <div className="space-y-4 sm:space-y-6">
 //                       <div>
-//                         <h2 className="text-xl sm:text-2xl font-bold text-[#0B4F6C] mb-1 sm:mb-2">
+//                         <h2 className="text-xl sm:text-2xl font-normal text-[#0B4F6C] mb-1 sm:mb-2">
 //                           Fill in your information
 //                         </h2>
 //                         <p className="text-[#0B4F6C] text-xs sm:text-sm leading-relaxed">
@@ -944,7 +943,7 @@ export default NetworkPage;
 //                     </div>
 //                   ) : (
 //                     <div className="bg-white rounded-lg p-6 sm:p-12 text-center border border-slate-200 shadow-sm">
-//                       <h2 className="text-xl sm:text-2xl font-bold text-[#0B4F6C] mb-3 sm:mb-4">
+//                       <h2 className="text-xl sm:text-2xl font-normal text-[#0B4F6C] mb-3 sm:mb-4">
 //                         Select your networking goal
 //                       </h2>
 //                       <p className="text-[#0B4F6C] text-xs sm:text-sm mb-6 sm:mb-8">
@@ -966,7 +965,7 @@ export default NetworkPage;
 //                   {searchUrl ? (
 //                     <div className="space-y-4 sm:space-y-6">
 //                       <div>
-//                         <h3 className="text-lg sm:text-2xl font-bold text-white mb-2 sm:mb-3">
+//                         <h3 className="text-lg sm:text-2xl font-normal text-white mb-2 sm:mb-3">
 //                           Send your connection request message
 //                         </h3>
 //                         <p className="text-white text-xs sm:text-sm leading-relaxed">
@@ -1062,7 +1061,7 @@ export default NetworkPage;
 //                       </div>
 //                     ) : (
 //                       <div className="h-full flex flex-col items-center justify-center text-center p-4">
-//                         <h3 className="text-lg sm:text-2xl font-bold text-white mb-2 sm:mb-3">
+//                         <h3 className="text-lg sm:text-2xl font-normal text-white mb-2 sm:mb-3">
 //                           No results yet
 //                         </h3>
 //                         <p className="text-white text-xs sm:text-sm mb-4 sm:mb-8">
@@ -1089,7 +1088,7 @@ export default NetworkPage;
 //             </div>
 //           </div>
 //         </div>
-//       </div>  
+//       </div>
 //     </div>
 //   );
 // };

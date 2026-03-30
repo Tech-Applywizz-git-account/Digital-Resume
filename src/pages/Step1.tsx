@@ -119,7 +119,7 @@ const Step1: React.FC = () => {
       const jobRequestId = localStorage.getItem("current_job_request_id");
       const existingResumeUrl = localStorage.getItem("uploadedResumeUrl");
       const existingResumeText = localStorage.getItem("resumeFullText");
-      
+
       let activeJobRequestId = jobRequestId;
 
       if (!activeJobRequestId) {
@@ -249,11 +249,11 @@ const Step1: React.FC = () => {
     localStorage.setItem("uploadedResumeUrl", item.resume_url || "");
     localStorage.setItem("careercast_jobDescription", item.job_description || "");
     localStorage.setItem("resumeFileName", item.resume_url ? item.resume_url.split('/').pop() : "Resume.pdf");
-    
+
     // Maintain CRM status if we're in continue mode
     if (localStorage.getItem('is_crm_user') !== 'true' && item.email) {
-       localStorage.setItem('is_crm_user', 'true');
-       localStorage.setItem('crm_user_email', item.email);
+      localStorage.setItem('is_crm_user', 'true');
+      localStorage.setItem('crm_user_email', item.email);
     }
 
     navigate(`/step2${mode ? `?mode=${mode}` : ""}`);
@@ -269,7 +269,7 @@ const Step1: React.FC = () => {
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="lg:hidden flex items-center justify-between p-4 bg-white border-b border-gray-200">
           <button onClick={() => setSidebarOpen(true)} className="p-2 text-gray-700 hover:bg-gray-100 rounded-md"><Menu className="h-6 w-6" /></button>
-          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
+          <div className="font-normal text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div>
         </div>
 
@@ -282,23 +282,23 @@ const Step1: React.FC = () => {
                   <div className="flex justify-center items-center mb-10 relative gap-x-20 sm:gap-x-32 max-w-4xl mx-auto">
                     <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-300 -z-10 w-[60%] sm:w-[40%] mx-auto"></div>
                     <div className="flex flex-col items-center relative z-10">
-                      <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-blue-200">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-normal shadow-lg shadow-blue-200">
                         1
                       </div>
-                      <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-bold hidden min-[450px]:block">Upload Resume</span>
-                      <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-bold min-[450px]:hidden text-center leading-tight">Resume</span>
+                      <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-normal hidden min-[450px]:block">Upload Resume</span>
+                      <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-normal min-[450px]:hidden text-center leading-tight">Resume</span>
                     </div>
                     <div className="flex flex-col items-center relative z-10">
-                      <div className="w-8 h-8 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-bold">2</div>
-                      <span className="text-[10px] sm:text-xs mt-1.5 text-gray-400 font-bold hidden min-[450px]:block">Record Video</span>
-                      <span className="text-[10px] sm:text-xs mt-1.5 text-gray-400 font-bold min-[450px]:hidden text-center leading-tight">Video</span>
+                      <div className="w-8 h-8 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-normal">2</div>
+                      <span className="text-[10px] sm:text-xs mt-1.5 text-gray-400 font-normal hidden min-[450px]:block">Record Video</span>
+                      <span className="text-[10px] sm:text-xs mt-1.5 text-gray-400 font-normal min-[450px]:hidden text-center leading-tight">Video</span>
                     </div>
                   </div>
-                  <CardTitle className="text-xl font-bold text-center">Upload Your Resume</CardTitle>
+                  <CardTitle className="text-xl font-normal text-center">Upload Your Resume</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {(apiResumeUrl || localStorage.getItem("uploadedResumeUrl")) && (
-                    <div 
+                    <div
                       onClick={() => {
                         const url = localStorage.getItem("uploadedResumeUrl") || apiResumeUrl;
                         if (url) viewDocumentSafe(url);
@@ -310,7 +310,7 @@ const Step1: React.FC = () => {
                         <Check className="w-5 h-5 text-emerald-600" />
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm font-bold text-emerald-900 leading-tight">{localStorage.getItem("uploadedResumeUrl") ? "Resume already uploaded" : "Resume found from profile"}</p>
+                        <p className="text-sm font-normal text-emerald-900 leading-tight">{localStorage.getItem("uploadedResumeUrl") ? "Resume already uploaded" : "Resume found from profile"}</p>
                         <p className="text-xs text-emerald-700/70 mt-0.5 font-medium">{localStorage.getItem("resumeFileName") || "Ready to proceed."}</p>
                       </div>
                       <ExternalLink className="w-4 h-4 text-emerald-400 group-hover:text-emerald-600 transition-colors" />
@@ -334,8 +334,8 @@ const Step1: React.FC = () => {
                     </div>
                     {selectedFile && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4 flex items-center justify-between">
-                        <div className="flex items-center space-x-3"><div className="text-green-600 font-bold text-xl">📄</div><div><p className="font-medium text-gray-900 text-sm">{selectedFile.name}</p></div></div>
-                        <button type="button" className="text-gray-400 hover:text-gray-600 font-bold" onClick={removeFile}>✕</button>
+                        <div className="flex items-center space-x-3"><div className="text-green-600 font-normal text-xl">📄</div><div><p className="font-medium text-gray-900 text-sm">{selectedFile.name}</p></div></div>
+                        <button type="button" className="text-gray-400 hover:text-gray-600 font-normal" onClick={removeFile}>✕</button>
                       </div>
                     )}
                     <div className="flex justify-between pt-6">
@@ -349,81 +349,81 @@ const Step1: React.FC = () => {
 
             {/* Right Column: History Panel (30%) — only shown when continuing */}
             {showHistory && (
-            <div className="lg:w-[30%]">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden sticky top-8">
-                <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] p-4 flex items-center gap-2">
-                  <History className="w-5 h-5 text-white" />
-                  <h3 className="text-white font-bold">Previous History</h3>
-                </div>
-                
-                <div className="p-4 max-h-[calc(100vh-200px)] overflow-y-auto">
-                  {loadingHistory ? (
-                    <div className="flex flex-col items-center justify-center py-10 gap-3">
-                      <Loader2 className="w-8 h-8 animate-spin text-[#0B4F6C]" />
-                      <p className="text-sm text-gray-400 italic">loading history...</p>
-                    </div>
-                  ) : history.length > 0 ? (
-                    <div className="space-y-4">
-                      {history.map((item, idx) => (
-                        <div key={item.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-md transition-all group">
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="min-w-0">
-                              <h4 className="font-bold text-[#0B4F6C] text-sm truncate">Recording-{history.length - idx}</h4>
-                              <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-1">
-                                <Clock className="w-3 h-3" />
-                                {new Date(item.created_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <div className="bg-white px-2 py-0.5 rounded text-[9px] font-bold text-gray-400 border border-gray-100">
-                              S.No {history.length - idx}
-                            </div>
-                          </div>
+              <div className="lg:w-[30%]">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden sticky top-8">
+                  <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] p-4 flex items-center gap-2">
+                    <History className="w-5 h-5 text-white" />
+                    <h3 className="text-white font-normal">Previous History</h3>
+                  </div>
 
-                          <div className="grid grid-cols-3 gap-2">
-                            <button
-                              onClick={() => item.resume_url && viewDocumentSafe(item.resume_url)}
-                              disabled={!item.resume_url}
-                              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-blue-200 hover:text-blue-600 transition-colors text-gray-500 disabled:opacity-30"
-                              title="View Resume"
-                            >
-                              <FileText className="w-4 h-4" />
-                              <span className="text-[9px] font-bold uppercase">Resume</span>
-                            </button>
-                            
-                            <button
-                              onClick={() => item.video_url && setSelectedVideo(item.video_url)}
-                              disabled={!item.video_url}
-                              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-emerald-200 hover:text-emerald-600 transition-colors text-gray-500 disabled:opacity-30"
-                              title="Play Video"
-                            >
-                              <Play className="w-4 h-4" />
-                              <span className="text-[9px] font-bold uppercase">Play</span>
-                            </button>
-
-                            <button
-                              onClick={() => handleProceed(item)}
-                              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-[#0B4F6C] text-white hover:bg-[#159A9C] transition-all group/btn"
-                              title="Proceed to Step 2"
-                            >
-                              <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />
-                              <span className="text-[9px] font-bold uppercase">Proceed</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-10 px-4">
-                      <div className="bg-gray-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <User className="w-6 h-6 text-gray-300" />
+                  <div className="p-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+                    {loadingHistory ? (
+                      <div className="flex flex-col items-center justify-center py-10 gap-3">
+                        <Loader2 className="w-8 h-8 animate-spin text-[#0B4F6C]" />
+                        <p className="text-sm text-gray-400 italic">loading history...</p>
                       </div>
-                      <p className="text-sm font-bold text-gray-400">No previous history found</p>
-                      <p className="text-[10px] text-gray-400 mt-1">your recorded profiles will appear here</p>
-                    </div>
-                  )}
+                    ) : history.length > 0 ? (
+                      <div className="space-y-4">
+                        {history.map((item, idx) => (
+                          <div key={item.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-md transition-all group">
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="min-w-0">
+                                <h4 className="font-normal text-[#0B4F6C] text-sm truncate">Recording-{history.length - idx}</h4>
+                                <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-1">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(item.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div className="bg-white px-2 py-0.5 rounded text-[9px] font-normal text-gray-400 border border-gray-100">
+                                S.No {history.length - idx}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <button
+                                onClick={() => item.resume_url && viewDocumentSafe(item.resume_url)}
+                                disabled={!item.resume_url}
+                                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-blue-200 hover:text-blue-600 transition-colors text-gray-500 disabled:opacity-30"
+                                title="View Resume"
+                              >
+                                <FileText className="w-4 h-4" />
+                                <span className="text-[9px] font-normal uppercase">Resume</span>
+                              </button>
+
+                              <button
+                                onClick={() => item.video_url && setSelectedVideo(item.video_url)}
+                                disabled={!item.video_url}
+                                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-emerald-200 hover:text-emerald-600 transition-colors text-gray-500 disabled:opacity-30"
+                                title="Play Video"
+                              >
+                                <Play className="w-4 h-4" />
+                                <span className="text-[9px] font-normal uppercase">Play</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleProceed(item)}
+                                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-[#0B4F6C] text-white hover:bg-[#159A9C] transition-all group/btn"
+                                title="Proceed to Step 2"
+                              >
+                                <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />
+                                <span className="text-[9px] font-normal uppercase">Proceed</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-10 px-4">
+                        <div className="bg-gray-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <User className="w-6 h-6 text-gray-300" />
+                        </div>
+                        <p className="text-sm font-normal text-gray-400">No previous history found</p>
+                        <p className="text-[10px] text-gray-400 mt-1">your recorded profiles will appear here</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
             )}
           </div>
         </main>

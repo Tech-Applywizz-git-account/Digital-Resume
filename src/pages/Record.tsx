@@ -51,7 +51,7 @@ const Record: React.FC = () => {
       console.log(`📷 Stopped ${tracks.length} tracks from streamRef`);
       streamRef.current = null;
     }
-    
+
     // 2. Double check the video element itself to release hardware
     if (videoRef.current) {
       if (videoRef.current.srcObject) {
@@ -85,14 +85,14 @@ const Record: React.FC = () => {
   // 🔹 Load teleprompter text
   useEffect(() => {
     let text = localStorage.getItem("teleprompterText") || "";
-    
+
     // Check for placeholder
     if (!text || text === "Generated from resume analysis") {
       text = "Please complete Step 2 to generate your introduction script before recording.";
     }
 
     const speed = parseFloat(localStorage.getItem("teleprompterSpeed") || "1.0");
-    
+
     setTeleprompterText(text);
     setTeleprompterSpeed(speed);
     setTimeout(resetTeleprompterPosition, 100);
@@ -143,7 +143,7 @@ const Record: React.FC = () => {
   // 🔹 Camera + Recorder Initialization
   useEffect(() => {
     let isMounted = true;
-    
+
     const setupCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -207,7 +207,7 @@ const Record: React.FC = () => {
     };
 
     setupCamera();
-    
+
     return () => {
       isMounted = false;
       if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
@@ -381,9 +381,9 @@ const Record: React.FC = () => {
 
         {/* Speed Indicator */}
         <div className="absolute top-[35%] right-4 z-40">
-           <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
-              <span className="text-white text-[10px] font-bold uppercase tracking-wider">Speed: {teleprompterSpeed.toFixed(1)}x</span>
-           </div>
+          <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
+            <span className="text-white text-[10px] font-normal uppercase tracking-wider">Speed: {teleprompterSpeed.toFixed(1)}x</span>
+          </div>
         </div>
 
         <div className="absolute top-3 right-4 text-white font-semibold flex items-center gap-3">

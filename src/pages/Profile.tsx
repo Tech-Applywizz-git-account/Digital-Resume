@@ -174,7 +174,7 @@ export default function Profile() {
             >
               <Menu className="h-6 w-6" />
             </button>
-            <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
+            <div className="font-normal text-xl text-[#0B4F6C]">careercast</div>
             <div className="w-10"></div> {/* Spacer for alignment */}
           </div>
 
@@ -217,14 +217,14 @@ export default function Profile() {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
+          <div className="font-normal text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-gray-50">
           <div className="max-w-4xl mx-auto">
             <div className="mb-6 sm:mb-8">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Profile Settings</h1>
+              <h1 className="text-2xl sm:text-3xl font-normal text-gray-900 mb-2">Profile Settings</h1>
               <p className="text-gray-600 text-sm sm:text-base">
                 Manage your personal information and professional details
               </p>
@@ -233,11 +233,11 @@ export default function Profile() {
             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] px-4 sm:px-8 py-4 sm:py-6">
                 <div className="flex items-center gap-3 sm:gap-4">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/20 rounded-full flex items-center justify-center text-white font-bold text-2xl sm:text-3xl backdrop-blur-sm">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/20 rounded-full flex items-center justify-center text-white font-normal text-2xl sm:text-3xl backdrop-blur-sm">
                     {formData.firstName.charAt(0) || 'U'}{formData.lastName.charAt(0) || 'U'}
                   </div>
                   <div className="text-white">
-                    <h2 className="text-xl sm:text-2xl font-bold">{formData.firstName} {formData.lastName}</h2>
+                    <h2 className="text-xl sm:text-2xl font-normal">{formData.firstName} {formData.lastName}</h2>
                     <p className="text-white/90 text-sm sm:text-base">{formData.jobTitle || 'Job Title'}</p>
                   </div>
                 </div>

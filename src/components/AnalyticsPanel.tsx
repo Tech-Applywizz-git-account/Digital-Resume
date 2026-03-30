@@ -207,9 +207,9 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                     <div className="flex items-center gap-3">
                                         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
                                             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                                            <span className="text-[10px] font-bold uppercase tracking-widest">Real-time tracking</span>
+                                            <span className="text-[10px] font-normal uppercase tracking-widest">Real-time tracking</span>
                                         </div>
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <span className="text-[10px] font-normal text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                                             <Activity className="w-3 h-3 text-[#159A9C]" /> Impact Insights
                                         </span>
                                     </div>
@@ -237,7 +237,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                         }`}
                                 >
                                     <tab.icon className={`w-4 h-4 ${viewMode === tab.id ? 'text-[#0B4F6C]' : 'currentColor'}`} />
-                                    <span className="text-xs font-bold uppercase tracking-widest">{tab.label}</span>
+                                    <span className="text-xs font-normal uppercase tracking-widest">{tab.label}</span>
                                     {viewMode === tab.id && (
                                         <motion.div
                                             layoutId="activeTab"
@@ -257,7 +257,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                             <Zap className="w-8 h-8 text-[#0B4F6C] animate-pulse" />
                                         </div>
                                     </div>
-                                    <p className="mt-8 text-slate-500 font-bold uppercase tracking-widest text-[10px]">Synchronizing Performance Data</p>
+                                    <p className="mt-8 text-slate-500 font-normal uppercase tracking-widest text-[10px]">Synchronizing Performance Data</p>
                                 </div>
                             ) : (
                                 <div className="p-10 space-y-12">
@@ -270,7 +270,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                         <button
                                                             key={range}
                                                             onClick={() => setTimeRange(range)}
-                                                            className={`px-6 py-2.5 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest ${timeRange === range
+                                                            className={`px-6 py-2.5 text-[10px] font-normal rounded-xl transition-all uppercase tracking-widest ${timeRange === range
                                                                 ? 'bg-[#0B4F6C] text-white shadow-lg shadow-[#0B4F6C20]'
                                                                 : 'text-slate-500 hover:text-slate-800'
                                                                 }`}
@@ -281,7 +281,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                 </div>
                                                 <div className="flex items-center gap-3 px-5 py-2.5 bg-white border border-slate-200 rounded-2xl shadow-sm">
                                                     <TrendingUp className="w-4 h-4 text-[#159A9C]" />
-                                                    <span className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">Growth Analysis</span>
+                                                    <span className="text-[10px] font-normal text-slate-900 uppercase tracking-widest">Growth Analysis</span>
                                                 </div>
                                             </div>
 
@@ -294,7 +294,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                     className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group"
                                                 >
                                                     <div className="absolute top-0 right-0 w-48 h-48 bg-[#159A9C08] rounded-full -mr-24 -mt-24 group-hover:scale-125 transition-transform duration-700" />
-                                                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-8">Engagement Index</h3>
+                                                    <h3 className="text-[11px] font-normal text-slate-400 uppercase tracking-widest mb-8">Engagement Index</h3>
                                                     <div className="flex items-center gap-10">
                                                         <div className="relative w-32 h-32">
                                                             <svg className="w-full h-full transform -rotate-90">
@@ -311,17 +311,17 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                             </svg>
                                                             <div className="absolute inset-0 flex flex-col items-center justify-center">
                                                                 <span className="text-3xl font-extrabold text-slate-900 leading-none">{engagementScore}</span>
-                                                                <span className="text-[9px] font-bold text-[#159A9C] tracking-widest mt-1 uppercase">Points</span>
+                                                                <span className="text-[9px] font-normal text-[#159A9C] tracking-widest mt-1 uppercase">Points</span>
                                                             </div>
                                                         </div>
                                                         <div className="space-y-4">
                                                             <div>
-                                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Impact Rating</p>
-                                                                <p className="text-2xl font-bold text-[#0B4F6C]">
+                                                                <p className="text-[10px] font-normal text-slate-400 uppercase tracking-widest mb-1">Impact Rating</p>
+                                                                <p className="text-2xl font-normal text-[#0B4F6C]">
                                                                     {engagementScore > 80 ? 'Exceptional' : engagementScore > 50 ? 'Strong' : engagementScore > 30 ? 'Moderate' : 'Developing'}
                                                                 </p>
                                                             </div>
-                                                            <div className="flex items-center gap-2 text-[9px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100/50">
+                                                            <div className="flex items-center gap-2 text-[9px] font-normal text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100/50">
                                                                 <Zap className="w-3 h-3" />
                                                                 <span>Above average retention</span>
                                                             </div>
@@ -336,16 +336,16 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                     transition={{ delay: 0.1 }}
                                                     className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group"
                                                 >
-                                                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Traffic Velocity</h3>
+                                                    <h3 className="text-[11px] font-normal text-slate-400 uppercase tracking-widest mb-4">Traffic Velocity</h3>
                                                     <div className="flex flex-col h-full">
                                                         <div className="flex items-end justify-between mb-8">
                                                             <div>
                                                                 <p className="text-4xl font-extrabold text-slate-900 leading-none">{stats.totalViews}</p>
-                                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2 px-1">Total Impressions</p>
+                                                                <p className="text-[10px] font-normal text-slate-400 uppercase tracking-widest mt-2 px-1">Total Impressions</p>
                                                             </div>
                                                             <div className="flex items-center gap-2 text-[#159A9C] bg-[#159A9C08] px-3 py-2 rounded-2xl">
                                                                 <ArrowUpRight className="w-5 h-5" />
-                                                                <span className="text-xs font-bold">Active</span>
+                                                                <span className="text-xs font-normal">Active</span>
                                                             </div>
                                                         </div>
                                                         <div className="flex-1 min-h-[80px] relative">
@@ -381,7 +381,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                             <div className="space-y-8">
                                                 <div className="flex items-center gap-4 px-2">
                                                     <div className="h-px flex-1 bg-slate-200/60" />
-                                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Acquisition Funnel</h3>
+                                                    <h3 className="text-[10px] font-normal text-slate-400 uppercase tracking-widest whitespace-nowrap">Acquisition Funnel</h3>
                                                     <div className="h-px flex-1 bg-slate-200/60" />
                                                 </div>
                                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -401,7 +401,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                             </div>
                                                             <div>
                                                                 <p className="text-2xl font-extrabold text-slate-900 leading-none mb-2">{item.display}</p>
-                                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{item.label}</p>
+                                                                <p className="text-[9px] font-normal text-slate-400 uppercase tracking-widest">{item.label}</p>
                                                             </div>
                                                         </motion.div>
                                                     ))}
@@ -412,7 +412,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                                 {/* Device Distribution */}
                                                 <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm">
-                                                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-8">Platform Access</h3>
+                                                    <h3 className="text-[11px] font-normal text-slate-400 uppercase tracking-widest mb-8">Platform Access</h3>
                                                     <div className="flex items-center justify-between gap-12">
                                                         <div className="relative w-24 h-24 shrink-0">
                                                             <svg viewBox="0 0 36 36" className="w-full h-full transform rotate-[-90deg]">
@@ -432,7 +432,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                         </div>
                                                         <div className="flex-1 space-y-5">
                                                             <div className="space-y-2">
-                                                                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
+                                                                <div className="flex items-center justify-between text-[11px] font-normal uppercase tracking-wider">
                                                                     <div className="flex items-center gap-2 text-slate-700">
                                                                         <Monitor className="w-3.5 h-3.5" /> Desktop
                                                                     </div>
@@ -443,7 +443,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                                 </div>
                                                             </div>
                                                             <div className="space-y-2">
-                                                                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
+                                                                <div className="flex items-center justify-between text-[11px] font-normal uppercase tracking-wider">
                                                                     <div className="flex items-center gap-2 text-slate-700">
                                                                         <Smartphone className="w-3.5 h-3.5" /> Mobile
                                                                     </div>
@@ -460,14 +460,14 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                 {/* Portfolio Clicks */}
                                                 <div className="bg-gradient-to-br from-[#0B4F6C] to-[#159A9C] p-8 rounded-[3rem] text-white shadow-xl shadow-[#0B4F6C15] overflow-hidden relative">
                                                     <MousePointer2 className="absolute top-[-20px] right-[-20px] w-48 h-48 text-white/5 rotate-12" />
-                                                    <h3 className="text-[11px] font-bold text-white/50 uppercase tracking-widest mb-6">Pipeline Velocity</h3>
+                                                    <h3 className="text-[11px] font-normal text-white/50 uppercase tracking-widest mb-6">Pipeline Velocity</h3>
                                                     <div className="flex flex-col justify-between h-full relative z-10">
                                                         <div className="space-y-1">
                                                             <p className="text-5xl font-extrabold tracking-tight">{stats.portfolioClicks}</p>
-                                                            <p className="text-[11px] font-bold uppercase tracking-widest text-white/80">Portfolio Conversions</p>
+                                                            <p className="text-[11px] font-normal uppercase tracking-widest text-white/80">Portfolio Conversions</p>
                                                         </div>
                                                         <div className="mt-8">
-                                                            <div className="flex items-center justify-between mb-3 text-[10px] font-bold uppercase tracking-wider text-white/70">
+                                                            <div className="flex items-center justify-between mb-3 text-[10px] font-normal uppercase tracking-wider text-white/70">
                                                                 <span>Interest Rate</span>
                                                                 <span>{Math.round((stats.portfolioClicks / (stats.totalViews || 1)) * 100)}%</span>
                                                             </div>
@@ -491,7 +491,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                             <div className="flex items-center justify-between mb-8 px-2">
                                                 <div>
                                                     <h3 className="text-xl font-extrabold text-slate-900 leading-none">Active Engagement</h3>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Real-time visitor telemetry</p>
+                                                    <p className="text-[10px] font-normal text-slate-400 uppercase tracking-widest mt-2">Real-time visitor telemetry</p>
                                                 </div>
                                                 <div className="flex items-center gap-3">
                                                     <div className="relative">
@@ -501,10 +501,10 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                             placeholder="Search regions..."
                                                             value={sessionSearch}
                                                             onChange={(e) => setSessionSearch(e.target.value)}
-                                                            className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold focus:ring-2 focus:ring-[#0B4F6C20] outline-none transition-all w-48"
+                                                            className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-normal focus:ring-2 focus:ring-[#0B4F6C20] outline-none transition-all w-48"
                                                         />
                                                     </div>
-                                                    <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-2xl shadow-sm text-[10px] font-bold text-slate-600">
+                                                    <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-2xl shadow-sm text-[10px] font-normal text-slate-600">
                                                         <Filter className="w-3.5 h-3.5" /> Sort
                                                     </div>
                                                 </div>
@@ -536,23 +536,23 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                                 </div>
                                                                 <div>
                                                                     <div className="flex items-center gap-3 mb-1.5">
-                                                                        <p className="text-base font-bold text-slate-900 uppercase tracking-tight">{s.country || 'Unknown Region'}</p>
-                                                                        <span className="text-[11px] text-[#159A9C] font-bold uppercase tracking-widest bg-[#159A9C10] px-3 py-1 rounded-full">
+                                                                        <p className="text-base font-normal text-slate-900 uppercase tracking-tight">{s.country || 'Unknown Region'}</p>
+                                                                        <span className="text-[11px] text-[#159A9C] font-normal uppercase tracking-widest bg-[#159A9C10] px-3 py-1 rounded-full">
                                                                             {s.ip_address ? s.ip_address.split('.').map((p: string, i: number) => i < 2 ? p : '*').join('.') : 'Local Node'}
                                                                         </span>
                                                                     </div>
                                                                     <div className="flex items-center gap-3 text-slate-400">
                                                                         <Calendar className="w-3.5 h-3.5" />
-                                                                        <p className="text-[10px] font-bold uppercase tracking-widest">{getTimeAgo(s.started_at)}</p>
+                                                                        <p className="text-[10px] font-normal uppercase tracking-widest">{getTimeAgo(s.started_at)}</p>
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                             <div className="text-right">
                                                                 <div className="flex items-center justify-end gap-2 text-slate-900 mb-1.5">
                                                                     <Clock className="w-4 h-4 text-[#0B4F6C]" />
-                                                                    <span className="text-lg font-bold tracking-tight">{s.duration_seconds || 0}s</span>
+                                                                    <span className="text-lg font-normal tracking-tight">{s.duration_seconds || 0}s</span>
                                                                 </div>
-                                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Total Immersion</p>
+                                                                <p className="text-[10px] text-slate-400 font-normal uppercase tracking-widest">Total Immersion</p>
                                                             </div>
                                                         </div>
 
@@ -572,8 +572,8 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                         <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
                                                             <Users className="w-10 h-10 text-slate-200" />
                                                         </div>
-                                                        <h3 className="text-lg font-bold text-slate-400 uppercase tracking-widest">Awaiting First Pulse</h3>
-                                                        <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest mt-3">Monitoring digital channels...</p>
+                                                        <h3 className="text-lg font-normal text-slate-400 uppercase tracking-widest">Awaiting First Pulse</h3>
+                                                        <p className="text-[10px] text-slate-300 font-normal uppercase tracking-widest mt-3">Monitoring digital channels...</p>
                                                     </div>
                                                 )}
                                             </div>
@@ -587,22 +587,22 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                 <div className="flex items-center justify-between mb-12 relative z-10">
                                                     <div>
                                                         <h3 className="text-xl font-extrabold text-slate-900 leading-none">Geographic Domain</h3>
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Intercontinental reach analysis</p>
+                                                        <p className="text-[10px] font-normal text-slate-400 uppercase tracking-widest mt-2">Intercontinental reach analysis</p>
                                                     </div>
                                                     <Globe className="w-8 h-8 text-[#159A9C] opacity-20" />
                                                 </div>
                                                 <div className="space-y-8 relative z-10">
                                                     {getCountryStats().map(([country, count], i) => (
                                                         <div key={country} className="group/geo">
-                                                            <div className="flex items-center justify-between text-[11px] font-bold mb-3">
+                                                            <div className="flex items-center justify-between text-[11px] font-normal mb-3">
                                                                 <div className="flex items-center gap-4">
-                                                                    <div className="w-8 h-8 rounded-2xl bg-slate-50 flex items-center justify-center text-[#0B4F6C] text-[10px] font-bold border border-slate-100 transition-all group-hover/geo:bg-[#0B4F6C] group-hover/geo:text-white">
+                                                                    <div className="w-8 h-8 rounded-2xl bg-slate-50 flex items-center justify-center text-[#0B4F6C] text-[10px] font-normal border border-slate-100 transition-all group-hover/geo:bg-[#0B4F6C] group-hover/geo:text-white">
                                                                         {i + 1}
                                                                     </div>
                                                                     <span className="text-slate-800 uppercase tracking-widest truncate max-w-[200px]">{country}</span>
                                                                 </div>
                                                                 <div className="text-right flex flex-col items-end">
-                                                                    <span className="text-slate-900 text-lg font-bold leading-none">{count}</span>
+                                                                    <span className="text-slate-900 text-lg font-normal leading-none">{count}</span>
                                                                     <span className="text-[9px] text-[#159A9C] mt-1">{Math.round((count / (stats.totalViews || 1)) * 100)}% coverage</span>
                                                                 </div>
                                                             </div>
@@ -619,7 +619,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                                     {getCountryStats().length === 0 && (
                                                         <div className="text-center py-20 px-10">
                                                             <MapPin className="w-12 h-12 text-slate-100 mx-auto mb-6" />
-                                                            <p className="text-slate-300 font-bold uppercase text-[10px] tracking-widest">Mapping digital presence...</p>
+                                                            <p className="text-slate-300 font-normal uppercase text-[10px] tracking-widest">Mapping digital presence...</p>
                                                         </div>
                                                     )}
                                                 </div>
@@ -628,7 +628,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                             {/* World Insights Card */}
                                             <div className="bg-slate-900 rounded-[3rem] p-10 text-white relative overflow-hidden group">
                                                 <Activity className="absolute bottom-[-30px] right-[-30px] w-64 h-64 text-white/5 opacity-20 group-hover:rotate-12 transition-transform duration-1000" />
-                                                <h4 className="text-[11px] font-bold text-[#159A9C] uppercase tracking-[0.3em] mb-4">Strategic Insight</h4>
+                                                <h4 className="text-[11px] font-normal text-[#159A9C] uppercase tracking-[0.3em] mb-4">Strategic Insight</h4>
                                                 <p className="text-lg font-medium text-slate-100 leading-relaxed relative z-10">
                                                     Your resume is gaining traction in <span className="text-white font-extrabold underline decoration-[#159A9C] underline-offset-4">{getCountryStats()[0]?.[0] || 'emerging regions'}</span>.
                                                     Engagement duration is <span className="text-white font-extrabold">24% higher</span> for visitors from this domain.
@@ -646,7 +646,7 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                                 whileHover={{ scale: 1.01 }}
                                 whileTap={{ scale: 0.98 }}
                                 onClick={onClose}
-                                className="w-full bg-[#0B4F6C] text-white py-5 rounded-3xl font-bold text-[11px] uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-[#0B4F6C20] flex items-center justify-center gap-3"
+                                className="w-full bg-[#0B4F6C] text-white py-5 rounded-3xl font-normal text-[11px] uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-[#0B4F6C20] flex items-center justify-center gap-3"
                             >
                                 <ChevronRight className="w-5 h-5 opacity-50" /> Close Intel Report
                             </motion.button>
@@ -668,7 +668,7 @@ function EventBadge({ icon: Icon, label, color }: { icon: any, label: string, co
     };
 
     return (
-        <span className={`px-4 py-2 rounded-2xl border ${colors[color]} text-[9px] font-bold uppercase tracking-widest flex items-center gap-2.5 shadow-sm transition-transform hover:scale-105`}>
+        <span className={`px-4 py-2 rounded-2xl border ${colors[color]} text-[9px] font-normal uppercase tracking-widest flex items-center gap-2.5 shadow-sm transition-transform hover:scale-105`}>
             <Icon className="w-3.5 h-3.5" /> {label}
         </span>
     );

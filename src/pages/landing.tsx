@@ -177,7 +177,7 @@
 //             className="h-8 w-8 rounded-lg"
 //           />
 //         </div>
-//         <span className="text-xl font-bold text-[#000000] font-noto
+//         <span className="text-xl font-normal text-[#000000] font-noto
 // ">
 //           NetworkNote
 //         </span>
@@ -339,7 +339,7 @@
 //           >
 //             <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
 //               <div className="flex-1">
-//                 <h2 className="text-3xl font-bold mb-4">Your Dashboard</h2>
+//                 <h2 className="text-3xl font-normal mb-4">Your Dashboard</h2>
 //                 <p className="text-slate-600">Manage all your Network Notes in one place</p>
 //               </div>
 //               <Button 
@@ -371,7 +371,7 @@
 //             viewport={{ once: true }}
 //             className="text-center mb-12"
 //           >
-//             <h3 className="text-2xl font-bold mb-2">
+//             <h3 className="text-2xl font-normal mb-2">
 //               Over 200 candidates have landed interviews globally through Network Note
 //             </h3>
 //           </motion.div>
@@ -382,7 +382,7 @@
 //               transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
 //             >
 //               {[...companies, ...companies].map((company, i) => (
-//                 <div key={i} className="text-2xl font-bold text-slate-400 whitespace-nowrap">
+//                 <div key={i} className="text-2xl font-normal text-slate-400 whitespace-nowrap">
 //                   {company}
 //                 </div>
 //               ))}
@@ -423,7 +423,7 @@
 //                   whileHover={{ scale: 1.02, boxShadow: "0 0 30px rgba(132,204,22,0.3)" }}
 //                   className="p-6 rounded-xl backdrop-blur-xl bg-white/10 border border-white/20 cursor-pointer transition-all"
 //                 >
-//                   <h3 className="text-xl font-bold mb-2 text-white">
+//                   <h3 className="text-xl font-normal mb-2 text-white">
 //                     {item.title.split(" ").map((word, j) => 
 //                       j === item.title.split(" ").length - 2 ? (
 //                         <span key={j} className="text-lime-400">{word} </span>
@@ -460,7 +460,7 @@
 //             </Card>
 
 //             <div>
-//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
+//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-normal mb-4">
 //                 STEP #1
 //               </div>
 //               <h2 className="text-4xl font-black mb-6 text-slate-900">Create your Network Note account for free</h2>
@@ -489,7 +489,7 @@
 //             className="grid lg:grid-cols-2 gap-12 items-center"
 //           >
 //             <div>
-//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
+//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-normal mb-4">
 //                 STEP #2
 //               </div>
 //               <h2 className="text-4xl font-black mb-6 text-slate-900">Upload your resume to the platform</h2>
@@ -535,7 +535,7 @@
 //                 <div className="aspect-video bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl flex items-center justify-center relative">
 //                   <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500/20 px-3 py-1 rounded-full border border-red-400">
 //                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-//                     <span className="text-red-400 text-xs font-bold">REC</span>
+//                     <span className="text-red-400 text-xs font-normal">REC</span>
 //                   </div>
 //                   <Video className="h-16 w-16 text-slate-400" />
 //                 </div>
@@ -543,7 +543,7 @@
 //             </Card>
 
 //             <div>
-//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
+//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-normal mb-4">
 //                 STEP #3
 //               </div>
 //               <h2 className="text-4xl font-black mb-6 text-slate-900">Record or attach a video pitch</h2>
@@ -572,7 +572,7 @@
 //             className="grid lg:grid-cols-2 gap-12 items-center"
 //           >
 //             <div>
-//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
+//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-normal mb-4">
 //                 STEP #4
 //               </div>
 //               <h2 className="text-4xl font-black mb-6 text-slate-900">Share your Network Note with recruiters</h2>
@@ -632,13 +632,13 @@
 //               <Card className="w-80 border-2 border-slate-200 shadow-lg">
 //                 <CardContent className="p-6">
 //                   <div className="flex items-center justify-between mb-4">
-//                     <h3 className="text-xl font-bold">UK Plan</h3>
+//                     <h3 className="text-xl font-normal">UK Plan</h3>
 //                     <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">
 //                       GBP
 //                     </div>
 //                   </div>
 //                   <div className="mb-6">
-//                     <span className="text-3xl font-bold">£12.99</span>
+//                     <span className="text-3xl font-normal">£12.99</span>
 //                     <span className="text-gray-600">/month</span>
 //                   </div>
 //                   <ul className="space-y-2 mb-6">
@@ -674,13 +674,13 @@
 //               <Card className="w-80 border-2 border-slate-200 shadow-lg">
 //                 <CardContent className="p-6">
 //                   <div className="flex items-center justify-between mb-4">
-//                     <h3 className="text-xl font-bold">US Plan</h3>
+//                     <h3 className="text-xl font-normal">US Plan</h3>
 //                     <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">
 //                       USD
 //                     </div>
 //                   </div>
 //                   <div className="mb-6">
-//                     <span className="text-3xl font-bold">$12.99</span>
+//                     <span className="text-3xl font-normal">$12.99</span>
 //                     <span className="text-gray-600">/month</span>
 //                   </div>
 //                   <ul className="space-y-2 mb-6">
@@ -775,7 +775,7 @@
 //                 <div className={`w-14 h-14 rounded-xl bg-gradient-to-r ${feature.color} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
 //                   <feature.icon className="h-7 w-7 text-white" />
 //                 </div>
-//                 <h3 className="text-2xl font-bold mb-3 text-white group-hover:text-cyan-400 transition-colors">
+//                 <h3 className="text-2xl font-normal mb-3 text-white group-hover:text-cyan-400 transition-colors">
 //                   {feature.title}
 //                 </h3>
 //                 <p className="text-slate-300">{feature.desc}</p>
@@ -818,7 +818,7 @@
 //                 </div>
 //                 <p className="text-slate-700 mb-6 italic">"{testimonial.quote}"</p>
 //                 <div>
-//                   <p className="font-bold text-slate-900">{testimonial.name}</p>
+//                   <p className="font-normal text-slate-900">{testimonial.name}</p>
 //                   <p className="text-slate-600 text-sm">{testimonial.role} at {testimonial.company}</p>
 //                 </div>
 //               </motion.div>
@@ -894,7 +894,7 @@
 //             className="h-8 w-8 rounded-lg"
 //           />
 //         </div>
-//         <span className="text-xl font-bold text-[#000000] font-noto
+//         <span className="text-xl font-normal text-[#000000] font-noto
 // ">
 //           NetworkNote
 //         </span>
@@ -903,7 +903,7 @@
 //             </div>
 
 //             <div>
-//               <h4 className="font-bold mb-4 text-slate-900">Quick Links</h4>
+//               <h4 className="font-normal mb-4 text-slate-900">Quick Links</h4>
 //               <div className="space-y-2">
 //                 {["Solutions", "Pricing", "Privacy", "Terms", "Careers"].map((link) => (
 //                   <a
@@ -918,7 +918,7 @@
 //             </div>
 
 //             <div>
-//               <h4 className="font-bold mb-4 text-slate-900">Connect</h4>
+//               <h4 className="font-normal mb-4 text-slate-900">Connect</h4>
 //               <div className="flex gap-4">
 //                 {[
 //                   { icon: Linkedin, href: "#" },
@@ -957,7 +957,7 @@
 //             </button>
 
 //             <div className="p-6 sm:p-8">
-//               <h2 className="text-3xl font-bold text-center mb-2">Choose Your Plan</h2>
+//               <h2 className="text-3xl font-normal text-center mb-2">Choose Your Plan</h2>
 //               <p className="text-gray-600 text-center mb-8">Start your journey with Network Note today</p>
 
 //               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -969,13 +969,13 @@
 //                     </div>
 //                   )}
 //                   <div className="flex items-center justify-between mb-4">
-//                     <h3 className="text-xl font-bold">US Plan</h3>
+//                     <h3 className="text-xl font-normal">US Plan</h3>
 //                     <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">
 //                       USD
 //                     </div>
 //                   </div>
 //                   <div className="mb-6">
-//                     <span className="text-4xl font-bold">$12.99</span>
+//                     <span className="text-4xl font-normal">$12.99</span>
 //                     <span className="text-gray-600">/month</span>
 //                   </div>
 //                   <ul className="space-y-3 mb-8">
@@ -1015,13 +1015,13 @@
 //                     </div>
 //                   )}
 //                   <div className="flex items-center justify-between mb-4">
-//                     <h3 className="text-xl font-bold">UK Plan</h3>
+//                     <h3 className="text-xl font-normal">UK Plan</h3>
 //                     <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">
 //                       GBP
 //                     </div>
 //                   </div>
 //                   <div className="mb-6">
-//                     <span className="text-4xl font-bold">£12.99</span>
+//                     <span className="text-4xl font-normal">£12.99</span>
 //                     <span className="text-gray-600">/month</span>
 //                   </div>
 //                   <ul className="space-y-3 mb-8">
@@ -1079,7 +1079,7 @@
 //             </button>
 
 //             <div className="p-6 sm:p-8">
-//               <h2 className="text-2xl font-bold mb-4">Network Note - Terms & Conditions</h2>
+//               <h2 className="text-2xl font-normal mb-4">Network Note - Terms & Conditions</h2>
 
 //               <div className="text-gray-600 space-y-4">
 //                 <p className="font-medium">By proceeding, I agree that:</p>
@@ -1094,7 +1094,7 @@
 //                 </ul>
 
 //                 <div className="pt-4 mt-4 border-t border-gray-200">
-//                   <h3 className="font-bold mb-2">Pricing Information:</h3>
+//                   <h3 className="font-normal mb-2">Pricing Information:</h3>
 //                   <ul className="space-y-1 list-disc list-inside">
 //                     <li>US Plan: $12.99/month (billed monthly)</li>
 //                     <li>UK Plan: £12.99/month (billed monthly)</li>
@@ -1104,7 +1104,7 @@
 //                 </div>
 
 //                 <div className="pt-4">
-//                   <h3 className="font-bold mb-2">Refund Policy:</h3>
+//                   <h3 className="font-normal mb-2">Refund Policy:</h3>
 //                   <p>We offer a 14-day money-back guarantee for new subscribers. After this period, no refunds will be issued for partial months of service.</p>
 //                 </div>
 
@@ -1346,7 +1346,7 @@
 //                   className="h-8 w-8 rounded-lg"
 //                 />
 //               </div>
-//               <span className="text-xl font-bold text-[#000000] font-noto">
+//               <span className="text-xl font-normal text-[#000000] font-noto">
 //                 NetworkNote
 //               </span>
 //             </div>
@@ -1460,7 +1460,7 @@
 //           >
 //             <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
 //               <div className="flex-1">
-//                 <h2 className="text-3xl font-bold mb-4">Your Dashboard</h2>
+//                 <h2 className="text-3xl font-normal mb-4">Your Dashboard</h2>
 //                 <p className="text-slate-600">
 //                   Manage all your Network Notes in one place
 //                 </p>
@@ -1494,7 +1494,7 @@
 //             viewport={{ once: true }}
 //             className="text-center mb-12"
 //           >
-//             <h3 className="text-2xl font-bold mb-2">
+//             <h3 className="text-2xl font-normal mb-2">
 //               Over 200 candidates have landed interviews globally through
 //               Network Note
 //             </h3>
@@ -1508,7 +1508,7 @@
 //               {[...companies, ...companies].map((company, i) => (
 //                 <div
 //                   key={i}
-//                   className="text-2xl font-bold text-slate-400 whitespace-nowrap"
+//                   className="text-2xl font-normal text-slate-400 whitespace-nowrap"
 //                 >
 //                   {company}
 //                 </div>
@@ -1563,7 +1563,7 @@
 //                   }}
 //                   className="p-6 rounded-xl backdrop-blur-xl bg-white/10 border border-white/20 cursor-pointer transition-all"
 //                 >
-//                   <h3 className="text-xl font-bold mb-2 text-white">
+//                   <h3 className="text-xl font-normal mb-2 text-white">
 //                     {item.title.split(" ").map((word, j, arr) =>
 //                       j === arr.length - 2 ? (
 //                         <span key={j} className="text-lime-400">
@@ -1622,7 +1622,7 @@
 //             </Card>
 
 //             <div>
-//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
+//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-normal mb-4">
 //                 STEP #1
 //               </div>
 //               <h2 className="text-4xl font-black mb-6 text-slate-900">
@@ -1657,7 +1657,7 @@
 //             className="grid lg:grid-cols-2 gap-12 items-center"
 //           >
 //             <div>
-//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
+//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-normal mb-4">
 //                 STEP #2
 //               </div>
 //               <h2 className="text-4xl font-black mb-6 text-slate-900">
@@ -1711,7 +1711,7 @@
 //                 <div className="aspect-video bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl flex items-center justify-center relative">
 //                   <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500/20 px-3 py-1 rounded-full border border-red-400">
 //                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-//                     <span className="text-red-400 text-xs font-bold">REC</span>
+//                     <span className="text-red-400 text-xs font-normal">REC</span>
 //                   </div>
 //                   <Video className="h-16 w-16 text-slate-400" />
 //                 </div>
@@ -1719,7 +1719,7 @@
 //             </Card>
 
 //             <div>
-//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
+//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-normal mb-4">
 //                 STEP #3
 //               </div>
 //               <h2 className="text-4xl font-black mb-6 text-slate-900">
@@ -1752,7 +1752,7 @@
 //             className="grid lg:grid-cols-2 gap-12 items-center"
 //           >
 //             <div>
-//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-bold mb-4">
+//               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white font-normal mb-4">
 //                 STEP #4
 //               </div>
 //               <h2 className="text-4xl font-black mb-6 text-slate-900">
@@ -1804,7 +1804,7 @@
 //       {/* 🔥 PRICING – CAROUSEL FOR US & UK */}
 // {/* <section id="pricing" className="py-24 bg-gray-50">
 //   <div className="container mx-auto px-6">
-//     <p className="text-center text-sm font-bold tracking-wider uppercase text-purple-700">
+//     <p className="text-center text-sm font-normal tracking-wider uppercase text-purple-700">
 //       Pricing
 //     </p>
 //     <motion.h2
@@ -1813,7 +1813,7 @@
 //       whileInView="visible"
 //       viewport={{ once: true, amount: 0.3 }}
 //       custom={0}
-//       className="text-4xl font-bold text-center mb-20"
+//       className="text-4xl font-normal text-center mb-20"
 //     >
 //       Simple one-time pricing
 //     </motion.h2>
@@ -1867,7 +1867,7 @@
 //                     )}
 //                   </div>
 //                   <div className="mb-6">
-//                     <span className="text-4xl font-bold">$12.99</span>
+//                     <span className="text-4xl font-normal">$12.99</span>
 //                     <span className="text-gray-400 ml-2">/lifetime</span>
 //                   </div>
 //                   <ul className="space-y-3 mb-8">
@@ -1945,7 +1945,7 @@
 //                     )}
 //                   </div>
 //                   <div className="mb-6">
-//                     <span className="text-4xl font-bold">£12.99</span>
+//                     <span className="text-4xl font-normal">£12.99</span>
 //                     <span className="text-gray-400 ml-2">/lifetime</span>
 //                   </div>
 //                   <ul className="space-y-3 mb-8">
@@ -2051,7 +2051,7 @@
 
 // <section id="pricing" className="py-24 bg-gray-50">
 //   <div className="container mx-auto px-6">
-//     <p className="text-center text-sm font-bold tracking-wider uppercase text-purple-700">
+//     <p className="text-center text-sm font-normal tracking-wider uppercase text-purple-700">
 //       Pricing
 //     </p>
 //     <motion.h2
@@ -2060,7 +2060,7 @@
 //       whileInView="visible"
 //       viewport={{ once: true, amount: 0.3 }}
 //       custom={0}
-//       className="text-4xl font-bold text-center mb-20"
+//       className="text-4xl font-normal text-center mb-20"
 //     >
 //       Simple one-time pricing
 //     </motion.h2>
@@ -2091,7 +2091,7 @@
 //                     </span>
 //                   </div>
 //                   <div className="mb-6">
-//                     <span className="text-4xl font-bold">$12.99</span>
+//                     <span className="text-4xl font-normal">$12.99</span>
 //                     <span className="text-gray-400 ml-2">/lifetime</span>
 //                   </div>
 //                   <ul className="space-y-3 mb-8">
@@ -2149,7 +2149,7 @@
 //                     </span>
 //                   </div>
 //                   <div className="mb-6">
-//                     <span className="text-4xl font-bold">£12.99</span>
+//                     <span className="text-4xl font-normal">£12.99</span>
 //                     <span className="text-gray-400 ml-2">/lifetime</span>
 //                   </div>
 //                   <ul className="space-y-3 mb-8">
@@ -2227,7 +2227,7 @@
 //                         </h3>
 //                       </div>
 //                       <div className="mb-6">
-//                         <span className="text-4xl font-bold">$12.99</span>
+//                         <span className="text-4xl font-normal">$12.99</span>
 //                         <span className="text-gray-400 ml-2">/lifetime</span>
 //                       </div>
 //                       <ul className="space-y-3 mb-8">
@@ -2300,7 +2300,7 @@
 //                         </h3>
 //                       </div>
 //                       <div className="mb-6">
-//                         <span className="text-4xl font-bold">£12.99</span>
+//                         <span className="text-4xl font-normal">£12.99</span>
 //                         <span className="text-gray-400 ml-2">/lifetime</span>
 //                       </div>
 //                       <ul className="space-y-3 mb-8">
@@ -2448,7 +2448,7 @@
 //                 >
 //                   <feature.icon className="h-7 w-7 text-white" />
 //                 </div>
-//                 <h3 className="text-2xl font-bold mb-3 text-white group-hover:text-cyan-400 transition-colors">
+//                 <h3 className="text-2xl font-normal mb-3 text-white group-hover:text-cyan-400 transition-colors">
 //                   {feature.title}
 //                 </h3>
 //                 <p className="text-slate-300">{feature.desc}</p>
@@ -2499,7 +2499,7 @@
 //                   "{testimonial.quote}"
 //                 </p>
 //                 <div>
-//                   <p className="font-bold text-slate-900">
+//                   <p className="font-normal text-slate-900">
 //                     {testimonial.name}
 //                   </p>
 //                   <p className="text-slate-600 text-sm">
@@ -2582,7 +2582,7 @@
 //                     className="h-8 w-8 rounded-lg"
 //                   />
 //                 </div>
-//                 <span className="text-xl font-bold text-[#000000] font-noto">
+//                 <span className="text-xl font-normal text-[#000000] font-noto">
 //                   NetworkNote
 //                 </span>
 //               </div>
@@ -2590,7 +2590,7 @@
 //             </div>
 
 //             <div>
-//               <h4 className="font-bold mb-4 text-slate-900">Quick Links</h4>
+//               <h4 className="font-normal mb-4 text-slate-900">Quick Links</h4>
 //               <div className="space-y-2">
 //                 {["Solutions", "Pricing", "Privacy", "Terms", "Careers"].map(
 //                   (link) => (
@@ -2607,7 +2607,7 @@
 //             </div>
 
 //             <div>
-//               <h4 className="font-bold mb-4 text-slate-900">Connect</h4>
+//               <h4 className="font-normal mb-4 text-slate-900">Connect</h4>
 //               <div className="flex gap-4">
 //                 {[
 //                   { icon: Linkedin, href: "#" },
@@ -2661,7 +2661,7 @@
 //               </svg>
 //             </button>
 
-//             <h2 className="text-2xl font-bold text-gray-900 mb-4">
+//             <h2 className="text-2xl font-normal text-gray-900 mb-4">
 //               Network Note – Terms &amp; Conditions
 //             </h2>
 
@@ -2936,7 +2936,7 @@
 //           <div className="flex items-center justify-between">
 //             <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
 //               <img src="/images/networknote_final_logo_1 (2).jpg" alt="NetworkNote" className="h-8 w-8 rounded-lg" />
-//               <span className="text-xl font-bold text-[#000000] font-noto">NetworkNote</span>
+//               <span className="text-xl font-normal text-[#000000] font-noto">NetworkNote</span>
 //             </div>
 
 //             <nav className="hidden md:flex items-center gap-8">
@@ -3001,7 +3001,7 @@
 //           <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }} className="relative rounded-3xl overflow-hidden backdrop-blur-xl bg-white/5 border border-white/10 p-8 lg:p-12">
 //             <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
 //               <div className="flex-1">
-//                 <h2 className="text-3xl font-bold mb-4">Your Dashboard</h2>
+//                 <h2 className="text-3xl font-normal mb-4">Your Dashboard</h2>
 //                 <p className="text-slate-600">Manage all your Network Notes in one place</p>
 //               </div>
 //               <Button size="lg" className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-black hover:shadow-[0_0_30px_rgba(132,204,22,0.5)] transition-all font-semibold" onClick={() => navigate("/auth")}>
@@ -3017,12 +3017,12 @@
 //       <section className="py-16 backdrop-blur-xl bg-white/5 border-y border-white/10">
 //         <div className="max-w-[1440px] mx-auto px-8 lg:px-20">
 //           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="text-center mb-12">
-//             <h3 className="text-2xl font-bold mb-2">Over 200 candidates have landed interviews globally through Network Note</h3>
+//             <h3 className="text-2xl font-normal mb-2">Over 200 candidates have landed interviews globally through Network Note</h3>
 //           </motion.div>
 //           <div className="relative overflow-hidden">
 //             <motion.div className="flex gap-12 items-center" animate={{ x: [0, -1000] }} transition={{ duration: 30, repeat: Infinity, ease: "linear" }}>
 //               {[...companies, ...companies].map((company, i) => (
-//                 <div key={i} className="text-2xl font-bold text-slate-400 whitespace-nowrap">
+//                 <div key={i} className="text-2xl font-normal text-slate-400 whitespace-nowrap">
 //                   {company}
 //                 </div>
 //               ))}
@@ -3051,7 +3051,7 @@
 //                   <div className={`w-14 h-14 rounded-xl bg-gradient-to-r ${feature.color} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
 //                     <feature.icon className="h-7 w-7 text-white" />
 //                   </div>
-//                   <h3 className="text-2xl font-bold mb-3 text-white group-hover:text-cyan-400 transition-colors">{feature.title}</h3>
+//                   <h3 className="text-2xl font-normal mb-3 text-white group-hover:text-cyan-400 transition-colors">{feature.title}</h3>
 //                   <p className="text-slate-300">{feature.desc}</p>
 //                 </motion.div>
 //               ))}
@@ -3065,8 +3065,8 @@
 //       {/* 🔥 PRICING */}
 //       <section id="pricing" className="py-24 bg-gray-50">
 //         <div className="container mx-auto px-6">
-//           <p className="text-center text-sm font-bold tracking-wider uppercase text-purple-700">Pricing</p>
-//           <motion.h2 variants={slideUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.3 }} custom={0} className="text-4xl font-bold text-center mb-20">
+//           <p className="text-center text-sm font-normal tracking-wider uppercase text-purple-700">Pricing</p>
+//           <motion.h2 variants={slideUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.3 }} custom={0} className="text-4xl font-normal text-center mb-20">
 //             Simple one-time pricing
 //           </motion.h2>
 
@@ -3100,7 +3100,7 @@
 //                             {userCountry === "US" && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-600/80">Recommended</span>}
 //                           </div>
 //                           <div className="mb-6">
-//                             <span className="text-4xl font-bold">$12.99</span>
+//                             <span className="text-4xl font-normal">$12.99</span>
 //                             <span className="text-gray-400 ml-2">/lifetime</span>
 //                           </div>
 //                           <ul className="space-y-3 mb-8">
@@ -3149,7 +3149,7 @@
 //                             {userCountry === "GB" && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-600/80">Recommended</span>}
 //                           </div>
 //                           <div className="mb-6">
-//                             <span className="text-4xl font-bold">£12.99</span>
+//                             <span className="text-4xl font-normal">£12.99</span>
 //                             <span className="text-gray-400 ml-2">/lifetime</span>
 //                           </div>
 //                           <ul className="space-y-3 mb-8">
@@ -3217,7 +3217,7 @@
 //                 <div className="flex gap-1 mb-4"> {[...Array(testimonial.rating)].map((_, j) => (<Star key={j} className="h-4 w-4 fill-cyan-500 text-cyan-500" />))} </div>
 //                 <p className="text-slate-700 mb-6 italic">"{testimonial.quote}"</p>
 //                 <div>
-//                   <p className="font-bold text-slate-900">{testimonial.name}</p>
+//                   <p className="font-normal text-slate-900">{testimonial.name}</p>
 //                   <p className="text-slate-600 text-sm">{testimonial.role} at {testimonial.company}</p>
 //                 </div>
 //               </motion.div>
@@ -3258,13 +3258,13 @@
 //             <div>
 //               <div className="flex items-center gap-2 mb-4">
 //                 <img src="/images/networknote_final_logo_1 (2).jpg" alt="Network Note Logo" className="h-8 w-8 rounded-lg" />
-//                 <span className="text-xl font-bold text-[#000000] font-noto">NetworkNote</span>
+//                 <span className="text-xl font-normal text-[#000000] font-noto">NetworkNote</span>
 //               </div>
 //               <p className="text-slate-600">Your Career, Better.</p>
 //             </div>
 
 //             <div>
-//               <h4 className="font-bold mb-4 text-slate-900">Quick Links</h4>
+//               <h4 className="font-normal mb-4 text-slate-900">Quick Links</h4>
 //               <div className="space-y-2">
 //                 {["Solutions", "Pricing", "Privacy", "Terms", "Careers"].map((link) => (
 //                   <a key={link} href="#" className="block text-slate-600 hover:text-cyan-600 transition-colors">{link}</a>
@@ -3273,7 +3273,7 @@
 //             </div>
 
 //             <div>
-//               <h4 className="font-bold mb-4 text-slate-900">Connect</h4>
+//               <h4 className="font-normal mb-4 text-slate-900">Connect</h4>
 //               <div className="flex gap-4">
 //                 {[{ icon: Linkedin, href: "#" }, { icon: Youtube, href: "#" }, { icon: Twitter, href: "#" }, { icon: Instagram, href: "#" }].map((social, i) => (
 //                   <motion.a key={i} href={social.href} whileHover={{ scale: 1.2, boxShadow: "0 0 20px rgba(6,182,212,0.5)" }} className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center hover:border-cyan-400 transition-all">
@@ -3300,7 +3300,7 @@
 //               </svg>
 //             </button>
 
-//             <h2 className="text-2xl font-bold text-gray-900 mb-4">Network Note – Terms & Conditions</h2>
+//             <h2 className="text-2xl font-normal text-gray-900 mb-4">Network Note – Terms & Conditions</h2>
 
 //             <div className="text-gray-600 space-y-3">
 //               <p className="font-medium">By proceeding, I agree that:</p>
@@ -3687,7 +3687,7 @@
 //           >
 //             <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
 //               <div className="flex-1">
-//                 <h2 className="text-2xl font-bold mb-2 text-slate-900">
+//                 <h2 className="text-2xl font-normal mb-2 text-slate-900">
 //                   Your Dashboard
 //                 </h2>
 //                 <p className="text-slate-500">
@@ -3832,7 +3832,7 @@
 //             whileInView="visible"
 //             viewport={{ once: true, amount: 0.3 }}
 //             custom={0}
-//             className="text-3xl sm:text-4xl font-bold text-center mb-16 text-slate-900"
+//             className="text-3xl sm:text-4xl font-normal text-center mb-16 text-slate-900"
 //           >
 //             Simple one-time pricing
 //           </motion.h2>
@@ -3886,7 +3886,7 @@
 //                             )}
 //                           </div>
 //                           <div className="mb-6">
-//                             <span className="text-4xl font-bold">$12.99</span>
+//                             <span className="text-4xl font-normal">$12.99</span>
 //                             <span className="text-slate-300 ml-2">
 //                               / lifetime
 //                             </span>
@@ -3960,7 +3960,7 @@
 //                             )}
 //                           </div>
 //                           <div className="mb-6">
-//                             <span className="text-4xl font-bold">£12.99</span>
+//                             <span className="text-4xl font-normal">£12.99</span>
 //                             <span className="text-slate-300 ml-2">
 //                               / lifetime
 //                             </span>
@@ -4678,7 +4678,7 @@
 //           >
 //             <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
 //               <div className="flex-1">
-//                 <h2 className="text-2xl font-bold mb-2 text-slate-900">
+//                 <h2 className="text-2xl font-normal mb-2 text-slate-900">
 //                   Your Dashboard
 //                 </h2>
 //                 <p className="text-slate-500">
@@ -4727,7 +4727,7 @@
 //               {[...companies, ...companies].map((company, i) => (
 //                 <div
 //                   key={i}
-//                   className="text-3xl font-bold text-slate-300 whitespace-nowrap"
+//                   className="text-3xl font-normal text-slate-300 whitespace-nowrap"
 //                 >
 //                   {company}
 //                 </div>
@@ -4826,7 +4826,7 @@
 //             whileInView="visible"
 //             viewport={{ once: true, amount: 0.3 }}
 //             custom={0}
-//             className="text-3xl sm:text-4xl font-bold text-center mb-16 text-slate-900"
+//             className="text-3xl sm:text-4xl font-normal text-center mb-16 text-slate-900"
 //           >
 //             Simple one-time pricing
 //           </motion.h2>
@@ -4880,7 +4880,7 @@
 //                             )}
 //                           </div>
 //                           <div className="mb-6">
-//                             <span className="text-4xl font-bold">$12.99</span>
+//                             <span className="text-4xl font-normal">$12.99</span>
 //                             <span className="text-slate-300 ml-2">
 //                               / lifetime
 //                             </span>
@@ -4954,7 +4954,7 @@
 //                             )}
 //                           </div>
 //                           <div className="mb-6">
-//                             <span className="text-4xl font-bold">£12.99</span>
+//                             <span className="text-4xl font-normal">£12.99</span>
 //                             <span className="text-slate-300 ml-2">
 //                               / lifetime
 //                             </span>
@@ -5737,7 +5737,7 @@ export default function Landing() {
           <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }} className="relative rounded-3xl bg-white border border-slate-200 shadow-md p-6 lg:p-10">
             <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
               <div className="flex-1">
-                <h2 className="text-2xl font-bold mb-2 text-slate-900">Your Dashboard</h2>
+                <h2 className="text-2xl font-normal mb-2 text-slate-900">Your Dashboard</h2>
                 <p className="text-slate-500">Manage all your Network Notes in one place.</p>
               </div>
               <Button size="lg" className="bg-slate-900 text-white rounded-xl hover:bg-slate-800 hover:shadow-lg transition-all font-semibold flex items-center" onClick={() => navigate("/auth")}>
@@ -5757,7 +5757,7 @@ export default function Landing() {
           <div className="relative overflow-hidden">
             <motion.div className="flex gap-10 items-center" animate={{ x: [0, -1000] }} transition={{ duration: 30, repeat: Infinity, ease: "linear" }}>
               {[...companies, ...companies].map((company, i) => (
-                <div key={i} className="text-3xl font-bold text-slate-300 whitespace-nowrap">{company}</div>
+                <div key={i} className="text-3xl font-normal text-slate-300 whitespace-nowrap">{company}</div>
               ))}
             </motion.div>
           </div>
@@ -5789,7 +5789,7 @@ export default function Landing() {
       <section id="pricing" className="py-24 bg-slate-50">
         <div className="container mx-auto px-6">
           <p className="text-center text-lg font-semibold tracking-[0.2em] uppercase text-violet-600">Pricing</p>
-          <motion.h2 variants={slideUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.3 }} custom={0} className="text-3xl sm:text-4xl font-bold text-center mb-16 text-slate-900">Simple one-time pricing</motion.h2>
+          <motion.h2 variants={slideUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.3 }} custom={0} className="text-3xl sm:text-4xl font-normal text-center mb-16 text-slate-900">Simple one-time pricing</motion.h2>
 
           <motion.div variants={slideUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.3 }} custom={1} className="max-w-md mx-auto">
             <div className="relative overflow-visible">
@@ -5808,7 +5808,7 @@ export default function Landing() {
                             {userCountry === "US" && <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-cyan-500/90 text-slate-900">Recommended</span>}
                           </div>
                           <div className="mb-6">
-                            <span className="text-4xl font-bold">$12.99</span>
+                            <span className="text-4xl font-normal">$12.99</span>
                             <span className="text-slate-300 ml-2"> / lifetime</span>
                           </div>
                           <ul className="space-y-3 mb-8 text-sm">
@@ -5839,7 +5839,7 @@ export default function Landing() {
                             {userCountry === "GB" && <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-cyan-500/90 text-slate-900">Recommended</span>}
                           </div>
                           <div className="mb-6">
-                            <span className="text-4xl font-bold">£12.99</span>
+                            <span className="text-4xl font-normal">£12.99</span>
                             <span className="text-slate-300 ml-2"> / lifetime</span>
                           </div>
                           <ul className="space-y-3 mb-8 text-sm">

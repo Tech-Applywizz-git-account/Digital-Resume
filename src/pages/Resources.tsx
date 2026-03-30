@@ -26,10 +26,10 @@ export default function Resources() {
       color: 'from-blue-500 to-blue-600',
       link: 'https://example.com/video-resume-best-practices',
       detailedContent: `
-        <h3 class="text-xl font-bold text-gray-900 mb-4">Video Resume Best Practices</h3>
+        <h3 class="text-xl font-normal text-gray-900 mb-4">Video Resume Best Practices</h3>
         <p class="text-gray-600 mb-4">Creating an effective video resume requires more than just recording yourself talking. Here are key strategies to make your video resume stand out:</p>
         
-        <h4 class="font-bold text-gray-900 mb-2">1. Preparation is Key</h4>
+        <h4 class="font-normal text-gray-900 mb-2">1. Preparation is Key</h4>
         <ul class="list-disc list-inside text-gray-600 mb-4">
           <li>Research the company and role thoroughly</li>
           <li>Prepare a clear, concise script (60-90 seconds)</li>
@@ -37,7 +37,7 @@ export default function Resources() {
           <li>Prepare for potential follow-up questions</li>
         </ul>
         
-        <h4 class="font-bold text-gray-900 mb-2">2. Technical Setup</h4>
+        <h4 class="font-normal text-gray-900 mb-2">2. Technical Setup</h4>
         <ul class="list-disc list-inside text-gray-600 mb-4">
           <li>Use good lighting (natural light works best)</li>
           <li>Ensure clear audio quality</li>
@@ -45,7 +45,7 @@ export default function Resources() {
           <li>Test your equipment before recording</li>
         </ul>
         
-        <h4 class="font-bold text-gray-900 mb-2">3. Content Structure</h4>
+        <h4 class="font-normal text-gray-900 mb-2">3. Content Structure</h4>
         <ul class="list-disc list-inside text-gray-600 mb-4">
           <li>Start with a strong introduction</li>
           <li>Highlight 2-3 key achievements</li>
@@ -53,7 +53,7 @@ export default function Resources() {
           <li>End with a clear call-to-action</li>
         </ul>
         
-        <h4 class="font-bold text-gray-900 mb-2">4. Presentation Tips</h4>
+        <h4 class="font-normal text-gray-900 mb-2">4. Presentation Tips</h4>
         <ul class="list-disc list-inside text-gray-600 mb-4">
           <li>Maintain good eye contact with the camera</li>
           <li>Speak clearly and at a moderate pace</li>
@@ -69,12 +69,12 @@ export default function Resources() {
       color: 'from-green-500 to-green-600',
       link: 'https://example.com/resume-templates',
       detailedContent: `
-        <h3 class="text-xl font-bold text-gray-900 mb-4">✅ Resume Templates</h3>
+        <h3 class="text-xl font-normal text-gray-900 mb-4">✅ Resume Templates</h3>
         <p class="text-gray-600 mb-4">
           Our templates highlight your skills, achievements, and experience with clear structure, measurable bullet points, and global hiring standards. Built for clarity, impact, and ATS compatibility across all industries.
         </p>
         
-        <h4 class="font-bold text-gray-900 mb-2">⭐ Template Features</h4>
+        <h4 class="font-normal text-gray-900 mb-2">⭐ Template Features</h4>
         <p class="text-gray-600 mb-2">Professional header (Name, Title, Location, Contact, LinkedIn)</p>
         <p class="text-gray-600 mb-2">Sharp 2–4 line summary</p>
         <p class="text-gray-600 mb-2">Defined Areas of Expertise / Core Skills</p>
@@ -87,7 +87,7 @@ export default function Resources() {
           <li>Layouts for graduates, experienced roles, promotions & specialist profiles</li>
         </ul>
         
-        <h4 class="font-bold text-gray-900 mb-2">💼 Popular Industries</h4>
+        <h4 class="font-normal text-gray-900 mb-2">💼 Popular Industries</h4>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
           <div class="text-gray-600">IT & Software</div>
           <div class="text-gray-600">Data & Analytics</div>
@@ -103,7 +103,7 @@ export default function Resources() {
           <div class="text-gray-600">All Graduate Fields</div>
         </div>
         
-        <h4 class="font-bold text-gray-900 mb-2">📝 Customization Tips</h4>
+        <h4 class="font-normal text-gray-900 mb-2">📝 Customization Tips</h4>
         <ol class="list-decimal pl-5 space-y-3 text-gray-600 mb-4">
           <li>
             <strong>Strong Summary:</strong><br/>
@@ -136,7 +136,7 @@ export default function Resources() {
         </ol>
         
         <div class="mt-6">
-          <h4 class="font-bold text-gray-900 mb-2">Free Resources:</h4>
+          <h4 class="font-normal text-gray-900 mb-2">Free Resources:</h4>
           <ul class="list-disc pl-5 space-y-2 text-gray-600">
             <li><a href="https://docs.google.com/document/d/e/2PACX-1vSQOVUQcmxoJoj7wjhC4sjzrbEMzctS9HvxVae4unMqAvlD-pa0lkIxQUVUpO97yIcvI7YVRPq1zVOv/pub" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">Resume Templates</a></li>
           </ul>
@@ -150,7 +150,7 @@ export default function Resources() {
       color: 'from-yellow-500 to-yellow-600',
       link: 'https://example.com/interview-tips',
       detailedContent: `
-        <h3 class="text-xl font-bold text-gray-900 mb-4">HOW TO ACE YOUR NEXT INTERVIEW</h3>
+        <h3 class="text-xl font-normal text-gray-900 mb-4">HOW TO ACE YOUR NEXT INTERVIEW</h3>
         <ol class="list-decimal pl-5 space-y-3 text-gray-600">
           <li>
             <strong>Research the Company Thoroughly</strong><br/>
@@ -197,7 +197,7 @@ export default function Resources() {
           </li>
         </ol>
         <div class="mt-6">
-          <h4 class="font-bold text-gray-900 mb-2">Free Resources:</h4>
+          <h4 class="font-normal text-gray-900 mb-2">Free Resources:</h4>
           <ul class="list-disc pl-5 space-y-2 text-gray-600">
             <li><a href="https://how-to-ace-your-next-int-o8c6xx4.gamma.site/" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">How to Ace Your Next Interview Guide</a></li>
             <li><a href="https://how-to-end-an-interview--v86rwn5.gamma.site/" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">How to End an Interview Successfully</a></li>
@@ -212,10 +212,10 @@ export default function Resources() {
       color: 'from-purple-500 to-purple-600',
       link: 'https://example.com/career-development',
       detailedContent: `
-        <h3 class="text-xl font-bold text-gray-900 mb-4">Career Advancement Strategies</h3>
+        <h3 class="text-xl font-normal text-gray-900 mb-4">Career Advancement Strategies</h3>
         <p class="text-gray-600 mb-4">Take control of your professional growth with these proven development techniques:</p>
         
-        <h4 class="font-bold text-gray-900 mb-2">Setting Career Goals</h4>
+        <h4 class="font-normal text-gray-900 mb-2">Setting Career Goals</h4>
         <ul class="list-disc list-inside text-gray-600 mb-4">
           <li>Define short-term and long-term objectives</li>
           <li>Align goals with your values and interests</li>
@@ -223,7 +223,7 @@ export default function Resources() {
           <li>Regularly review and adjust your goals</li>
         </ul>
         
-        <h4 class="font-bold text-gray-900 mb-2">Skills Development</h4>
+        <h4 class="font-normal text-gray-900 mb-2">Skills Development</h4>
         <ul class="list-disc list-inside text-gray-600 mb-4">
           <li>Identify in-demand skills in your industry</li>
           <li>Pursue relevant certifications and courses</li>
@@ -231,7 +231,7 @@ export default function Resources() {
           <li>Practice new skills in real-world projects</li>
         </ul>
         
-        <h4 class="font-bold text-gray-900 mb-2">Networking and Relationships</h4>
+        <h4 class="font-normal text-gray-900 mb-2">Networking and Relationships</h4>
         <ul class="list-disc list-inside text-gray-600 mb-4">
           <li>Build genuine professional relationships</li>
           <li>Attend industry events and conferences</li>
@@ -239,7 +239,7 @@ export default function Resources() {
           <li>Offer value to your network connections</li>
         </ul>
         
-        <h4 class="font-bold text-gray-900 mb-2">Performance and Visibility</h4>
+        <h4 class="font-normal text-gray-900 mb-2">Performance and Visibility</h4>
         <ul class="list-disc list-inside text-gray-600 mb-4">
           <li>Exceed expectations in your current role</li>
           <li>Document and communicate your achievements</li>
@@ -255,7 +255,7 @@ export default function Resources() {
       color: 'from-red-500 to-red-600',
       link: 'https://example.com/skill-building',
       detailedContent: `
-        <h3 class="text-xl font-bold text-gray-900 mb-4">SKILL BUILDING – LEVEL UP YOUR CAREER</h3>
+        <h3 class="text-xl font-normal text-gray-900 mb-4">SKILL BUILDING – LEVEL UP YOUR CAREER</h3>
         <p class="text-gray-600 mb-4">Upskilling is no longer optional — it's what makes you stand out.</p>
         <p class="text-gray-600 mb-4">Whether you're applying abroad or switching careers, learning the right skills can boost your confidence, improve your resume, and increase your chances of getting interview calls.</p>
         <p class="text-gray-600 mb-4">Here's how to build strong, job-ready skills using top free courses and certifications:</p>
@@ -353,7 +353,7 @@ export default function Resources() {
         </ol>
         
         <div class="mt-6">
-          <h4 class="font-bold text-gray-900 mb-2">Free Resources:</h4>
+          <h4 class="font-normal text-gray-900 mb-2">Free Resources:</h4>
           <ul class="list-disc pl-5 space-y-2 text-gray-600">
             <li><a href="https://free-generative-ai-cours-ir6segl.gamma.site/" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">Free Generative AI Course Collection</a></li>
             <li><a href="https://18-free-courses-t2s6eq1.gamma.site/" target="_blank" rel="noopener noreferrer" class="text-[#01796F] hover:underline">18 Free Courses Collection</a></li>
@@ -368,17 +368,16 @@ export default function Resources() {
     <div className="min-h-screen bg-white flex">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         ></div>
       )}
 
       {/* Sidebar */}
-      <div 
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
+      <div
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
       >
         <Sidebar userEmail={user?.email || ''} onLogout={handleLogout} />
       </div>
@@ -393,14 +392,14 @@ export default function Resources() {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
+          <div className="font-normal text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-gray-50">
           <div className="max-w-6xl mx-auto">
             <div className="mb-6 sm:mb-8">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Career Resources</h1>
+              <h1 className="text-2xl sm:text-3xl font-normal text-gray-900 mb-2">Career Resources</h1>
               <p className="text-gray-600 text-sm sm:text-base">
                 Enhance your career prospects with our curated collection of professional resources
               </p>
@@ -416,7 +415,7 @@ export default function Resources() {
                   <div className={`w-12 h-12 bg-gradient-to-br ${resource.color} rounded-lg flex items-center justify-center mb-4`}>
                     <resource.icon className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-bold text-gray-900 mb-2 text-base sm:text-lg group-hover:text-[#01796F] transition-colors">
+                  <h3 className="font-normal text-gray-900 mb-2 text-base sm:text-lg group-hover:text-[#01796F] transition-colors">
                     {resource.title}
                   </h3>
                   <p className="text-gray-600 text-sm sm:text-base">
@@ -433,7 +432,7 @@ export default function Resources() {
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg sm:rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="sticky top-0 bg-white border-b border-gray-200 p-4 sm:p-6 flex justify-between items-center rounded-t-lg sm:rounded-t-xl">
-                <h3 className="text-lg sm:text-xl font-bold text-gray-900">
+                <h3 className="text-lg sm:text-xl font-normal text-gray-900">
                   {resources[selectedResource].title}
                 </h3>
                 <button
@@ -443,7 +442,7 @@ export default function Resources() {
                   <X className="w-6 h-6" />
                 </button>
               </div>
-              <div 
+              <div
                 className="p-4 sm:p-6"
                 dangerouslySetInnerHTML={{ __html: resources[selectedResource].detailedContent }}
               />

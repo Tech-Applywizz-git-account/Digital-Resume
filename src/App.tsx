@@ -23,6 +23,7 @@ import DigitalResumeDashboard from "./pages/DigitalResumeDashboard";
 import DigitalResumeLogin from "./pages/DigitalResumeLogin";
 import ChatPage from "./pages/ChatPage";
 import ResumeAnalytics from "./pages/ResumeAnalytics";
+import ResumeIntroPage from "./pages/ResumeIntroPage";
 
 const RootRoute = () => {
   const query = new URLSearchParams(window.location.search);
@@ -60,6 +61,7 @@ function App() {
         <Route path="/hr-email-details" element={<HrEmailDetails />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/analytics/:castId" element={<ResumeAnalytics />} />
+        <Route path="/resume-intro" element={<ResumeIntroPage />} />
       </Routes>
     </AuthProvider>
   );

@@ -69,18 +69,18 @@ export default function DigitalResumeLogin() {
     };
 
     return (
-        <div className="min-h-screen bg-[#f3f7fb] flex items-center justify-center p-6 font-sans">
-        <div className="w-full max-w-[480px] bg-white rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.04)] border border-slate-100 p-6 sm:p-10 md:p-14">
+        <div className="min-h-screen bg-[#f3f7fb] flex items-center justify-center p-6 ">
+            <div className="w-full max-w-[480px] bg-white rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.04)] border border-slate-100 p-6 sm:p-10 md:p-14">
                 {/* Header Section */}
                 <div className="text-center mb-10">
-                    <h1 className="text-3xl font-bold text-[#1e293b] tracking-tight">Digital Resume</h1>
-                    <p className="text-[10px] font-bold text-[#0B4F6C] uppercase tracking-[0.2em] mt-1">Email Intelligence</p>
+                    <h1 className="text-3xl font-normal text-[#1e293b] tracking-tight">Digital Resume</h1>
+                    <p className="text-[10px] font-normal text-[#0B4F6C] uppercase tracking-[0.2em] mt-1">Email Intelligence</p>
                     <p className="text-slate-500 text-sm mt-6 font-medium">Join thousands of professionals getting their dream jobs</p>
                 </div>
 
                 {/* Tab-like Login Indicator */}
                 <div className="mb-10">
-                    <div className="bg-[#0f172a] text-white py-3 rounded-xl text-center font-bold text-sm shadow-lg shadow-slate-200">
+                    <div className="bg-[#0f172a] text-white py-3 rounded-xl text-center font-normal text-sm shadow-lg shadow-slate-200">
                         Login
                     </div>
                 </div>
@@ -95,7 +95,7 @@ export default function DigitalResumeLogin() {
                     )}
 
                     <div className="space-y-2">
-                        <label className="block text-sm font-bold text-[#334155] ml-1">Admin Email Address</label>
+                        <label className="block text-sm font-normal text-[#334155] ml-1">Admin Email Address</label>
                         <input
                             type="email"
                             required
@@ -107,7 +107,7 @@ export default function DigitalResumeLogin() {
                     </div>
 
                     <div className="space-y-2">
-                        <label className="block text-sm font-bold text-[#334155] ml-1">Secure Password</label>
+                        <label className="block text-sm font-normal text-[#334155] ml-1">Secure Password</label>
                         <div className="relative">
                             <input
                                 type={showPassword ? "text" : "password"}
@@ -130,7 +130,7 @@ export default function DigitalResumeLogin() {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full bg-[#0f172a] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#1e293b] active:scale-[0.98] transition-all mt-4"
+                        className="w-full bg-[#0f172a] text-white py-4 rounded-xl font-normal flex items-center justify-center gap-2 hover:bg-[#1e293b] active:scale-[0.98] transition-all mt-4"
                     >
                         {loading ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
@@ -147,7 +147,7 @@ export default function DigitalResumeLogin() {
                 <div className="mt-10 text-center">
                     <button
                         onClick={() => navigate('/')}
-                        className="text-slate-500 hover:text-slate-800 text-sm font-bold flex items-center justify-center gap-2 mx-auto transition-colors"
+                        className="text-slate-500 hover:text-slate-800 text-sm font-normal flex items-center justify-center gap-2 mx-auto transition-colors"
                     >
                         <ArrowLeft className="w-4 h-4" />
                         Back to Home

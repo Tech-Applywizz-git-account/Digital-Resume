@@ -203,14 +203,14 @@
 //           >
 //             <Menu className="h-6 w-6" />
 //           </button>
-//           <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
+//           <div className="font-normal text-xl text-[#0B4F6C]">careercast</div>
 //           <div className="w-10"></div> {/* Spacer for alignment */}
 //         </div>
 
 //         <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-gray-50">
 //           <div className="max-w-3xl mx-auto">
 //             <div className="mb-6 sm:mb-8">
-//               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Password Settings</h1>
+//               <h1 className="text-2xl sm:text-3xl font-normal text-gray-900 mb-2">Password Settings</h1>
 //               <p className="text-gray-600 text-sm sm:text-base">
 //                 Update your password to keep your account secure
 //               </p>
@@ -231,7 +231,7 @@
 //             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
 //               <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] px-4 sm:px-8 py-4 sm:py-6 flex items-center gap-2 sm:gap-3">
 //                 <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-//                 <h2 className="text-lg sm:text-xl font-bold text-white">
+//                 <h2 className="text-lg sm:text-xl font-normal text-white">
 //                   {showForgotPassword ? 'Reset Password' : 'Change Password'}
 //                 </h2>
 //               </div>
@@ -721,7 +721,7 @@ export default function Password() {
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">
           <div className="max-w-3xl mx-auto">
             <header className="mb-6">
-              <h1 className="text-2xl sm:text-3xl font-bold text-[#0B4F6C]">Password Settings</h1>
+              <h1 className="text-2xl sm:text-3xl font-normal text-[#0B4F6C]">Password Settings</h1>
               <p className="text-gray-600 mt-1">Update your password to keep your account secure</p>
             </header>
 
@@ -731,7 +731,7 @@ export default function Password() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] px-4 py-4 flex items-center gap-3">
                 <Shield className="w-5 h-5 text-white" />
-                <h2 className="text-lg font-bold text-white">{showForgotPassword ? 'Reset Password' : 'Change Password'}</h2>
+                <h2 className="text-lg font-normal text-white">{showForgotPassword ? 'Reset Password' : 'Change Password'}</h2>
               </div>
 
               <form onSubmit={handleSubmit} className="p-6">

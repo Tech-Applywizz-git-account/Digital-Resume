@@ -32,7 +32,7 @@ const HrEmailPage: React.FC = () => {
     const fetchCompanies = async () => {
       try {
         console.log('Fetching data from HR_emails table...');
-        
+
         // Fetch all records from HR_emails table
         const { data, error } = await supabase
           .from('HR_emails')
@@ -86,7 +86,7 @@ const HrEmailPage: React.FC = () => {
         }
 
         const uniqueCompanyNames = Array.from(new Set(companyNames));
-        
+
         const uniqueCompanies = uniqueCompanyNames.map((name, index) => ({
           id: index + 1,
           name: name
@@ -123,17 +123,16 @@ const HrEmailPage: React.FC = () => {
     <div className="min-h-screen bg-white flex">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         ></div>
       )}
 
       {/* Sidebar */}
-      <div 
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
+      <div
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          } lg:translate-x-0 transition-transform duration-300 ease-in-out`}
       >
         <Sidebar userEmail={user?.email || ''} onLogout={handleLogout} />
       </div>
@@ -148,14 +147,14 @@ const HrEmailPage: React.FC = () => {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
+          <div className="font-normal text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div> {/* Spacer for alignment */}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
           <div className="max-w-7xl mx-auto">
-            <h1 className="text-2xl sm:text-3xl font-bold text-[#0B4F6C] mb-6 sm:mb-8">HR Contact Information</h1>
-            
+            <h1 className="text-2xl sm:text-3xl font-normal text-[#0B4F6C] mb-6 sm:mb-8">HR Contact Information</h1>
+
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0B4F6C]"></div>
@@ -166,12 +165,12 @@ const HrEmailPage: React.FC = () => {
                 <div className="mb-4 text-sm text-gray-500">
                   Found {companies.length} companies
                 </div>
-                
+
                 {/* Company Cards Grid - 3 cards per row */}
                 {companies.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 mb-8 sm:mb-12">
                     {companies.map((company) => (
-                      <div 
+                      <div
                         key={company.id}
                         onClick={() => handleCompanySelect(company.id, company.name)}
                         className="rounded-lg bg-white text-card-foreground shadow-sm p-4 sm:p-6 h-full flex flex-col items-center justify-center text-center border hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer group hover:border-[#159A9C]"

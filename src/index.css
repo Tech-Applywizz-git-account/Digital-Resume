@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Patrick+Hand&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -34,71 +36,47 @@ html {
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Additional Auth Page Styles */
-.step-card {
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.05);
-  border-radius: 12px;
-}
-
-.tab-content {
-  animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
+@layer utilities {
+  .font-hand {
+    font-family: 'Caveat', cursive;
   }
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Toast Styles */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
+  .bg-paper {
+    background-image: url("https://www.transparenttextures.com/patterns/natural-paper.png");
   }
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  @keyframes wobble {
+
+    0%,
+    100% {
+      transform: rotate(-1.5deg) translateX(0);
+    }
+
+    25% {
+      transform: rotate(1.5deg) translateX(1px);
+    }
+
+    50% {
+      transform: rotate(-1deg) translateX(-1px);
+    }
+
+    75% {
+      transform: rotate(1deg) translateX(1px);
+    }
   }
-}
 
-@keyframes fadeOut {
-  from {
-    opacity: 1;
-    transform: translateY(0);
+  .animate-wobble {
+    animation: wobble 6s ease-in-out infinite;
   }
 
-  to {
-    opacity: 0;
-    transform: translateY(-10px);
+  .sketchy-border {
+    border: 2px dashed rgba(245, 158, 11, 0.4);
+    border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
   }
-}
-
-@keyframes flow {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-.animate-flow {
-  background-size: 200% auto;
-  animation: flow 3s linear infinite;
 }
 
 @font-face {

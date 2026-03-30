@@ -156,7 +156,7 @@
 //             className="h-8 w-8 rounded-lg"
 //           />
 //         </div>
-//         <span className="text-xl font-bold text-[#000000] font-noto
+//         <span className="text-xl font-normal text-[#000000] font-noto
 // ">
 //           NetworkNote
 //         </span>
@@ -640,7 +640,7 @@ export default function Auth() {
                   </div> */}
 
                   <div>
-                    <span className="text-xl font-bold text-slate-900 font-noto">
+                    <span className="text-xl font-normal text-slate-900 font-noto">
                       Digital Resume
                     </span>
                     <div className="text-xs text-slate-400">Email Intelligence</div>
@@ -659,7 +659,7 @@ export default function Auth() {
               )}
 
               <div className="text-center mb-8">
-                <h2 className="text-3xl font-bold text-slate-900">Login</h2>
+                <h2 className="text-3xl font-normal text-slate-900">Login</h2>
               </div>
 
               <div className="tab-content">

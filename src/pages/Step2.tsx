@@ -66,12 +66,12 @@ const Step2: React.FC = () => {
       // --- SAVE TO DATABASE (with speed) ---
       const jobRequestId = localStorage.getItem("current_job_request_id");
       const isCRM = localStorage.getItem("is_crm_user") === "true";
-      
+
       if (jobRequestId && user) {
         try {
           const speedPrefix = `[[SPEED:${teleprompterSpeed.toFixed(1)}]] `;
           const dbContent = speedPrefix + result;
-          
+
           if (isCRM) {
             await supabase.from('crm_job_requests')
               .update({ job_description: dbContent })
@@ -113,16 +113,16 @@ const Step2: React.FC = () => {
         // Parse speed if encoded: [[SPEED:X.X]] Script...
         let scriptToSet = dbSaved;
         if (dbSaved.startsWith('[[SPEED:')) {
-            const match = dbSaved.match(/^\[\[SPEED:([\d.]+)\]\]\s*([\s\S]*)/);
-            if (match) {
-                const parsedSpeed = parseFloat(match[1]);
-                const actualScript = match[2];
-                if (!isNaN(parsedSpeed)) {
-                    setTeleprompterSpeed(parsedSpeed);
-                    localStorage.setItem("teleprompterSpeed", parsedSpeed.toString());
-                }
-                scriptToSet = actualScript;
+          const match = dbSaved.match(/^\[\[SPEED:([\d.]+)\]\]\s*([\s\S]*)/);
+          if (match) {
+            const parsedSpeed = parseFloat(match[1]);
+            const actualScript = match[2];
+            if (!isNaN(parsedSpeed)) {
+              setTeleprompterSpeed(parsedSpeed);
+              localStorage.setItem("teleprompterSpeed", parsedSpeed.toString());
             }
+            scriptToSet = actualScript;
+          }
         }
         setTeleprompterText(scriptToSet);
         localStorage.setItem("teleprompterText", scriptToSet);
@@ -132,18 +132,18 @@ const Step2: React.FC = () => {
         // Handle case where we only have URL (e.g. proceeding from history)
         try {
           setIsGenerating(true);
-          
+
           // Use proxy for cross-origin URLs to avoid CORS errors
           const isProxied = resumeUrl.includes('supabase.co') || resumeUrl.includes('amazonaws.com') || resumeUrl.includes('vercel-storage.com');
           const fetchUrl = isProxied ? `/api/proxy-pdf?url=${encodeURIComponent(resumeUrl)}` : resumeUrl;
-          
+
           const response = await fetch(fetchUrl);
           if (!response.ok) throw new Error("Could not fetch resume file");
           const buffer = await response.arrayBuffer();
           const fileName = resumeUrl.split('/').pop()?.split('?')[0] || "Resume.pdf";
           const extractedText = await extractTextFromBuffer(buffer, fileName);
           localStorage.setItem("resumeFullText", extractedText);
-          
+
           // Now generate with the extracted text
           const prompt = buildSelectionPrompt(extractedText);
           const result = await callOpenAI(prompt);
@@ -159,7 +159,7 @@ const Step2: React.FC = () => {
         setError("Please upload your resume first.");
       }
     };
-    
+
     initTeleprompter();
   }, []);
 
@@ -168,23 +168,23 @@ const Step2: React.FC = () => {
       showToast("Wait for AI to generate your script first.", "warning");
       return;
     }
-    
+
     // Save latest script and speed to DB before leaving
     const jobRequestId = localStorage.getItem("current_job_request_id");
     const isCRM = localStorage.getItem("is_crm_user") === "true";
     if (jobRequestId && user) {
-        const speedPrefix = `[[SPEED:${teleprompterSpeed.toFixed(1)}]] `;
-        const dbContent = speedPrefix + teleprompterText;
-        try {
-            if (isCRM) {
-                await supabase.from('crm_job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
-            } else {
-                await supabase.from('job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
-            }
-            localStorage.setItem("careercast_jobDescription", dbContent);
-        } catch (e) {
-            console.error("Failed to save on start:", e);
+      const speedPrefix = `[[SPEED:${teleprompterSpeed.toFixed(1)}]] `;
+      const dbContent = speedPrefix + teleprompterText;
+      try {
+        if (isCRM) {
+          await supabase.from('crm_job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
+        } else {
+          await supabase.from('job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
         }
+        localStorage.setItem("careercast_jobDescription", dbContent);
+      } catch (e) {
+        console.error("Failed to save on start:", e);
+      }
     }
 
     localStorage.setItem("teleprompterText", teleprompterText);
@@ -210,7 +210,7 @@ const Step2: React.FC = () => {
             <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-8 h-8 text-amber-600" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Wait a moment!</h3>
+            <h3 className="text-xl font-normal text-gray-900 mb-2">Wait a moment!</h3>
             <p className="text-gray-600 mb-6">You <strong className="text-red-600">haven't recorded</strong> your video yet. Do you really want to exit without finishing your <strong>video</strong> for <strong>Digital Resume?</strong></p>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowExitModal(false)}>No, Stay</Button>
@@ -232,7 +232,7 @@ const Step2: React.FC = () => {
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-md text-gray-700 hover:bg-gray-100 focus:outline-none">
             <Menu className="h-6 w-6" />
           </button>
-          <div className="font-bold text-xl text-[#0B4F6C]">careercast</div>
+          <div className="font-normal text-xl text-[#0B4F6C]">careercast</div>
           <div className="w-10"></div>
         </div>
 
@@ -246,16 +246,16 @@ const Step2: React.FC = () => {
                     <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm">
                       <Check className="h-4 w-4" />
                     </div>
-                    <span className="text-[10px] sm:text-xs mt-1.5 text-emerald-600 font-bold hidden min-[450px]:block">Upload Resume</span>
-                    <span className="text-[10px] sm:text-xs mt-1.5 text-emerald-600 font-bold min-[450px]:hidden text-center leading-tight">Resume</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-emerald-600 font-normal hidden min-[450px]:block">Upload Resume</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-emerald-600 font-normal min-[450px]:hidden text-center leading-tight">Resume</span>
                   </div>
                   <div className="flex flex-col items-center relative z-10">
-                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-blue-200">2</div>
-                    <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-bold hidden min-[450px]:block">Record Video</span>
-                    <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-bold min-[450px]:hidden text-center leading-tight">Video</span>
+                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-normal shadow-lg shadow-blue-200">2</div>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-normal hidden min-[450px]:block">Record Video</span>
+                    <span className="text-[10px] sm:text-xs mt-1.5 text-blue-600 font-normal min-[450px]:hidden text-center leading-tight">Video</span>
                   </div>
                 </div>
-                <CardTitle className="text-xl sm:text-2xl font-bold text-center">Record Your Digital Resume Video</CardTitle>
+                <CardTitle className="text-xl sm:text-2xl font-normal text-center">Record Your Digital Resume Video</CardTitle>
               </CardHeader>
 
               <CardContent>

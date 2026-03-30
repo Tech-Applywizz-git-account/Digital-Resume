@@ -195,7 +195,7 @@ export default function ResumeAnalytics() {
                 <div className={`p-2 rounded-xl ${color} bg-opacity-10 text-slate-600`}>
                     <Icon className="w-5 h-5" />
                 </div>
-                {subValue && <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{subValue}</span>}
+                {subValue && <span className="text-[10px] font-normal text-slate-400 uppercase tracking-widest">{subValue}</span>}
             </div>
             <h3 className="text-slate-500 text-xs font-semibold uppercase tracking-wider">{title}</h3>
             <p className="text-2xl font-black text-slate-900">{value}</p>
@@ -242,7 +242,7 @@ export default function ResumeAnalytics() {
                             <ArrowLeft className="w-5 h-5" />
                         </button>
                         <div>
-                            <h1 className="text-lg font-bold text-slate-900 line-clamp-1">{resumeTitle}</h1>
+                            <h1 className="text-lg font-normal text-slate-900 line-clamp-1">{resumeTitle}</h1>
                             <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
                                 <BarChart3 className="w-3 h-3" />
                                 <span>Performance Insights</span>
@@ -255,7 +255,7 @@ export default function ResumeAnalytics() {
                             <button
                                 key={range}
                                 onClick={() => setTimeRange(range)}
-                                className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${timeRange === range
+                                className={`px-4 py-1.5 text-xs font-normal rounded-lg transition-all ${timeRange === range
                                     ? 'bg-white text-slate-900 shadow-sm'
                                     : 'text-slate-500 hover:text-slate-700'
                                     }`}
@@ -309,7 +309,7 @@ export default function ResumeAnalytics() {
                                 <Play className="w-6 h-6" fill="currentColor" />
                             </div>
                             <p className="text-2xl font-black text-slate-900">{stats.videoPlays}</p>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Video Plays</p>
+                            <p className="text-[10px] font-normal text-slate-400 uppercase tracking-widest">Video Plays</p>
                         </div>
 
                         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center text-center gap-3">
@@ -317,7 +317,7 @@ export default function ResumeAnalytics() {
                                 <MessageSquare className="w-6 h-6" />
                             </div>
                             <p className="text-2xl font-black text-slate-900">{stats.chatOpens}</p>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chat Opens</p>
+                            <p className="text-[10px] font-normal text-slate-400 uppercase tracking-widest">Chat Opens</p>
                         </div>
 
                         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center text-center gap-3">
@@ -325,7 +325,7 @@ export default function ResumeAnalytics() {
                                 <Download className="w-6 h-6" />
                             </div>
                             <p className="text-2xl font-black text-slate-900">{stats.pdfDownloads}</p>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PDF Downloads</p>
+                            <p className="text-[10px] font-normal text-slate-400 uppercase tracking-widest">PDF Downloads</p>
                         </div>
 
                         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center text-center gap-3">
@@ -333,19 +333,19 @@ export default function ResumeAnalytics() {
                                 <ExternalLink className="w-6 h-6" />
                             </div>
                             <p className="text-2xl font-black text-slate-900">{stats.portfolioClicks}</p>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Portfl. Clicks</p>
+                            <p className="text-[10px] font-normal text-slate-400 uppercase tracking-widest">Portfl. Clicks</p>
                         </div>
                     </div>
 
                     {/* Demographics Card */}
                     <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                        <h3 className="text-sm font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <h3 className="text-sm font-normal text-slate-800 mb-6 flex items-center gap-2">
                             <MapPin className="w-4 h-4 text-[#0B4F6C]" /> Top Locations
                         </h3>
                         <div className="space-y-4">
                             {getCountryStats().length > 0 ? getCountryStats().map(([country, count]) => (
                                 <div key={country} className="flex flex-col gap-1.5">
-                                    <div className="flex items-center justify-between text-xs font-bold">
+                                    <div className="flex items-center justify-between text-xs font-normal">
                                         <span className="text-slate-600">{country}</span>
                                         <span className="text-slate-900">{count} views</span>
                                     </div>
@@ -365,14 +365,14 @@ export default function ResumeAnalytics() {
                         <div className="mt-8 pt-6 border-t border-slate-50 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <Monitor className="w-4 h-4 text-slate-400" />
-                                <span className="text-xs font-bold text-slate-600">Desktop</span>
+                                <span className="text-xs font-normal text-slate-600">Desktop</span>
                             </div>
                             <span className="text-xs font-black text-slate-900">{getDeviceStats().Desktop}</span>
                         </div>
                         <div className="mt-3 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <Smartphone className="w-4 h-4 text-slate-400" />
-                                <span className="text-xs font-bold text-slate-600">Mobile</span>
+                                <span className="text-xs font-normal text-slate-600">Mobile</span>
                             </div>
                             <span className="text-xs font-black text-slate-900">{getDeviceStats().Mobile}</span>
                         </div>
@@ -383,7 +383,7 @@ export default function ResumeAnalytics() {
                 {castId === 'all' && Object.keys(resumeTitles).length > 0 && (
                     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm mb-8 overflow-hidden">
                         <div className="px-6 py-5 border-b border-slate-100">
-                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <h3 className="text-sm font-normal text-slate-800 flex items-center gap-2">
                                 <Layers className="w-4 h-4 text-[#0B4F6C]" /> User-to-User Resume Comparison
                             </h3>
                         </div>
@@ -391,10 +391,10 @@ export default function ResumeAnalytics() {
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-slate-50/50">
-                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Resume / Job Title</th>
-                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Views</th>
-                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Engagements</th>
-                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Action</th>
+                                        <th className="px-6 py-4 text-[10px] font-normal text-slate-400 uppercase tracking-widest">Resume / Job Title</th>
+                                        <th className="px-6 py-4 text-[10px] font-normal text-slate-400 uppercase tracking-widest text-center">Views</th>
+                                        <th className="px-6 py-4 text-[10px] font-normal text-slate-400 uppercase tracking-widest text-center">Engagements</th>
+                                        <th className="px-6 py-4 text-[10px] font-normal text-slate-400 uppercase tracking-widest text-right">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
@@ -403,15 +403,15 @@ export default function ResumeAnalytics() {
                                         const rEvents = events.filter(e => e.resume_id === id);
                                         return (
                                             <tr key={id} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="px-6 py-4 text-xs font-bold text-slate-800">{title}</td>
-                                                <td className="px-6 py-4 text-xs font-bold text-slate-600 text-center">{rSessions.length}</td>
-                                                <td className="px-6 py-4 text-xs font-bold text-slate-600 text-center">
+                                                <td className="px-6 py-4 text-xs font-normal text-slate-800">{title}</td>
+                                                <td className="px-6 py-4 text-xs font-normal text-slate-600 text-center">{rSessions.length}</td>
+                                                <td className="px-6 py-4 text-xs font-normal text-slate-600 text-center">
                                                     {rEvents.length} actions
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <button
                                                         onClick={() => navigate(`/analytics/${id}`)}
-                                                        className="text-[10px] font-bold text-[#0B4F6C] hover:underline uppercase tracking-wider"
+                                                        className="text-[10px] font-normal text-[#0B4F6C] hover:underline uppercase tracking-wider"
                                                     >
                                                         Details
                                                     </button>
@@ -428,7 +428,7 @@ export default function ResumeAnalytics() {
                 {/* Detailed Logs */}
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                     <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <h3 className="text-sm font-normal text-slate-800 flex items-center gap-2">
                             <Activity className="w-4 h-4 text-[#0B4F6C]" /> Recent Interactions
                         </h3>
                     </div>
@@ -436,11 +436,11 @@ export default function ResumeAnalytics() {
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-slate-50/50">
-                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Time</th>
-                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Location</th>
-                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Device</th>
-                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Actions Captured</th>
-                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Stay Duration</th>
+                                    <th className="px-6 py-4 text-[10px] font-normal text-slate-400 uppercase tracking-widest">Time</th>
+                                    <th className="px-6 py-4 text-[10px] font-normal text-slate-400 uppercase tracking-widest">Location</th>
+                                    <th className="px-6 py-4 text-[10px] font-normal text-slate-400 uppercase tracking-widest">Device</th>
+                                    <th className="px-6 py-4 text-[10px] font-normal text-slate-400 uppercase tracking-widest">Actions Captured</th>
+                                    <th className="px-6 py-4 text-[10px] font-normal text-slate-400 uppercase tracking-widest">Stay Duration</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
@@ -448,7 +448,7 @@ export default function ResumeAnalytics() {
                                     <tr key={session.id} className="hover:bg-slate-50/50 transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col">
-                                                <span className="text-xs font-bold text-slate-800">
+                                                <span className="text-xs font-normal text-slate-800">
                                                     {new Date(session.started_at).toLocaleDateString()}
                                                 </span>
                                                 <span className="text-[10px] text-slate-400 font-medium tracking-tight">
@@ -470,18 +470,18 @@ export default function ResumeAnalytics() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex flex-wrap gap-1.5">
-                                                <span className="px-2 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-500 uppercase">Page View</span>
+                                                <span className="px-2 py-0.5 rounded bg-slate-100 text-[10px] font-normal text-slate-500 uppercase">Page View</span>
                                                 {session.video_clicked && (
-                                                    <span className="px-2 py-0.5 rounded bg-red-50 text-[10px] font-bold text-red-600 uppercase">Video Play</span>
+                                                    <span className="px-2 py-0.5 rounded bg-red-50 text-[10px] font-normal text-red-600 uppercase">Video Play</span>
                                                 )}
                                                 {session.chat_opened && (
-                                                    <span className="px-2 py-0.5 rounded bg-blue-50 text-[10px] font-bold text-blue-600 uppercase">Chat Opened</span>
+                                                    <span className="px-2 py-0.5 rounded bg-blue-50 text-[10px] font-normal text-blue-600 uppercase">Chat Opened</span>
                                                 )}
                                                 {session.pdf_downloaded && (
-                                                    <span className="px-2 py-0.5 rounded bg-emerald-50 text-[10px] font-bold text-emerald-600 uppercase">PDF Save</span>
+                                                    <span className="px-2 py-0.5 rounded bg-emerald-50 text-[10px] font-normal text-emerald-600 uppercase">PDF Save</span>
                                                 )}
                                                 {session.portfolio_clicked && (
-                                                    <span className="px-2 py-0.5 rounded bg-purple-50 text-[10px] font-bold text-purple-600 uppercase">Portfolio</span>
+                                                    <span className="px-2 py-0.5 rounded bg-purple-50 text-[10px] font-normal text-purple-600 uppercase">Portfolio</span>
                                                 )}
                                             </div>
                                         </td>
@@ -496,7 +496,7 @@ export default function ResumeAnalytics() {
                                                 <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
                                                     <Activity className="w-8 h-8 text-slate-200" />
                                                 </div>
-                                                <h4 className="text-sm font-bold text-slate-800">No session data available</h4>
+                                                <h4 className="text-sm font-normal text-slate-800">No session data available</h4>
                                                 <p className="text-xs text-slate-400 leading-relaxed">
                                                     Analytics will appear here once visitors start viewing your digital resume.
                                                 </p>

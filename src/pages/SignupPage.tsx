@@ -530,7 +530,7 @@
 //             {/* STEP 3: SUCCESS CARD */}
 //             {step === "success" && successInfo && (
 //               <div className="mt-10 max-w-xl mx-auto rounded-xl border border-green-200 bg-green-50 p-6 shadow-sm">
-//                 <h2 className="text-xl font-bold text-green-800 mb-2">
+//                 <h2 className="text-xl font-normal text-green-800 mb-2">
 //                   Payment Successful 🎉
 //                 </h2>
 //                 <p className="text-green-900 mb-4">
@@ -594,7 +594,7 @@
 //               </svg>
 //             </button>
 
-//             <h2 className="text-2xl font-bold text-gray-900 mb-4">
+//             <h2 className="text-2xl font-normal text-gray-900 mb-4">
 //               SkillPassport.AI – Terms &amp; Conditions
 //             </h2>
 
@@ -1291,7 +1291,7 @@
 //             {/* STEP 3: SUCCESS CARD */}
 //             {step === "success" && successInfo && (
 //               <div className="mt-10 max-w-xl mx-auto rounded-xl border border-green-200 bg-green-50 p-6 shadow-sm">
-//                 <h2 className="text-xl font-bold text-green-800 mb-2">
+//                 <h2 className="text-xl font-normal text-green-800 mb-2">
 //                   Payment Successful 🎉
 //                 </h2>
 //                 <p className="text-green-900 mb-4">
@@ -1355,7 +1355,7 @@
 //               </svg>
 //             </button>
 
-//             <h2 className="text-2xl font-bold text-gray-900 mb-4">
+//             <h2 className="text-2xl font-normal text-gray-900 mb-4">
 //               SkillPassport.AI – Terms &amp; Conditions
 //             </h2>
 
@@ -2105,7 +2105,7 @@ const SignupPage: React.FC = () => {
             {/* STEP 3: SUCCESS CARD */}
             {step === "success" && successInfo && (
               <div className="mt-10 max-w-xl mx-auto rounded-xl border border-green-200 bg-green-50 p-6 shadow-sm">
-                <h2 className="text-xl font-bold text-green-800 mb-2">
+                <h2 className="text-xl font-normal text-green-800 mb-2">
                   Payment Successful 🎉
                 </h2>
                 <p className="text-green-900 mb-4">
@@ -2168,7 +2168,7 @@ const SignupPage: React.FC = () => {
               </svg>
             </button>
 
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            <h2 className="text-2xl font-normal text-gray-900 mb-4">
               Digital Resume – Terms &amp; Conditions
             </h2>
 
@@ -2176,12 +2176,12 @@ const SignupPage: React.FC = () => {
               <p className="italic text-xs text-gray-500">Last Updated: {new Date().toLocaleDateString()}</p>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">1. Acceptance of Terms</h3>
+                <h3 className="font-normal text-gray-900 mb-1">1. Acceptance of Terms</h3>
                 <p>By creating an account, purchasing credits, or using the Digital Resume platform ("Service"), you agree to be bound by these Terms and Conditions. If you do not agree to these terms, you must not use our services.</p>
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">2. Description of Service</h3>
+                <h3 className="font-normal text-gray-900 mb-1">2. Description of Service</h3>
                 <p>Digital Resume is a career enhancement platform that provides tools for job seekers, including but not limited to:</p>
                 <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5">
                   <li>Video resume recording and hosting.</li>
@@ -2192,7 +2192,7 @@ const SignupPage: React.FC = () => {
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">3. User Accounts</h3>
+                <h3 className="font-normal text-gray-900 mb-1">3. User Accounts</h3>
                 <ul className="list-disc list-inside ml-2 space-y-0.5">
                   <li><strong>Eligibility:</strong> You must be at least 18 years old to use this Service.</li>
                   <li><strong>Security:</strong> You are responsible for maintaining the confidentiality of your login credentials. You are fully responsible for all activities that occur under your account.</li>
@@ -2201,7 +2201,7 @@ const SignupPage: React.FC = () => {
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">4. Credits, Payments, and Refunds</h3>
+                <h3 className="font-normal text-gray-900 mb-1">4. Credits, Payments, and Refunds</h3>
                 <ul className="list-disc list-inside ml-2 space-y-0.5">
                   <li><strong>Credit System:</strong> Digital Resume operates on a credit-based system. Credits are required to create new video resumes ("Digital Resumes") or access premium features.</li>
                   <li><strong>Pricing:</strong> Premium top-ups are sold in bundles (e.g., 3 Credits for $9.99 USD / £9.99 GBP). Prices are subject to change without notice.</li>
@@ -2211,7 +2211,7 @@ const SignupPage: React.FC = () => {
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">5. User-Generated Content (UGC)</h3>
+                <h3 className="font-normal text-gray-900 mb-1">5. User-Generated Content (UGC)</h3>
                 <ul className="list-disc list-inside ml-2 space-y-0.5">
                   <li><strong>Ownership:</strong> You retain all ownership rights to the resumes, videos, and scripts you create or upload ("User Content").</li>
                   <li><strong>License to Us:</strong> By uploading content, you grant Digital Resume a worldwide, non-exclusive, royalty-free license to host, store, process, and display your content <em>solely for the purpose of providing the Service to you</em> (e.g., generating your video link).</li>
@@ -2220,12 +2220,12 @@ const SignupPage: React.FC = () => {
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">6. AI and Automated Features</h3>
+                <h3 className="font-normal text-gray-900 mb-1">6. AI and Automated Features</h3>
                 <p><strong>AI Disclaimer:</strong> Our teleprompter scripts and resume analysis are generated using Artificial Intelligence (e.g., OpenAI). While we strive for quality, AI can make mistakes. You acknowledge that <strong>you are solely responsible</strong> for reviewing and editing any AI-generated content before using it in your professional applications.</p>
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">7. No Guarantee of Employment</h3>
+                <h3 className="font-normal text-gray-900 mb-1">7. No Guarantee of Employment</h3>
                 <ul className="list-disc list-inside ml-2 space-y-0.5">
                   <li><strong>Tool Only:</strong> Digital Resume is a software tool designed to assist in your job search. We are <strong>not</strong> a recruitment agency, staffing firm, or employer.</li>
                   <li><strong>No Results Guaranteed:</strong> We do not guarantee that using our video resumes or tools will result in job interviews, job offers, visa sponsorship, or employment. Your success depends entirely on your own qualifications, the job market, and third-party employers.</li>
@@ -2233,22 +2233,22 @@ const SignupPage: React.FC = () => {
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">8. Data Privacy</h3>
+                <h3 className="font-normal text-gray-900 mb-1">8. Data Privacy</h3>
                 <p>Your use of the Service is also governed by our Privacy Policy. We collect data such as your name, email, phone number, and professional history to provide our services. We do not sell your personal data to third-party advertisers.</p>
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">9. Limitation of Liability</h3>
+                <h3 className="font-normal text-gray-900 mb-1">9. Limitation of Liability</h3>
                 <p>To the fullest extent permitted by law, Digital Resume shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or employment opportunities, arising out of or in connection with your use of the Service.</p>
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">10. Termination</h3>
+                <h3 className="font-normal text-gray-900 mb-1">10. Termination</h3>
                 <p>We reserve the right to suspend or terminate your account at our sole discretion, without notice, for conduct that we believe violates these Terms or is harmful to other users, us, or third parties, or for any other reason.</p>
               </section>
 
               <section>
-                <h3 className="font-bold text-gray-900 mb-1">11. Changes to Terms</h3>
+                <h3 className="font-normal text-gray-900 mb-1">11. Changes to Terms</h3>
                 <p>We may modify these Terms at any time. Continued use of the Service after any such changes constitutes your acceptance of the new Terms.</p>
               </section>
 

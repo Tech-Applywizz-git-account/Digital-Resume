@@ -491,7 +491,7 @@ export default function Billing() {
             <div className="max-w-6xl mx-auto">
               {/* Header */}
               <div className="mb-6 sm:mb-8">
-                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">
+                <h1 className="text-2xl sm:text-3xl font-normal text-slate-900 mb-2">
                   Billing & Payment
                 </h1>
                 <p className="text-slate-600 text-sm sm:text-base">
@@ -507,7 +507,7 @@ export default function Billing() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Zap className={`h-6 w-6 ${credits > 0 ? 'text-emerald-500' : 'text-red-500'}`} />
-                  <span className={`text-2xl font-bold ${credits > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  <span className={`text-2xl font-normal ${credits > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                     {credits}
                   </span>
                 </div>
@@ -518,7 +518,7 @@ export default function Billing() {
                 <div className="mb-8 bg-white rounded-xl shadow-lg border border-cyan-100 overflow-hidden">
                   <div className="bg-cyan-600 px-6 py-4">
                     <div className="flex items-center justify-between">
-                      <h2 className="text-xl font-bold text-white">
+                      <h2 className="text-xl font-normal text-white">
                         {paymentSuccess ? "Payment Successful" : "Active Premium Plan"}
                       </h2>
                       <Check className="h-8 w-8 text-white" />
@@ -592,7 +592,7 @@ export default function Billing() {
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-600">Total Credits:</span>
-                            <span className="text-slate-900 font-bold">{credits}</span>
+                            <span className="text-slate-900 font-normal">{credits}</span>
                           </div>
                           {isPremiumActive && (
                             <div className="flex justify-between">
@@ -663,7 +663,7 @@ export default function Billing() {
 
                           <div className="p-4 sm:p-6 space-y-4">
                             <div className="flex items-center justify-between">
-                              <h3 className="text-lg sm:text-xl font-bold text-slate-900">
+                              <h3 className="text-lg sm:text-xl font-normal text-slate-900">
                                 {plan.name}
                               </h3>
 
@@ -682,7 +682,7 @@ export default function Billing() {
                             </div>
 
                             <div className="mb-2 sm:mb-4">
-                              <span className="text-3xl sm:text-4xl font-bold text-slate-900">
+                              <span className="text-3xl sm:text-4xl font-normal text-slate-900">
                                 {plan.price}
                               </span>
                               <span className="text-slate-600 text-sm sm:text-base">
@@ -771,7 +771,7 @@ export default function Billing() {
 
               {/* Payment history */}
               <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 mb-8">
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4 sm:mb-6">
+                <h2 className="text-xl sm:text-2xl font-normal text-slate-900 mb-4 sm:mb-6">
                   Payment History
                 </h2>
 

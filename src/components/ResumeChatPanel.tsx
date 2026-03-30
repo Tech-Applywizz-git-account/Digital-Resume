@@ -337,18 +337,17 @@ const ResumeChatPanel = ({
 
             {/* Content Area */}
             <div className={`${mode === 'video' ? 'h-auto' : 'flex-1'} overflow-hidden relative bg-gray-50 flex flex-col`}>
-                
+
                 {/* Mode Switcher Tabs */}
                 {(videoUrl || resumeUrl) && !isDataLoading && (!hideNavigation || mode !== 'video') && (
                     <div className="flex bg-slate-900/5 p-1 border-b border-gray-100 shrink-0">
                         {videoUrl && (
                             <button
                                 onClick={() => onModeChange('video')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
-                                    (mode as string) === 'video' 
-                                        ? 'bg-white text-slate-900 shadow-sm' 
+                                className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-normal rounded-lg transition-all ${(mode as string) === 'video'
+                                        ? 'bg-white text-slate-900 shadow-sm'
                                         : 'text-slate-500 hover:bg-white/50'
-                                }`}
+                                    }`}
                             >
                                 <Play className="w-3.5 h-3.5" />
                                 Video Intro
@@ -356,11 +355,10 @@ const ResumeChatPanel = ({
                         )}
                         <button
                             onClick={() => onModeChange('chat')}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
-                                mode === 'chat' 
-                                    ? 'bg-white text-slate-900 shadow-sm' 
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-normal rounded-lg transition-all ${mode === 'chat'
+                                    ? 'bg-white text-slate-900 shadow-sm'
                                     : 'text-slate-500 hover:bg-white/50'
-                            }`}
+                                }`}
                         >
                             <MessageSquare className="w-3.5 h-3.5" />
                             Let's Talk
@@ -368,11 +366,10 @@ const ResumeChatPanel = ({
                         {resumeUrl && (
                             <button
                                 onClick={() => onModeChange('resume')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
-                                    mode === 'resume' 
-                                        ? 'bg-white text-slate-900 shadow-sm' 
+                                className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-normal rounded-lg transition-all ${mode === 'resume'
+                                        ? 'bg-white text-slate-900 shadow-sm'
                                         : 'text-slate-500 hover:bg-white/50'
-                                }`}
+                                    }`}
                             >
                                 <FileText className="w-3.5 h-3.5" />
                                 Resume

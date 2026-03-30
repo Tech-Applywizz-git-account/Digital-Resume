@@ -9,7 +9,6 @@ import { showToast } from "../components/ui/toast";
 import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
-import { extractTextFromBuffer } from "../utils/textExtraction";
 
 // --- Play Intro Button Canvas Generator ---
 // Layout: inline-flex, h=28px, padding: 6px 8px 5px 8px, align-items: flex-start, gap: 6px
@@ -121,8 +120,8 @@ const getProxiedUrl = (url: string | null) => {
   // If it's already a relative path (our proxy), return as is
   if (url.startsWith('/proxy-') || url.startsWith('/api/proxy-pdf')) return url;
 
-  // Use our dynamic proxy for any S3, Vercel Blob, or Supabase URLs to bypass CORS
-  if (url.includes('amazonaws.com') || url.includes('vercel-storage.com') || url.includes('supabase.co')) {
+  // Use our dynamic proxy for any S3 or Vercel Blob URLs to bypass CORS
+  if (url.includes('amazonaws.com') || url.includes('vercel-storage.com')) {
     return `/api/proxy-pdf?url=${encodeURIComponent(url)}`;
   }
 
@@ -161,7 +160,6 @@ const FinalResult: React.FC = () => {
   );
   const [resumeOwnerAppEmail, setResumeOwnerAppEmail] = useState<string | null>(null);
   const [resumeOwnerUserId, setResumeOwnerUserId] = useState<string | null>(null);
-  const [hasManuallyUpdatedPortfolio, setHasManuallyUpdatedPortfolio] = useState(false);
 
   const isFromPdf = searchParams.get('from') === 'pdf' || searchParams.get('source') === 'pdf';
   const initialId = castId || idFromQuery;
@@ -174,9 +172,6 @@ const FinalResult: React.FC = () => {
   const initialMode = searchParams.get('mode') as 'chat' | 'video' | 'resume' | null;
   const [isPanelOpen, setIsPanelOpen] = useState(isFromPdf && !!initialMode);
   const [panelMode, setPanelMode] = useState<'chat' | 'video' | 'resume'>(initialMode || 'chat');
-  const [showDownloadPrompt, setShowDownloadPrompt] = useState(false); // shown only after download completes
-  const [copied, setCopied] = useState(false);
-  const pendingAutoDownload = React.useRef(new URLSearchParams(location.search).get('autoDownload') === 'true');
 
   // ✅ Tracking Implementation
   useEffect(() => {
@@ -258,16 +253,12 @@ const FinalResult: React.FC = () => {
             // Also try to get the application email for this user
             supabase
               .from('digital_resume_by_crm')
-              .select('company_application_email, first_name, full_name, last_name')
+              .select('company_application_email')
               .eq('email', decodedEmail)
               .maybeSingle()
               .then(({ data: crmUser }) => {
                 if (crmUser?.company_application_email) {
                   setResumeOwnerAppEmail(crmUser.company_application_email);
-                }
-                const name = crmUser?.full_name || (crmUser?.first_name ? `${crmUser.first_name} ${crmUser.last_name || ''}`.trim() : null);
-                if (name && candidateName === "Candidate") {
-                  setCandidateName(name);
                 }
               });
             setJobTitle('Resume');
@@ -292,88 +283,11 @@ const FinalResult: React.FC = () => {
     loadData();
   }, [user, castId, location.search]);
 
-  // ✅ Auto-Download Logic — Fires when data is ready and name is resolved (or timeout)
-  useEffect(() => {
-    if (!pendingAutoDownload.current || !resumeUrl || loading || isSyncingWithVercel) return;
-
-    const tryDownload = () => {
-      if (!pendingAutoDownload.current) return;
-      pendingAutoDownload.current = false;
-      console.log("📥 Auto-downloading for:", candidateName);
-      handleDownloadEnhanced();
-      
-      const newParams = new URLSearchParams(location.search);
-      newParams.delete('autoDownload');
-      navigate(`${location.pathname}?${newParams.toString()}`, { replace: true });
-    };
-
-    // If name is already resolved, download immediately
-    if (candidateName && candidateName !== "Candidate") {
-      tryDownload();
-      return;
-    }
-
-    // Otherwise, wait up to 4s for name resolution
-    const timeout = setTimeout(() => {
-      if (pendingAutoDownload.current) {
-        console.log("📥 Auto-download timeout: falling back to current name:", candidateName);
-        tryDownload();
-      }
-    }, 4000);
-
-    return () => clearTimeout(timeout);
-  }, [resumeUrl, loading, isSyncingWithVercel, candidateName]);
-
-  // ✅ Extract Candidate Name from Resume Text if still missing
-  useEffect(() => {
-    const extractNameFromResume = async () => {
-      // Only run if we have a resume and don't have a resolved name yet
-      if (resumeUrl && candidateName === "Candidate") {
-        try {
-          console.log("🔍 Attempting to extract name from resume text...");
-          const res = await fetch(resumeUrl);
-          const buffer = await res.arrayBuffer();
-          const text = await extractTextFromBuffer(buffer, resumeFileName);
-          
-          if (text) {
-            // Heuristic for name: first 30 characters often contain the name
-            // We split by space and take the first few chunks, filtering out non-alpha characters
-            const words = text.split(/\s+/).filter(w => w.length > 1);
-            
-            // Common resume headers to skip
-            const stopWords = ['resume', 'profile', 'summary', 'contact', 'curriculum', 'vitae', 'cv'];
-            let startIndex = 0;
-            while (startIndex < words.length && stopWords.includes(words[startIndex].toLowerCase())) {
-              startIndex++;
-            }
-
-            // Take the next 2-4 words as the name
-            const nameWords = words.slice(startIndex, startIndex + 4);
-            const extractedName = nameWords.join(" ").trim();
-
-            if (extractedName.length > 3 && extractedName.length < 50) {
-               console.log("✨ Best guess name from resume:", extractedName);
-               // Sanitize name: remove non-alphanumeric (keep spaces)
-               const sanitized = extractedName.replace(/[^a-zA-Z\s]/g, '').trim();
-               if (sanitized.length > 3) {
-                 setCandidateName(sanitized);
-               }
-            }
-          }
-        } catch (err) {
-          console.error("Error extracting name from resume:", err);
-        }
-      }
-    };
-
-    extractNameFromResume();
-  }, [resumeUrl, candidateName, resumeFileName]);
-
   // ✅ Sync with Vercel User Details API (ONLY source for resume/portfolio)
   useEffect(() => {
     const fetchVercelDetails = async () => {
       const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
-      if (emailsToTry.length === 0 || hasManuallyUpdatedPortfolio) {
+      if (emailsToTry.length === 0) {
         setIsSyncingWithVercel(false);
         return;
       }
@@ -657,19 +571,15 @@ const FinalResult: React.FC = () => {
         setResumeOwnerEmail(ownerEmail);
         console.log("📍 Email detected, Vercel sync will handle resume and portfolio.");
 
-        // Fetch CRM record to get application email and name
+        // Fetch CRM record to get application email
         supabase
           .from('digital_resume_by_crm')
-          .select('company_application_email, first_name, last_name, full_name')
+          .select('company_application_email')
           .eq('email', ownerEmail)
           .maybeSingle()
           .then(({ data: crmUser }) => {
             if (crmUser?.company_application_email) {
               setResumeOwnerAppEmail(crmUser.company_application_email);
-            }
-            const name = crmUser?.full_name || (crmUser?.first_name ? `${crmUser.first_name} ${crmUser.last_name || ''}`.trim() : null);
-            if (name && candidateName === "Candidate") {
-              setCandidateName(name);
             }
           });
       }
@@ -711,10 +621,6 @@ const FinalResult: React.FC = () => {
             setPortfolioUrl(portfolioRes.data.url);
             setTempPortfolioUrl(portfolioRes.data.url);
           }
-        } else if (ownerEmail) {
-          // Fallback: If no user_id but we have email, try to find a profile by email
-          const { data: profile } = await supabase.from('profiles').select('first_name, full_name').eq('email', ownerEmail).maybeSingle();
-          if (profile) setCandidateName(profile.full_name || profile.first_name || "Candidate");
         }
 
         // --- Fetch Video URL (Checking both tables for robustness) ---
@@ -836,15 +742,8 @@ const FinalResult: React.FC = () => {
       }
 
       setPortfolioUrl(trimmedUrl);
-      setHasManuallyUpdatedPortfolio(true);
       setIsEditingPortfolio(false);
       showToast("Portfolio updated successfully", "success");
-
-      // Optional: Update current session's record too if it exists to ensure dashboard picks it up immediately
-      if (currentJobRequestId && currentJobRequestId !== 'profile') {
-        supabase.from('crm_job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId).then(() => {});
-        supabase.from('job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId).then(() => {});
-      }
 
 
     } catch (err: any) {
@@ -878,8 +777,7 @@ const FinalResult: React.FC = () => {
         : `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}${resumeUrlParam}&source=pdf&mode=chat`;
 
       // Play Intro button → this app's final-result page
-      const portfolioParam = hasPortfolio ? `&portfolio=${encodeURIComponent(portfolioUrl)}` : '';
-      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}${resumeUrlParam}${portfolioParam}`;
+      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}${resumeUrlParam}`;
 
       const hasVideo = !!videoUrl;
 
@@ -895,75 +793,6 @@ const FinalResult: React.FC = () => {
       const pages = pdfDoc.getPages();
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
-      const context = pdfDoc.context;
-
-      // --- Precise Legacy Button Cleanup ---
-      // If this resume was already enhanced, we need to find the specific buttons to erase.
-      let annots = firstPage.node.lookup(PDFName.of("Annots"));
-      const rectsToClear: { x: number, y: number, w: number, h: number }[] = [];
-
-      if (annots instanceof PDFArray) {
-        const remainingAnnots = context.obj([]);
-        for (let i = 0; i < annots.size(); i++) {
-          const annot = annots.lookup(i);
-          const rect = (annot as any).lookup?.(PDFName.of("Rect"));
-          const action = (annot as any).lookup?.(PDFName.of("A"));
-          const uri = action?.lookup?.(PDFName.of("URI"));
-
-          let shouldRemove = false;
-          if (rect instanceof PDFArray && rect.size() === 4) {
-            const rx1 = (rect.lookup(0) as PDFNumber).value();
-            const ry1 = (rect.lookup(1) as PDFNumber).value();
-            const rx2 = (rect.lookup(2) as PDFNumber).value();
-            const ry2 = (rect.lookup(3) as PDFNumber).value();
-
-            // 1. Check if the link is physically in the top-right "button zone"
-            const isInZone = rx1 > (width * 0.4) && ry1 > (height - 150);
-            
-            // 2. Precise Dimension Matching: Our buttons are strictly 28px high.
-            // Resume text links are typically 10-14px.
-            const h = ry2 - ry1;
-            const w = rx2 - rx1;
-            const isButtonSized = h > 24 && h < 32 && w > 80 && w < 120;
-
-            // 3. Fingerprint URI Check: Match our exact internal link schema
-            const uriStr = uri instanceof PDFString ? uri.asString().toLowerCase() : "";
-            const isOurExactLink = 
-              (uriStr.includes("final-result") && uriStr.includes("mode=video") && uriStr.includes("source=pdf")) || 
-              (uriStr.includes("/chat") && uriStr.includes("mode=chat") && (uriStr.includes("resumeid=") || uriStr.includes("castid=")));
-
-            // Only remove if it's in the zone AND matches our physical size AND matches our URL fingerprint
-            if (isInZone && isButtonSized && isOurExactLink) {
-              shouldRemove = true;
-              // Erase with zero padding to protect neighboring text
-              rectsToClear.push({
-                x: rx1,
-                y: ry1,
-                w: (rx2 - rx1),
-                h: (ry2 - ry1)
-              });
-            }
-          }
-
-          if (!shouldRemove) {
-            remainingAnnots.push(annot!);
-          }
-        }
-
-        if (rectsToClear.length > 0) {
-          console.log(`🧹 Clearing ${rectsToClear.length} legacy buttons precisely.`);
-          rectsToClear.forEach(r => {
-            firstPage.drawRectangle({
-              x: r.x,
-              y: r.y,
-              width: r.w,
-              height: r.h,
-              color: rgb(1, 1, 1),
-            });
-          });
-          firstPage.node.set(PDFName.of("Annots"), remainingAnnots);
-        }
-      }
 
       const btnW_play = 105;
       const btnW_chat = 100;
@@ -977,6 +806,8 @@ const FinalResult: React.FC = () => {
       let currentX = width - totalW - margin;
 
       const btnY = height - btnH - topMargin;
+
+      const context = pdfDoc.context;
 
       // Draw Chat Button (Let's talk) — w=97px, h=28px, align-items: flex-end, icon 15x13
       if (hasPortfolio) {
@@ -996,12 +827,9 @@ const FinalResult: React.FC = () => {
             Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
             A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(chatUrl) })
           });
-          const existingAnnots = firstPage.node.lookup(PDFName.of("Annots"));
-          if (existingAnnots instanceof PDFArray) {
-            existingAnnots.push(chatLink);
-          } else {
-            firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
-          }
+          let annots = firstPage.node.lookup(PDFName.of("Annots"));
+          if (annots instanceof PDFArray) annots.push(chatLink);
+          else firstPage.node.set(PDFName.of("Annots"), context.obj([chatLink]));
           currentX += btnW_chat + gap;
         }
       }
@@ -1024,12 +852,9 @@ const FinalResult: React.FC = () => {
             Border: context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
             A: context.obj({ S: PDFName.of("URI"), URI: PDFString.of(playIntroUrl) })
           });
-          const existingAnnots = firstPage.node.lookup(PDFName.of("Annots"));
-          if (existingAnnots instanceof PDFArray) {
-            existingAnnots.push(playLink);
-          } else {
-            firstPage.node.set(PDFName.of("Annots"), context.obj([playLink]));
-          }
+          let annots = firstPage.node.lookup(PDFName.of("Annots"));
+          if (annots instanceof PDFArray) annots.push(playLink);
+          else firstPage.node.set(PDFName.of("Annots"), context.obj([playLink]));
         }
       }
 
@@ -1047,49 +872,26 @@ const FinalResult: React.FC = () => {
       const currentCastId = castId || localStorage.getItem("current_job_request_id") || "profile";
 
       // Build the download filename using the candidate's name from the resume
-      let resolvedName = candidateName && candidateName !== "Candidate"
+      const resolvedName = candidateName && candidateName !== "Candidate"
         ? candidateName
         : (resumeFileName && resumeFileName !== "Resume.pdf"
-          ? resumeFileName.split('.')[0].split('?')[0]
-              .replace(/^user_careercast_\d+(_|$)/i, '')
-              .replace(/_Digitalresume|_resume/gi, '')
-          : "Candidate");
-      
-      if (!resolvedName || resolvedName.trim() === "" || resolvedName === "_") {
-        resolvedName = resumeFileName && resumeFileName !== "Resume.pdf" 
-          ? resumeFileName.split('.')[0].split('?')[0] 
-          : "Candidate";
-      }
-      
-      let safeFileName = resolvedName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-      if (!safeFileName || safeFileName === "" || safeFileName === "_") {
-        safeFileName = "resume";
-      }
-      const downloadFileName = `${safeFileName}_digitalresume.pdf`;
+          ? resumeFileName.split('.')[0].split('?')[0].replace(/_Digitalresume|_resume/gi, '')
+          : "DigitalResume");
+      // Sanitize: remove spaces and any characters not safe for filenames
+      const safeFileName = resolvedName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+      const downloadFileName = `${safeFileName}_Digitalresume.pdf`;
 
       const isPdf = resumeUrl.toLowerCase().split('?')[0].endsWith('.pdf') || resumeUrl.includes('.pdf?');
 
       if (!isPdf) {
-        showToast("Enhancement is only available for PDF files. Downloading original.", "warning");
-        try {
-          const proxiedUrl = getProxiedUrl(resumeUrl);
-          const response = await fetch(proxiedUrl);
-          const blob = await response.blob();
-          const downloadUrl = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = downloadUrl;
-          a.download = downloadFileName;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          window.URL.revokeObjectURL(downloadUrl);
-        } catch (err) {
-          const a = document.createElement("a");
-          a.href = resumeUrl;
-          a.download = downloadFileName;
-          a.target = "_blank";
-          a.click();
-        }
+        showToast("Enhancement is only available for PDF files. Downloading original resume.", "warning");
+        const a = document.createElement("a");
+        a.href = resumeUrl;
+        a.download = downloadFileName;
+        a.target = "_blank";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
         return;
       }
 
@@ -1097,11 +899,11 @@ const FinalResult: React.FC = () => {
       trackEvent('pdf_download', currentCastId);
 
       try {
-        console.log("🛠️ Attempting enhanced PDF generation...");
         const enhancedUrl = await enhancePDF(resumeUrl, currentCastId);
 
         const response = await fetch(enhancedUrl);
         const blob = await response.blob();
+
         const downloadUrl = window.URL.createObjectURL(blob);
 
         const a = document.createElement("a");
@@ -1109,36 +911,23 @@ const FinalResult: React.FC = () => {
         a.download = downloadFileName;
         document.body.appendChild(a);
         a.click();
+
         document.body.removeChild(a);
         window.URL.revokeObjectURL(downloadUrl);
-        setShowDownloadPrompt(true); 
       } catch (enhanceErr) {
-        console.error("❌ Enhancement failed, trying proxied original download:", enhanceErr);
-        
-        try {
-          const proxiedUrl = getProxiedUrl(resumeUrl);
-          const response = await fetch(proxiedUrl);
-          const blob = await response.blob();
-          const downloadUrl = window.URL.createObjectURL(blob);
+        console.error("❌ Enhancement failed, falling back to original download:", enhanceErr);
 
-          const a = document.createElement("a");
-          a.href = downloadUrl;
-          a.download = downloadFileName;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          window.URL.revokeObjectURL(downloadUrl);
-          setShowDownloadPrompt(true);
-          showToast("Downloaded original resume (enhancement failed)", "warning");
-        } catch (finalErr) {
-          console.error("❌ Final fallback failed:", finalErr);
-          const a = document.createElement("a");
-          a.href = resumeUrl;
-          a.download = downloadFileName;
-          a.target = "_blank";
-          a.click();
-          showToast("Opening original resume in new tab", "warning");
-        }
+        // Final fallback: Direct download of the original resume
+        const a = document.createElement("a");
+        a.href = resumeUrl;
+        a.download = downloadFileName;
+        // For cross-origin S3 URLs, download attribute might be ignored.
+        // target="_blank" ensures it at least opens in a new tab if it can't download.
+        a.target = "_blank";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast("Downloaded original resume (enhancement failed)", "warning");
       }
     } catch (err) {
       console.error("Download process error:", err);
@@ -1150,8 +939,8 @@ const FinalResult: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
 
 
-      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b shadow-md z-[100] h-auto min-h-[4.5rem] md:h-20">
-        <div className="max-w-7xl mx-auto h-full flex flex-wrap md:flex-nowrap items-center justify-between md:justify-start gap-2 md:gap-3 px-3 sm:px-4 py-2.5 md:py-0 shadow-none">
+      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b shadow-md z-[100] h-24 md:h-20">
+        <div className="max-w-7xl mx-auto h-full flex items-center gap-3 px-4 shadow-none">
           {user && !isFromPdf && (
             <Button
               variant="outline"
@@ -1165,22 +954,22 @@ const FinalResult: React.FC = () => {
                   navigate("/dashboard");
                 }
               }}
-              className="flex items-center gap-1.5 border-gray-300 text-gray-700 h-9 md:h-10 shrink-0 px-2.5 md:px-3"
+              className="flex items-center gap-2 border-gray-300 text-gray-700 h-10 shrink-0 px-3"
             >
               <ArrowLeft className="h-4 w-4" />
-              <span className="text-xs md:text-sm font-medium">Back<span className="hidden sm:inline"> to Dashboard</span></span>
+              <span className="text-sm font-medium">Back to Dashboard</span>
             </Button>
           )}
           {user && !isFromPdf && portfolioUrl && (
             <div className="flex items-center shrink-0">
               {isEditingPortfolio ? (
-                <div className="flex items-center gap-2 bg-white border border-blue-400 rounded-xl p-1 pr-2 shadow-md animate-in fade-in zoom-in duration-200 h-11 w-full sm:w-auto">
+                <div className="flex items-center gap-2 bg-white border border-blue-400 rounded-xl p-1 pr-2 shadow-md animate-in fade-in zoom-in duration-200 h-11">
                   <input
                     type="text"
                     placeholder="https://yourportfolio.com"
                     value={tempPortfolioUrl}
                     onChange={(e) => setTempPortfolioUrl(e.target.value)}
-                    className="h-full px-3 bg-transparent border-none text-sm focus:outline-none flex-1 sm:w-48 xl:w-64"
+                    className="h-full px-3 bg-transparent border-none text-sm focus:outline-none w-48 xl:w-64"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSavePortfolio();
@@ -1212,28 +1001,28 @@ const FinalResult: React.FC = () => {
                     setIsEditingPortfolio(true);
                   }}
                 >
-                  <div className="bg-white rounded-[11px] h-9 md:h-11 px-3 md:px-4 flex items-center gap-2 md:gap-3 transition-colors">
-                    <div className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 bg-gray-50 rounded-lg transition-all duration-300">
-                      <Link2 className="h-3.5 w-3.5 md:h-4 md:w-4 text-gray-400 transition-all duration-300" />
+                  <div className="bg-white rounded-[11px] h-11 px-4 flex items-center gap-3 transition-colors">
+                    <div className="flex items-center justify-center w-8 h-8 bg-gray-50 rounded-lg transition-all duration-300">
+                      <Link2 className="h-4 w-4 text-gray-400 transition-all duration-300" />
                     </div>
 
                     <div className="flex flex-col justify-center min-w-0">
-                      <span className="text-[8px] md:text-[10px] uppercase tracking-wider font-bold text-gray-400 leading-tight">
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-gray-400 leading-tight">
                         Portfolio
                       </span>
                       {portfolioUrl ? (
-                        <div className="text-[11px] md:text-sm font-bold text-gray-800 truncate max-w-[80px] min-[400px]:max-w-[120px] sm:max-w-[180px] xl:max-w-[300px] leading-tight">
+                        <div className="text-sm font-bold text-gray-800 truncate max-w-[120px] xl:max-w-[220px] leading-tight">
                           {portfolioUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}
                         </div>
                       ) : (
-                        <span className="text-[11px] md:text-sm font-semibold text-gray-300 leading-tight">
-                          No portfolio
+                        <span className="text-sm font-semibold text-gray-300 leading-tight">
+                          No portfolio added
                         </span>
                       )}
                     </div>
 
-                    <div className="ml-auto p-1 md:p-1.5 text-gray-400 rounded-lg transition-all hover:bg-gray-100">
-                      <Pencil className="h-3 w-3 md:h-3.5 md:w-3.5" />
+                    <div className="ml-auto p-1.5 text-gray-400 rounded-lg transition-all hover:bg-gray-100">
+                      <Pencil className="h-3.5 w-3.5" />
                     </div>
                   </div>
                 </div>
@@ -1243,142 +1032,104 @@ const FinalResult: React.FC = () => {
 
           {/* Primary Action Group: Visible to both owner and visitor */}
           {!isFromPdf && (user || isExternalVisitor) && (
-                <div className="flex items-center gap-2 md:contents">
-                  <Button
-                    variant="outline"
-                    onClick={handleDownloadEnhanced}
-                    className="flex items-center gap-1.5 border-blue-500 text-blue-600 h-9 md:h-10 px-2.5 md:px-4 shrink-0 transition-opacity"
-                    disabled={!resumeUrl || loading || isSyncingWithVercel}
-                  >
-                    {loading || isSyncingWithVercel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                    <span className="text-xs md:text-sm font-semibold hidden lg:inline">Download Enhanced Resume</span>
-                    <span className="text-xs md:text-sm font-semibold lg:hidden">Download</span>
-                  </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={handleDownloadEnhanced}
+                className="flex items-center gap-2 border-blue-500 text-blue-600 h-10 px-3 md:px-4 shrink-0 transition-opacity"
+                disabled={!resumeUrl || loading || isSyncingWithVercel}
+              >
+                {loading || isSyncingWithVercel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <span className="text-sm font-semibold hidden sm:inline">Download Enhanced Resume</span>
+                <span className="text-sm font-semibold sm:hidden">Download</span>
+              </Button>
 
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const currentCastId = castId || idFromQuery || localStorage.getItem("current_job_request_id");
-                      const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
-                      const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
-                      const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
-                      
-                      navigator.clipboard.writeText(shareableLink).then(() => {
-                        setCopied(true);
-                        showToast('Link copied to clipboard! Share the link.', 'success');
-                        setTimeout(() => setCopied(false), 2000);
-                      }).catch(err => {
-                        console.error('Copy failed:', err);
-                        showToast('Failed to copy link. Please try again.', 'error');
-                      });
-                    }}
-                    className={`flex items-center gap-1.5 h-9 md:h-10 px-2.5 md:px-4 shrink-0 transition-all duration-300 ${
-                      copied 
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-600 shadow-inner' 
-                      : 'border-green-500 text-green-600 hover:bg-green-50'
-                    }`}
-                  >
-                    {copied ? <CheckCircle className="h-4 w-4 animate-in zoom-in" /> : <Link className="h-4 w-4" />}
-                    <span className="text-xs md:text-sm font-semibold hidden sm:inline">
-                      {copied ? 'Copied!' : 'Copy Link'}
-                    </span>
-                    <span className="text-xs md:text-sm font-semibold sm:hidden">
-                      {copied ? 'Copied' : 'Copy'}
-                    </span>
-                  </Button>
-                </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const currentCastId = castId || idFromQuery || localStorage.getItem("current_job_request_id");
+                  const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+                  const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
+                  const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
+                  navigator.clipboard.writeText(shareableLink).then(() => showToast('Link copied to clipboard! Share the link.', 'success'));
+                }}
+                className="flex items-center gap-2 border-green-500 text-green-600 h-10 px-3 md:px-4 shrink-0"
+              >
+                <Link className="h-4 w-4" />
+                <span className="text-sm font-semibold hidden sm:inline">Copy Link</span>
+                <span className="text-sm font-semibold sm:hidden">Copy</span>
+              </Button>
+            </>
           )}
 
-          {videoUrl && (
-              <button
-                onClick={() => {
-                  const currentCastId = castId || idFromQuery || "profile";
-                  trackEvent('play_intro', currentCastId);
-                  const params = new URLSearchParams(location.search);
-                  params.set('mode', 'video');
-                  navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-                  setPanelMode('video');
-                  setIsPanelOpen(true);
-                }}
-                className="inline-flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[2px_2px_4.1px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
-                style={{
-                  fontFamily: 'Poppins, sans-serif',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  letterSpacing: '-0.006px',
-                  color: '#FFF',
-                  textAlign: 'center'
-                }}
-              >
-                <img src="/Frame 215.svg" alt="Play" className="w-3.5 h-3.5 md:w-5 md:h-5 shrink-0" />
-                <span className="hidden min-[400px]:inline">Play Intro</span>
-                <span className="min-[400px]:hidden text-[11px]">Intro</span>
-              </button>
+          {(videoUrl || resumeOwnerEmail) && (
+            <button
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (resumeOwnerEmail) params.set('email', resumeOwnerEmail);
+                if (resumeUrl) params.set('resumeUrl', resumeUrl);
+                if (portfolioUrl) params.set('portfolio', portfolioUrl);
+                
+                // Track the event
+                const currentCastId = castId || idFromQuery || "profile";
+                trackEvent('play_intro', currentCastId);
+                
+                navigate(`/resume-intro?${params.toString()}`);
+              }}
+              className="inline-flex items-center justify-center gap-[8px] h-10 px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[2px_2px_4.1px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
+              style={{
+                fontFamily: 'Poppins, sans-serif',
+                fontSize: '13px',
+                fontWeight: 600,
+                letterSpacing: '-0.006px',
+                color: '#FFF',
+                textAlign: 'center'
+              }}
+            >
+              <img src="/Frame 215.svg" alt="Play" style={{ width: '20px', height: '20px', flexShrink: 0 }} />
+              <span>Play Intro</span>
+            </button>
           )}
 
           {!!portfolioUrl && (
-              <button
-                onClick={() => {
-                  const currentCastId = castId || idFromQuery || "profile";
-                  const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
-                  const emailParamForChat = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
-                  const resumeUrlParamForChat = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
-                  const portfolioParamForChat = portfolioUrl ? `&portfolio=${encodeURIComponent(portfolioUrl)}` : '';
-                  
-                  // Redirect to the dedicated Portfolio + Chat page
-                  navigate(`/chat?resumeId=${currentCastId}${emailParamForChat}${resumeUrlParamForChat}${portfolioParamForChat}&mode=chat`);
-                  
-                  trackEvent('lets_talk', currentCastId);
-                }}
-                className="flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[-1px_1px_4px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
-                style={{
-                  fontFamily: 'Poppins, sans-serif',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  letterSpacing: '-0.006px',
-                  color: '#FFF',
-                  textAlign: 'center'
-                }}
-              >
-                <img src="/Vector.svg" alt="Chat" className="w-3.5 h-3 md:w-[18px] md:h-[16px] shrink-0" />
-                <span className="hidden min-[400px]:inline">Let's Talk</span>
-                <span className="min-[400px]:hidden text-[11px]">Talk</span>
-              </button>
+            <button
+              onClick={() => {
+                const currentCastId = castId || idFromQuery || "profile";
+                const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+                const emailParamValue = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
+                const resumeUrlParam = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
+                trackEvent('lets_talk', currentCastId);
+                const chatUrl = `/chat?resumeId=${currentCastId}${emailParamValue}${resumeUrlParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`;
+                navigate(chatUrl);
+              }}
+              className="flex items-center justify-center gap-[8px] h-10 px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[-1px_1px_4px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
+              style={{
+                fontFamily: 'Poppins, sans-serif',
+                fontSize: '13px',
+                fontWeight: 600,
+                letterSpacing: '-0.006px',
+                color: '#FFF',
+                textAlign: 'center'
+              }}
+            >
+              <img src="/Vector.svg" alt="Chat" style={{ width: '18px', height: '16px', flexShrink: 0 }} />
+              <span>Let's Talk</span>
+            </button>
           )}
 
           <div className="flex items-center gap-3 ml-auto">
             {user && !isFromPdf && (
-              <Button variant="outline" onClick={handleLogout} className="h-9 md:h-10 px-3 md:px-4 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
-                <LogOut className="h-4 w-4 md:mr-2" />
-                <span className="text-xs md:text-sm font-medium hidden sm:inline">Logout</span>
+              <Button variant="outline" onClick={handleLogout} className="h-10 px-4 border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors shrink-0">
+                <LogOut className="h-4 w-4 mr-2" />
+                <span className="text-sm font-medium">Logout</span>
               </Button>
             )}
           </div>
         </div>
       </header>
 
-      <div className="relative pt-[120px] min-[520px]:pt-[100px] md:pt-24 pb-10 min-h-screen scrollbar-hide">
+      <div className="relative pt-28 md:pt-24 pb-10 min-h-screen scrollbar-hide">
         <div className="w-full max-w-7xl mx-auto px-4 pt-5">
-          {/* Success Onboarding Banner */}
-          {showDownloadPrompt && !isExternalVisitor && !isFromPdf && (
-            <div className="mb-5 flex justify-start">
-              <div className="inline-flex items-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl px-4 py-3 shadow-lg relative pr-10 animate-in fade-in slide-in-from-top-2 duration-500">
-                <div className="bg-white/20 p-1.5 rounded-lg shrink-0">
-                  <CheckCircle className="w-4 h-4 text-white" />
-                </div>
-                <p className="text-white text-sm font-bold whitespace-nowrap">
-                  Your digital resume is downloaded! 🎉
-                </p>
-                <button
-                  onClick={() => setShowDownloadPrompt(false)}
-                  className="absolute top-1.5 right-1.5 text-white/60 hover:text-white transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
           {resumeUrl ? (
             <div className="w-full bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden relative">
               {/* Optional: Add a notice for Word docs */}
@@ -1398,7 +1149,7 @@ const FinalResult: React.FC = () => {
                     : `${resumeUrl}#zoom=100&view=FitH`
                 }
                 title="Resume Preview"
-                className="w-full border-0 min-h-[500px] md:min-h-[1100px] h-[70vh] md:h-auto"
+                className="w-full border-0 min-h-[1100px]"
                 style={{ display: 'block', width: '100%' }}
                 allowFullScreen
               />
@@ -1428,7 +1179,6 @@ const FinalResult: React.FC = () => {
             onDownload={handleDownloadEnhanced}
             isDataLoading={loading}
             recruiterMode={true}
-            hideNavigation={true}
           />
         )
       }

@@ -42,7 +42,7 @@ export const Toast: React.FC<ToastProps> = ({
   return (
     <div className="animate-fadeIn shadow-[0_10px_30px_rgba(0,0,0,0.12)] rounded-2xl overflow-hidden border border-white/20 backdrop-blur-md pointer-events-auto">
       <div className={`${type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-rose-500' : type === 'warning' ? 'bg-amber-500' : 'bg-slate-800'} text-white px-5 py-3.5 flex items-center min-w-[280px]`}>
-        <span className="text-sm font-bold tracking-tight flex-1">{message}</span>
+        <span className="text-sm font-normal tracking-tight flex-1">{message}</span>
         <button
           onClick={() => {
             setIsVisible(false);
@@ -90,7 +90,7 @@ export const showToast = (message: string, type: 'success' | 'error' | 'info' | 
   toastElement.innerHTML = `
     <div class="animate-fadeIn shadow-[0_10px_30px_rgba(0,0,0,0.12)] rounded-2xl overflow-hidden border border-white/20 backdrop-blur-md">
       <div class="${type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-rose-500' : type === 'warning' ? 'bg-amber-500' : 'bg-slate-800'} text-white px-5 py-3.5 flex items-center min-w-[280px]">
-        <span class="text-sm font-bold tracking-tight flex-1">${message}</span>
+        <span class="text-sm font-normal tracking-tight flex-1">${message}</span>
         <button class="ml-4 text-white/60 hover:text-white focus:outline-none transition-colors text-xl leading-none">&times;</button>
       </div>
     </div>
