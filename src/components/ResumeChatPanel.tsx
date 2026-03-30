@@ -383,7 +383,7 @@ const ResumeChatPanel = ({
 
                 {mode === 'video' ? (
                     // Video Mode
-                    <div className="w-full bg-black p-0 overflow-hidden flex items-center justify-center min-h-[240px] relative">
+                    <div className="w-full bg-black overflow-hidden flex items-center justify-center relative max-h-[300px]">
                         {isDataLoading ? (
                             <div className="flex flex-col items-center gap-3 py-12">
                                 <Loader2 className="w-8 h-8 text-white animate-spin" />
