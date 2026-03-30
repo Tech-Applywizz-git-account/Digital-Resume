@@ -802,7 +802,7 @@ export default function DigitalResumeDashboard() {
             // Automatically redirect to download the newly replaced resume
             if (finalJobId) {
                 setTimeout(() => {
-                    navigate(`/final-result/${finalJobId}?autoDownload=true`);
+                    navigate(`/final-result/${finalJobId}?email=${encodeURIComponent(replacingResumeEmail)}&autoDownload=true`);
                 }, 1500);
             }
         } catch (err: any) {
@@ -826,7 +826,7 @@ export default function DigitalResumeDashboard() {
         sessionStorage.setItem('skip_admin_sync', 'true');
         const viewId = user_row.latest_job_request_id || 'profile';
         const cName = user_row.profiles?.full_name || "";
-        const emailPart = user_row.latest_job_request_id ? "" : `&email=${encodeURIComponent(user_row.email)}`;
+        const emailPart = `&email=${encodeURIComponent(user_row.email)}`;
         const resumeUrlPart = user_row.resume_url ? `&resumeUrl=${encodeURIComponent(user_row.resume_url)}` : "";
 
         navigate(`/final-result/${viewId}?candidateName=${encodeURIComponent(cName)}${emailPart}${resumeUrlPart}`);
