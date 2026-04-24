@@ -661,7 +661,7 @@ const FinalResult: React.FC = () => {
         supabase
           .from('digital_resume_by_crm')
           .select('company_application_email, first_name, last_name, full_name')
-          .eq('email', ownerEmail)
+          .eq('job_request_id', id)
           .maybeSingle()
           .then(({ data: crmUser }) => {
             if (crmUser?.company_application_email) {
@@ -724,7 +724,7 @@ const FinalResult: React.FC = () => {
         const { data: crmVideo } = await supabase
           .from('crm_recordings')
           .select('video_url')
-           .eq('email', ownerEmail)
+          .eq('job_request_id', id)
           .order('created_at', { ascending: false })
           .limit(1);
 
@@ -739,7 +739,7 @@ const FinalResult: React.FC = () => {
           const { data: regVideo } = await supabase
             .from('recordings')
             .select('storage_path')
-             .eq('email', ownerEmail)
+            .eq('job_request_id', id)
             .order('created_at', { ascending: false })
             .limit(1);
 
