@@ -5437,6 +5437,8 @@ export default function Landing() {
           .from('crm_recordings')
           .select('video_url')
           .eq('job_request_id', id)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
 
         if (recordingData?.video_url) {
@@ -5448,8 +5450,18 @@ export default function Landing() {
 
       if (regularResult.data) {
         setResumeUrl(regularResult.data.resume_path);
-        if (regularResult.data.recordings?.[0]?.storage_path) {
-          const path = regularResult.data.recordings[0].storage_path;
+        
+        // Fetch latest recording for regular user
+        const { data: recData } = await (supabase as any)
+          .from('recordings')
+          .select('storage_path')
+          .eq('job_request_id', id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (recData?.storage_path) {
+          const path = recData.storage_path;
           setVideoUrl(path.startsWith('http') ? path : (supabase as any).storage.from('recordings').getPublicUrl(path).data.publicUrl);
         }
       }

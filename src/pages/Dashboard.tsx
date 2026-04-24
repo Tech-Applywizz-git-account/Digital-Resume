@@ -283,7 +283,11 @@ export default function Dashboard() {
           const jobsWithDetails = await Promise.all(
             supabaseJobs.map(async (item) => {
               const [recRes, sessionRes, engagedRes] = await Promise.all([
-                supabase.from('crm_recordings').select('video_url').eq('job_request_id', item.id).limit(1),
+                supabase.from('crm_recordings')
+                  .select('video_url')
+                  .eq('job_request_id', item.id)
+                  .order('created_at', { ascending: false })
+                  .limit(1),
                 supabase.from('resume_sessions').select('id', { count: 'exact', head: true }).eq('resume_id', item.id),
                 supabase.from('resume_sessions').select('id', { count: 'exact', head: true })
                   .eq('resume_id', item.id)
@@ -319,8 +323,7 @@ export default function Dashboard() {
             job_description,
             resume_path,
             status,
-            created_at,
-            recordings (storage_path)
+            created_at
           `)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
@@ -329,22 +332,28 @@ export default function Dashboard() {
 
         // Fetch session counts and engagement for regular user
         const jobsWithViews = await Promise.all(
-          (data || []).map(async (item) => {
-            const [sessionRes, engagedRes] = await Promise.all([
-              supabase.from('resume_sessions').select('id', { count: 'exact', head: true }).eq('resume_id', item.id),
-              supabase.from('resume_sessions').select('id', { count: 'exact', head: true })
-                .eq('resume_id', item.id)
-                .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true')
-            ]);
+            (data || []).map(async (item) => {
+              const [recRes, sessionRes, engagedRes] = await Promise.all([
+                supabase.from('recordings')
+                  .select('storage_path')
+                  .eq('job_request_id', item.id)
+                  .order('created_at', { ascending: false })
+                  .limit(1),
+                supabase.from('resume_sessions').select('id', { count: 'exact', head: true }).eq('resume_id', item.id),
+                supabase.from('resume_sessions').select('id', { count: 'exact', head: true })
+                  .eq('resume_id', item.id)
+                  .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true')
+              ]);
 
-            return {
-              ...item,
-              resume_path: item.resume_path || null,
-              view_count: sessionRes.count || 0,
-              engaged_count: engagedRes.count || 0,
-              vercel_portfolio_url: null
-            };
-          })
+              return {
+                ...item,
+                resume_path: item.resume_path || null,
+                recordings: recRes.data || [],
+                view_count: sessionRes.count || 0,
+                engaged_count: engagedRes.count || 0,
+                vercel_portfolio_url: null
+              };
+            })
         );
 
         setcareercasts(jobsWithViews);

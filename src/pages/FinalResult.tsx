@@ -226,8 +226,11 @@ const FinalResult: React.FC = () => {
         setPanelMode(mode as 'chat' | 'video' | 'resume');
         setIsPanelOpen(true);
       }
+    } else if (!mode && isPanelOpen) {
+      // ✅ If mode is removed from URL, ensure panel closes
+      setIsPanelOpen(false);
     }
-  }, [location.search, isPanelOpen, panelMode, portfolioUrl]);
+  }, [location.search, isPanelOpen, panelMode, portfolioUrl]); // Added dependencies back for correctness
 
   // ✅ Load data from localStorage or Supabase
   useEffect(() => {
@@ -459,6 +462,32 @@ const FinalResult: React.FC = () => {
           }
         } catch (err) {
           console.error(`❌ Error fetching Vercel details:`, err);
+        }
+      }
+
+      if (!foundPortfolio) {
+        // Fallback: Check Supabase portfolio_settings if API returned nothing
+        console.log("🔍 API returned no portfolio, checking Supabase portfolio_settings fallback...");
+        const targetEmail = resumeOwnerEmail || (emailsToTry.length > 0 ? emailsToTry[0] : null);
+        const targetUserId = resumeOwnerUserId || user?.id;
+
+        if (targetUserId || targetEmail) {
+          try {
+            const { data: ps } = await supabase
+              .from('portfolio_settings')
+              .select('url')
+              .or(`user_id.eq.${targetUserId},email.eq.${targetEmail}`)
+              .maybeSingle();
+
+            if (ps?.url) {
+              console.log("✅ Found fallback portfolio in Supabase:", ps.url);
+              setPortfolioUrl(ps.url);
+              setTempPortfolioUrl(ps.url);
+              foundPortfolio = true;
+            }
+          } catch (err) {
+            console.error("Error in portfolio fallback check:", err);
+          }
         }
       }
 
@@ -867,8 +896,8 @@ const FinalResult: React.FC = () => {
   };
 
   const closePanel = () => {
-    setIsPanelOpen(false);
-    // When closing, remove the mode from URL to prevent auto-opening on refresh
+    // When closing, remove the mode from URL. The useEffect will handle setting isPanelOpen to false.
+    // This avoids race conditions where the panel re-opens before the URL updates.
     const params = new URLSearchParams(location.search);
     params.delete('mode');
     navigate(`${location.pathname}?${params.toString()}`, { replace: true });
@@ -1255,7 +1284,7 @@ const FinalResult: React.FC = () => {
           )}
 
           {/* Primary Action Group: Visible to both owner and visitor */}
-          {!isFromPdf && (user || isExternalVisitor) && (
+          {(user || isExternalVisitor) && (
                 <div className="flex items-center gap-2 md:contents">
                   <Button
                     variant="outline"
