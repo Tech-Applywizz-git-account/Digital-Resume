@@ -816,24 +816,37 @@ const FinalResult: React.FC = () => {
       }
 
       // ✅ Upsert portfolio to Supabase (Source of Truth includes manual overrides)
-      if (targetUserId) {
-        console.log("🔄 Saving portfolio to Supabase for user:", targetUserId);
-        const { data: existing } = await supabase.from('portfolio_settings')
-          .select('id')
-          .eq('user_id', targetUserId)
-          .maybeSingle();
+      if (targetUserId || resumeOwnerEmail) {
+  console.log("🔄 Saving portfolio to Supabase");
 
-        if (existing) {
-          await supabase.from('portfolio_settings')
-            .update({ url: trimmedUrl })
-            .eq('user_id', targetUserId);
-          console.log("✅ Updated portfolio in Supabase");
-        } else {
-          await supabase.from('portfolio_settings')
-            .insert({ url: trimmedUrl, user_id: targetUserId });
-          console.log("✅ Inserted new portfolio record in Supabase");
-        }
-      }
+  // 1️⃣ Check existing record (user_id OR email)
+  const { data: existing } = await supabase
+    .from('portfolio_settings')
+    .select('id')
+    .or(`user_id.eq.${targetUserId},email.eq.${resumeOwnerEmail}`)
+    .maybeSingle();
+
+  const payload = {
+    url: trimmedUrl,
+    user_id: targetUserId || null,
+    email: resumeOwnerEmail || null
+  };
+
+  if (existing) {
+    await supabase
+      .from('portfolio_settings')
+      .update(payload)
+      .or(`user_id.eq.${targetUserId},email.eq.${resumeOwnerEmail}`);
+
+    console.log("✅ Updated portfolio in Supabase");
+  } else {
+    await supabase
+      .from('portfolio_settings')
+      .insert(payload);
+
+    console.log("✅ Inserted new portfolio record in Supabase");
+  }
+}
 
       setPortfolioUrl(trimmedUrl);
       setHasManuallyUpdatedPortfolio(true);
