@@ -494,7 +494,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleReRecord = (cast: any) => {
+  const populateLocalStorage = (cast: any) => {
     // Populate localStorage so steps can resume correctly
     localStorage.setItem('careercast_jobTitle', cast.job_title || '');
     localStorage.setItem('careercast_jobDescription', cast.job_description || '');
@@ -520,6 +520,12 @@ export default function Dashboard() {
     localStorage.setItem('teleprompterText', actualScript);
     localStorage.setItem('teleprompterSpeed', savedSpeed);
     
+    return { actualScript, savedSpeed };
+  };
+
+  const handleReRecord = (cast: any) => {
+    const { actualScript } = populateLocalStorage(cast);
+    
     // Check if the script is just the placeholder
     const isPlaceholder = actualScript === "Generated from resume analysis";
 
@@ -532,6 +538,11 @@ export default function Dashboard() {
     } else {
       navigate('/step2?mode=continue');
     }
+  };
+
+  const handleContinue = (cast: any) => {
+    populateLocalStorage(cast);
+    navigate('/step1?mode=continue');
   };
   const handleViewDetails = (id: string, resumePath?: string) => {
     // We remove the resumeUrl from the query string to hide sensitive information
@@ -754,7 +765,7 @@ export default function Dashboard() {
                           <button
                             onClick={() => {
                               const latest = careercasts[0];
-                              if (latest) handleReRecord(latest);
+                              if (latest) handleContinue(latest);
                               else handleNewCast();
                             }}
                             className="text-orange-600 font-bold text-[9px] hover:underline text-left leading-tight"
@@ -961,7 +972,7 @@ export default function Dashboard() {
                                         </button>
                                       ) : (
                                         <button
-                                          onClick={() => handleReRecord(cast)}
+                                          onClick={() => handleContinue(cast)}
                                           className="border-2 border-orange-500 text-orange-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-orange-500 hover:text-white transition-colors"
                                         >
                                           Continue
@@ -1083,7 +1094,7 @@ export default function Dashboard() {
                                             </button>
                                           ) : (
                                             <button
-                                              onClick={() => handleReRecord(cast)}
+                                              onClick={() => handleContinue(cast)}
                                               className="flex-1 border-2 border-orange-500 text-orange-600 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-orange-50 transition-colors"
                                             >
                                               <Play className="w-4 h-4" />
