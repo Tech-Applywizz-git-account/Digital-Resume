@@ -137,6 +137,19 @@ export default function DigitalResumeDashboard() {
         } catch (e) { return { totalCalls: 0, totalTokens: 0, totalCost: 0 }; }
     });
     const [isUsageLoading, setIsUsageLoading] = useState(false);
+    
+    // Pagination state
+    const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10);
+    const [currentPage, setCurrentPage] = useState(1);
+
+    // CSS to hide scrollbars but maintain functionality
+    const noScrollbarStyle = {
+        msOverflowStyle: 'none',
+        scrollbarWidth: 'none' as const,
+        WebkitScrollbar: {
+            display: 'none'
+        }
+    };
 
     // Scroll position tracking
     const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -176,6 +189,7 @@ export default function DigitalResumeDashboard() {
 
     useEffect(() => {
         sessionStorage.setItem('admin_dashboard_activeTab', activeTab);
+        setCurrentPage(1); // Reset page on tab change
     }, [activeTab]);
 
     // Restore scroll position after data loads
@@ -264,10 +278,19 @@ export default function DigitalResumeDashboard() {
             if (crmError) throw crmError;
             if (!crmData) return;
 
+            // Filter out any duplicates from the database result by email
+            const seenEmailsSet = new Set();
+            const uniqueCrmData = crmData.filter(u => {
+                const email = u.email?.toLowerCase();
+                if (!email || seenEmailsSet.has(email)) return false;
+                seenEmailsSet.add(email);
+                return true;
+            });
+
             // 2. Identify identifiers
-            const userIds = crmData.map(u => u.user_id).filter(id => !!id);
+            const userIds = uniqueCrmData.map(u => u.user_id).filter(id => !!id);
             const userEmails = Array.from(new Set(
-                crmData.flatMap(u => [u.email, u.company_application_email]).filter(Boolean) as string[]
+                uniqueCrmData.flatMap(u => [u.email, u.company_application_email]).filter(Boolean) as string[]
             ));
 
             if (userIds.length > 0 || userEmails.length > 0) {
@@ -328,7 +351,7 @@ export default function DigitalResumeDashboard() {
                 });
 
                 // Immediately load the dashboard interface with rapid Supabase records!
-                const initialUsersWithDetails = crmData.map(user => {
+                const initialUsersWithDetails = uniqueCrmData.map(user => {
                     const localResume = resumeMap.get(user.email);
                     return {
                         ...user,
@@ -420,7 +443,7 @@ export default function DigitalResumeDashboard() {
                     }
                 })();
             } else {
-                setUsers(crmData);
+                setUsers(uniqueCrmData);
             }
         } catch (error: any) {
             console.error('Error fetching CRM users:', error);
@@ -438,8 +461,18 @@ export default function DigitalResumeDashboard() {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setAdmins(data || []);
-            if (data) sessionStorage.setItem('cached_crm_admins', JSON.stringify(data));
+            
+            // Filter out any duplicates from the database result by email
+            const seenAdminsSet = new Set();
+            const uniqueAdmins = (data || []).filter(a => {
+                const email = a.email?.toLowerCase();
+                if (!email || seenAdminsSet.has(email)) return false;
+                seenAdminsSet.add(email);
+                return true;
+            });
+
+            setAdmins(uniqueAdmins);
+            if (data) sessionStorage.setItem('cached_crm_admins', JSON.stringify(uniqueAdmins));
         } catch (error: any) {
             console.error('Error fetching admins:', error);
         }
@@ -510,6 +543,18 @@ export default function DigitalResumeDashboard() {
 
             const normalizedEmail = newUserEmail.trim().toLowerCase();
             const defaultPassword = "Applywizz@123";
+
+            // 0. Pre-check for duplicates in current list
+            const isDuplicate = users.some(u => 
+                u.email?.toLowerCase() === normalizedEmail || 
+                u.company_application_email?.toLowerCase() === normalizedEmail
+            );
+
+            if (isDuplicate) {
+                setMessage({ type: 'error', text: 'This email is already registered in the CRM.' });
+                setIsUserAdding(false);
+                return;
+            }
 
             // 1. Create a transient supabase client to sign up the new user
             const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -637,6 +682,15 @@ export default function DigitalResumeDashboard() {
             setMessage(null);
 
             const normalizedEmail = newAdminEmail.trim().toLowerCase();
+
+            // 0. Pre-check for duplicates in current list
+            const isDuplicate = admins.some(a => a.email.toLowerCase() === normalizedEmail);
+
+            if (isDuplicate) {
+                setMessage({ type: 'error', text: 'This email is already an authorized admin.' });
+                setIsAdminAdding(false);
+                return;
+            }
 
             // 1. Create a transient supabase client to sign up the new admin 
             // without affecting the current admin's session.
@@ -943,6 +997,49 @@ export default function DigitalResumeDashboard() {
         (u.company_application_email?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
     );
 
+    // Pagination Logic
+    const totalUserPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredUsers.length / itemsPerPage);
+    const paginatedUsers = itemsPerPage === 'all' 
+        ? filteredUsers 
+        : filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+    const totalLogPages = itemsPerPage === 'all' ? 1 : Math.ceil(usageLogs.length / itemsPerPage);
+    const paginatedLogs = itemsPerPage === 'all' 
+        ? usageLogs 
+        : usageLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+    const handleItemsPerPageChange = (val: string) => {
+        setItemsPerPage(val === 'all' ? 'all' : parseInt(val));
+        setCurrentPage(1);
+    };
+
+    const PaginationControls = ({ totalPages }: { totalPages: number }) => {
+        if (itemsPerPage === 'all' || totalPages <= 1) return null;
+        return (
+            <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+                <p className="text-xs text-slate-500 font-medium">
+                    Showing page <span className="font-bold text-slate-900">{currentPage}</span> of <span className="font-bold text-slate-900">{totalPages}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                        Previous
+                    </button>
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                        Next
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
     const formatDate = (date: string) =>
         new Date(date).toLocaleDateString('en-US', {
             month: 'short',
@@ -1053,28 +1150,32 @@ export default function DigitalResumeDashboard() {
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
-                                        <Users className="w-4 h-4 text-[#0B4F6C]" />
+                                </div>
+                                    <div className="flex items-center gap-2 px-3 py-1 bg-[#0B4F6C]/5 border border-[#0B4F6C]/10 rounded-lg">
+                                        <Users className="w-3.5 h-3.5 text-[#0B4F6C]" />
                                         <span className="text-xs font-bold text-slate-700">
                                             {users.length} <span className="text-[10px] text-slate-500 uppercase tracking-tight ml-0.5">Total Users</span>
                                         </span>
                                     </div>
-                                </div>
-                                <div className="sm:hidden flex items-center justify-between px-4 py-2 bg-[#0B4F6C]/5 rounded-xl border border-[#0B4F6C]/10">
-                                    <div className="flex items-center gap-2 px-3 py-1 bg-white border border-slate-200 rounded-lg shadow-sm">
-                                        <Users className="w-4 h-4 text-[#0B4F6C]" />
-                                        <span className="text-xs font-bold text-slate-700">
-                                            {users.length} <span className="text-[10px] text-slate-500 uppercase tracking-tight ml-0.5">Total</span>
-                                        </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Show</span>
+                                        <select 
+                                            value={itemsPerPage.toString()} 
+                                            onChange={(e) => handleItemsPerPageChange(e.target.value)}
+                                            className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-[#0B4F6C]/10 transition-all cursor-pointer shadow-sm"
+                                        >
+                                            <option value="10">10 per page</option>
+                                            <option value="30">30 per page</option>
+                                            <option value="50">50 per page</option>
+                                            <option value="100">100 per page</option>
+                                            <option value="200">200 per page</option>
+                                            <option value="300">300 per page</option>
+                                            <option value="500">500 per page</option>
+                                            <option value="1000">1000 per page</option>
+                                            <option value="all">All records</option>
+                                        </select>
                                     </div>
-                                    <button
-                                        onClick={() => fetchUsers()}
-                                        className="p-2 text-[#0B4F6C] hover:bg-white rounded-lg transition-all"
-                                    >
-                                        <RefreshCcw className={`w-4 h-4 ${isRefreshingUsers ? 'animate-spin' : ''}`} />
-                                    </button>
                                 </div>
-                            </div>
 
                             {message && (
                                 <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
@@ -1089,7 +1190,14 @@ export default function DigitalResumeDashboard() {
 
                             {/* Table container */}
                             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0">
-                                <div ref={tableScrollRef} className="overflow-y-auto flex-1">
+                                <style dangerouslySetInnerHTML={{ __html: `
+                                    .hide-scrollbar::-webkit-scrollbar { display: none; }
+                                    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+                                `}} />
+                                <div 
+                                    ref={tableScrollRef} 
+                                    className="overflow-y-auto flex-1 hide-scrollbar"
+                                >
                                     {loading ? (
                                         <div className="flex flex-col items-center justify-center h-full">
                                             <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin mb-3" />
@@ -1108,8 +1216,9 @@ export default function DigitalResumeDashboard() {
                                             <table className="w-full text-left border-collapse table-fixed hidden lg:table">
                                                 <thead className="sticky top-0 bg-slate-50 z-10">
                                                     <tr className="border-b border-slate-200 bg-[#fbfcfd]">
-                                                        <th className="px-4 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[15%] text-left">Company Application Email</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[22%] text-left">Personal Email</th>
+                                                        <th className="px-4 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[5%] text-center">S.No</th>
+                                                        <th className="px-4 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-left">Company Application Email</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[20%] text-left">Personal Email</th>
                                                         <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[18%] text-left">Name</th>
                                                         <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Resume</th>
                                                         <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Credits</th>
@@ -1119,27 +1228,25 @@ export default function DigitalResumeDashboard() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100">
-                                                    {filteredUsers.map((user_row) => (
+                                                    {paginatedUsers.map((user_row, index) => (
                                                         <tr key={user_row.email} className="hover:bg-slate-50/80 transition-colors group">
+                                                            <td className="px-4 py-5 text-center font-bold text-slate-400 text-[13px]">
+                                                                {itemsPerPage === 'all' ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1}
+                                                            </td>
                                                             <td className="px-4 py-5 text-[14px] font-medium text-slate-800">
-                                                                <div className="flex flex-col">
-                                                                    {user_row.profiles?.full_name && (
-                                                                        <span className="font-bold text-slate-900">{user_row.profiles.full_name}</span>
-                                                                    )}
-                                                                    {user_row.company_application_email ? (
-                                                                        <span className={user_row.profiles?.full_name ? "text-xs text-slate-500" : ""}>
-                                                                            {user_row.company_application_email}
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="text-slate-400 font-normal">N/A</span>
-                                                                    )}
-                                                                </div>
+                                                                {user_row.company_application_email ? (
+                                                                    <span className="text-slate-700">{user_row.company_application_email}</span>
+                                                                ) : (
+                                                                    <span className="text-slate-400 font-normal italic">N/A</span>
+                                                                )}
                                                             </td>
                                                             <td className="px-6 py-5">
                                                                 <p className="font-medium text-slate-600 text-[13px] truncate">{user_row.email}</p>
                                                             </td>
                                                             <td className="px-6 py-5">
-                                                                <p className="font-bold text-slate-800 text-[13px] truncate">{user_row.lead_name || 'N/A'}</p>
+                                                                <p className="font-bold text-slate-800 text-[13px] truncate">
+                                                                    {user_row.lead_name || user_row.profiles?.full_name || user_row.email.split('@')[0]}
+                                                                </p>
                                                             </td>
                                                             <td className="px-6 py-5 text-center">
                                                                 <div className="flex flex-col items-center gap-2">
@@ -1273,7 +1380,7 @@ export default function DigitalResumeDashboard() {
 
                                             {/* Mobile Card Layout for Users */}
                                             <div className="lg:hidden divide-y divide-slate-100 bg-white">
-                                                {filteredUsers.map((user_row) => (
+                                                {paginatedUsers.map((user_row) => (
                                                     <div key={user_row.email} className="p-4 hover:bg-slate-50/50 transition-colors">
                                                         <div className="flex justify-between items-start mb-3">
                                                             <div className="flex flex-col min-w-0 pr-2">
@@ -1399,6 +1506,7 @@ export default function DigitalResumeDashboard() {
                                         </>
                                     )}
                                 </div>
+                                <PaginationControls totalPages={totalUserPages} />
                             </div>
                         </>
                     ) : (
@@ -1436,15 +1544,35 @@ export default function DigitalResumeDashboard() {
                             </div>
 
                             {/* Usage Log Table */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0">
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0 mb-6">
                                 <div className="p-4 border-b border-slate-100 bg-[#fbfcfd] flex justify-between items-center shrink-0">
                                     <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                         <RefreshCcw className={`w-4 h-4 text-blue-600 ${isUsageLoading ? 'animate-spin' : ''}`} />
                                         Recent AI Conversations
                                     </h3>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase">showing {usageLogs.length} entries</span>
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Show</span>
+                                            <select 
+                                                value={itemsPerPage.toString()} 
+                                                onChange={(e) => handleItemsPerPageChange(e.target.value)}
+                                                className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-[#0B4F6C]/10 transition-all cursor-pointer shadow-sm"
+                                            >
+                                                <option value="10">10 per page</option>
+                                                <option value="30">30 per page</option>
+                                                <option value="50">50 per page</option>
+                                                <option value="100">100 per page</option>
+                                                <option value="200">200 per page</option>
+                                                <option value="300">300 per page</option>
+                                                <option value="500">500 per page</option>
+                                                <option value="1000">1000 per page</option>
+                                                <option value="all">All records</option>
+                                            </select>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">showing {usageLogs.length} entries</span>
+                                    </div>
                                 </div>
-                                <div className="overflow-y-auto flex-1">
+                                <div className="overflow-y-auto flex-1 hide-scrollbar">
                                     {isUsageLoading && usageLogs.length === 0 ? (
                                         <div className="flex flex-col items-center justify-center h-full py-20">
                                             <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin mb-3" />
@@ -1463,7 +1591,8 @@ export default function DigitalResumeDashboard() {
                                             <table className="w-full text-left border-collapse table-fixed hidden lg:table">
                                                 <thead className="sticky top-0 bg-slate-50 z-10">
                                                     <tr className="border-b border-slate-200 bg-[#fbfcfd]">
-                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[30%]">Candidate / User</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[5%] text-center">S.No</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[25%]">Candidate / User</th>
                                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%]">Feature</th>
                                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Tokens</th>
                                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Cost</th>
@@ -1471,8 +1600,11 @@ export default function DigitalResumeDashboard() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100">
-                                                    {usageLogs.map((log) => (
+                                                    {paginatedLogs.map((log, index) => (
                                                         <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                                                            <td className="px-6 py-4 text-center font-bold text-slate-400 text-[11px]">
+                                                                {itemsPerPage === 'all' ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1}
+                                                            </td>
                                                             <td className="px-6 py-4">
                                                                 <div className="flex items-center gap-2">
                                                                     <div className={`w-2 h-2 rounded-full ${log.user_id ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
@@ -1502,7 +1634,7 @@ export default function DigitalResumeDashboard() {
 
                                             {/* Mobile Card Layout for AI Usage */}
                                             <div className="lg:hidden divide-y divide-slate-100 bg-white">
-                                                {usageLogs.map((log) => (
+                                                {paginatedLogs.map((log) => (
                                                     <div key={log.id} className="p-4 hover:bg-slate-50/50 transition-colors">
                                                         <div className="flex justify-between items-start mb-2">
                                                             <div className="flex items-center gap-2 min-w-0">
@@ -1530,6 +1662,7 @@ export default function DigitalResumeDashboard() {
                                         </>
                                     )}
                                 </div>
+                                <PaginationControls totalPages={totalLogPages} />
                             </div>
                         </div>
                     )}

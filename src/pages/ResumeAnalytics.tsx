@@ -391,6 +391,7 @@ export default function ResumeAnalytics() {
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-slate-50/50">
+                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-12 text-center">S.No</th>
                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Resume / Job Title</th>
                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Views</th>
                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Engagements</th>
@@ -398,11 +399,12 @@ export default function ResumeAnalytics() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
-                                    {Object.entries(resumeTitles).map(([id, title]) => {
+                                    {Object.entries(resumeTitles).map(([id, title], index) => {
                                         const rSessions = sessions.filter(s => s.resume_id === id);
                                         const rEvents = events.filter(e => e.resume_id === id);
                                         return (
                                             <tr key={id} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="px-6 py-4 text-xs font-bold text-slate-400 text-center">{index + 1}</td>
                                                 <td className="px-6 py-4 text-xs font-bold text-slate-800">{title}</td>
                                                 <td className="px-6 py-4 text-xs font-bold text-slate-600 text-center">{rSessions.length}</td>
                                                 <td className="px-6 py-4 text-xs font-bold text-slate-600 text-center">
@@ -436,6 +438,7 @@ export default function ResumeAnalytics() {
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-slate-50/50">
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-12 text-center">S.No</th>
                                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Time</th>
                                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Location</th>
                                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Device</th>
@@ -444,8 +447,9 @@ export default function ResumeAnalytics() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
-                                {sessions.length > 0 ? sessions.map(session => (
+                                {sessions.length > 0 ? sessions.map((session, index) => (
                                     <tr key={session.id} className="hover:bg-slate-50/50 transition-colors group">
+                                        <td className="px-6 py-4 text-center font-bold text-slate-400 text-xs">{index + 1}</td>
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col">
                                                 <span className="text-xs font-bold text-slate-800">

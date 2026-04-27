@@ -221,6 +221,9 @@ const HrEmailDetailsPage: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200 text-xs sm:text-sm">
                       <thead className="bg-gray-50">
                         <tr>
+                          <th className="px-4 py-3 sm:px-6 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider w-16">
+                            S.No
+                          </th>
                           <th className="px-4 py-3 sm:px-6 sm:py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
                             <div className="flex items-center gap-1 sm:gap-2">
                               <Briefcase className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -245,8 +248,11 @@ const HrEmailDetailsPage: React.FC = () => {
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {hrEmails.length > 0 ? (
-                          hrEmails.map((hr) => (
+                          hrEmails.map((hr, index) => (
                             <tr key={hr.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
+                                <div className="font-bold text-gray-400">{index + 1}</div>
+                              </td>
                               <td className="px-4 py-3 sm:px-6 sm:py-4 whitespace-nowrap">
                                 <div className="font-medium text-gray-900">{hr.companyName}</div>
                               </td>
