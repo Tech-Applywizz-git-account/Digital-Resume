@@ -75,6 +75,7 @@ const Step1: React.FC = () => {
                 .from('crm_recordings')
                 .select('video_url')
                 .eq('job_request_id', job.id)
+                .order('created_at', { ascending: false })
                 .limit(1);
               return { ...job, video_url: recs?.[0]?.video_url };
             }));
@@ -391,7 +392,12 @@ const Step1: React.FC = () => {
                             </button>
                             
                             <button
-                              onClick={() => item.video_url && setSelectedVideo(item.video_url)}
+                              onClick={() => {
+                                if (item.video_url) {
+                                  console.log("Playing video_url from database:", item.video_url);
+                                  setSelectedVideo(item.video_url);
+                                }
+                              }}
                               disabled={!item.video_url}
                               className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-emerald-200 hover:text-emerald-600 transition-colors text-gray-500 disabled:opacity-30"
                               title="Play Video"

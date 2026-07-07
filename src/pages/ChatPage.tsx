@@ -130,7 +130,8 @@ const ChatPage: React.FC = () => {
 
                     // Resolve Video URL
                     if (crmResult.data) {
-                        const { data: rec } = await supabase.from("crm_recordings").select("video_url").eq("job_request_id", resumeId).maybeSingle();
+                        const { data: recs } = await supabase.from("crm_recordings").select("video_url").eq("job_request_id", resumeId).order("created_at", { ascending: false }).limit(1);
+                        const rec = recs && recs.length > 0 ? recs[0] : null;
                         if (rec?.video_url) {
                             setVideoUrl(rec.video_url.startsWith("http") ? rec.video_url :
                                 supabase.storage.from("CRM_users_recordings").getPublicUrl(rec.video_url).data.publicUrl);

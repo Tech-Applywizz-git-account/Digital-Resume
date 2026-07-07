@@ -307,11 +307,33 @@ const Record: React.FC = () => {
 
       if (isCRMUser && crmEmail) {
         const filePath = `${crmEmail}/${fileName}`;
-        await supabase.storage.from("CRM_users_recordings").upload(filePath, blob, { upsert: true, contentType: "video/webm" });
-        publicUrl = supabase.storage.from("CRM_users_recordings").getPublicUrl(filePath).data.publicUrl;
+        console.log("Generated filename:", fileName);
+        console.log("Upload path:", filePath);
 
-        const { data: existingRecording } = await supabase.from("crm_recordings").select("id").eq("job_request_id", jobRequestId).maybeSingle();
-        await supabase.from("crm_recordings").insert({ email: crmEmail, user_id: currentUser.id, job_request_id: jobRequestId, video_url: publicUrl, duration: durationSeconds, file_size: blob.size, status: "completed" });
+        const uploadResponse = await supabase.storage.from("CRM_users_recordings").upload(filePath, blob, { upsert: true, contentType: "video/webm" });
+        console.log("Upload response:", uploadResponse);
+
+        if (uploadResponse.error) {
+          throw uploadResponse.error;
+        }
+
+        const dataPath = uploadResponse.data.path;
+        console.log("data.path:", dataPath);
+
+        publicUrl = supabase.storage.from("CRM_users_recordings").getPublicUrl(dataPath).data.publicUrl;
+        console.log("Generated public URL:", publicUrl);
+
+        const insertPayload = { email: crmEmail, user_id: currentUser.id, job_request_id: jobRequestId, video_url: publicUrl, duration: durationSeconds, file_size: blob.size, status: "completed" };
+        console.log("Database insert payload (crm_recordings):", insertPayload);
+
+        const { data: existingRecordings } = await supabase.from("crm_recordings").select("id").eq("job_request_id", jobRequestId);
+        const existingRecording = existingRecordings && existingRecordings.length > 0 ? existingRecordings[0] : null;
+        
+        if (existingRecording) {
+          await supabase.from("crm_recordings").update(insertPayload).eq("job_request_id", jobRequestId);
+        } else {
+          await supabase.from("crm_recordings").insert(insertPayload);
+        }
         await supabase.from("crm_job_requests").update({ application_status: "recorded", updated_at: new Date().toISOString() }).eq("id", jobRequestId);
 
         if (!existingRecording && creditsRemaining !== null && creditsRemaining > 0) {
@@ -320,11 +342,33 @@ const Record: React.FC = () => {
         }
       } else {
         const filePath = `${currentUser.id}/${fileName}`;
-        await supabase.storage.from("recordings").upload(filePath, blob, { upsert: true, contentType: "video/webm" });
-        publicUrl = supabase.storage.from("recordings").getPublicUrl(filePath).data.publicUrl;
+        console.log("Generated filename:", fileName);
+        console.log("Upload path:", filePath);
 
-        const { data: existingRecording } = await supabase.from("recordings").select("id").eq("job_request_id", jobRequestId).maybeSingle();
-        await supabase.from("recordings").insert({ job_request_id: jobRequestId, email: currentUser.email, storage_path: publicUrl, duration_seconds: durationSeconds, size_bytes: blob.size });
+        const uploadResponse = await supabase.storage.from("recordings").upload(filePath, blob, { upsert: true, contentType: "video/webm" });
+        console.log("Upload response:", uploadResponse);
+
+        if (uploadResponse.error) {
+          throw uploadResponse.error;
+        }
+
+        const dataPath = uploadResponse.data.path;
+        console.log("data.path:", dataPath);
+
+        publicUrl = supabase.storage.from("recordings").getPublicUrl(dataPath).data.publicUrl;
+        console.log("Generated public URL:", publicUrl);
+
+        const insertPayload = { job_request_id: jobRequestId, email: currentUser.email, storage_path: publicUrl, duration_seconds: durationSeconds, size_bytes: blob.size };
+        console.log("Database insert payload (recordings):", insertPayload);
+
+        const { data: existingRecordings } = await supabase.from("recordings").select("id").eq("job_request_id", jobRequestId);
+        const existingRecording = existingRecordings && existingRecordings.length > 0 ? existingRecordings[0] : null;
+        
+        if (existingRecording) {
+          await supabase.from("recordings").update(insertPayload).eq("job_request_id", jobRequestId);
+        } else {
+          await supabase.from("recordings").insert(insertPayload);
+        }
         await supabase.from("job_requests").update({ status: "recorded", updated_at: new Date().toISOString() }).eq("id", jobRequestId);
 
         if (!existingRecording && creditsRemaining !== null && creditsRemaining > 0) {
