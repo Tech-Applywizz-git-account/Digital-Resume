@@ -36,33 +36,31 @@ export default function Profile() {
     try {
       setLoading(true);
 
-      // Fetch user profile from Supabase
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, email')
-        .eq('id', user.id)
-        .single();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      if (profileError) throw profileError;
+      if (!token) throw new Error('No session token available');
 
-      // Fetch profile details from the profile_details table
-      const { data: detailsData, error: detailsError } = await supabase
-        .from('profile_details')
-        .select('phone, location, job_title, company, bio')
-        .eq('profile_id', user.id)
-        .maybeSingle(); // maybeSingle because the record might not exist yet
+      const response = await fetch('/api/v1/profile', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
 
-      if (detailsError) throw detailsError;
+      if (!response.ok) throw new Error('Failed to fetch profile');
+
+      const result = await response.json();
+      const profile = result.data;
 
       setFormData({
-        firstName: profileData.first_name || '',
-        lastName: profileData.last_name || '',
-        email: profileData.email || user?.email || '',
-        phone: detailsData?.phone || '',
-        location: detailsData?.location || '',
-        jobTitle: detailsData?.job_title || '',
-        company: detailsData?.company || '',
-        bio: detailsData?.bio || ''
+        firstName: profile.first_name || '',
+        lastName: profile.last_name || '',
+        email: profile.email || user?.email || '',
+        phone: profile.phone || '',
+        location: profile.location || '',
+        jobTitle: profile.job_title || '',
+        company: profile.company || '',
+        bio: profile.bio || ''
       });
     } catch (error: any) {
       console.error('Error fetching user profile:', error);
@@ -85,58 +83,29 @@ export default function Profile() {
     if (!user?.id) return;
 
     try {
-      // 1. Update profiles table for name fields
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          first_name: formData.firstName,
-          last_name: formData.lastName
-        })
-        .eq('id', user.id);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      if (profileError) throw profileError;
+      if (!token) throw new Error('No session token available');
 
-      // 2. Check if profile details record exists
-      const { data: existingDetails, error: fetchError } = await supabase
-        .from('profile_details')
-        .select('id')
-        .eq('profile_id', user.id)
-        .maybeSingle();
+      const response = await fetch('/api/v1/profile', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          phone: formData.phone,
+          location: formData.location,
+          jobTitle: formData.jobTitle,
+          company: formData.company,
+          bio: formData.bio,
+        }),
+      });
 
-      if (fetchError) throw fetchError;
-
-      let saveError = null;
-
-      if (existingDetails) {
-        // Update existing record
-        const { error } = await supabase
-          .from('profile_details')
-          .update({
-            phone: formData.phone,
-            location: formData.location,
-            job_title: formData.jobTitle,
-            company: formData.company,
-            bio: formData.bio,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingDetails.id);
-        saveError = error;
-      } else {
-        // Insert new record
-        const { error } = await supabase
-          .from('profile_details')
-          .insert({
-            profile_id: user.id,
-            phone: formData.phone,
-            location: formData.location,
-            job_title: formData.jobTitle,
-            company: formData.company,
-            bio: formData.bio
-          });
-        saveError = error;
-      }
-
-      if (saveError) throw saveError;
+      if (!response.ok) throw new Error('Failed to update profile');
 
       alert('Profile updated successfully!');
     } catch (error: any) {

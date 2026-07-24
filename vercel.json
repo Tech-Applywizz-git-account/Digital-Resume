@@ -53,6 +53,10 @@
       "dest": "/api/send-credentials.js"
     },
     {
+      "src": "/api/email-correction",
+      "dest": "/api/email-correction.js"
+    },
+    {
       "handle": "filesystem"
     },
     {

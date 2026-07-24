@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Check, Menu, Loader2, Play, FileText, ChevronRight, History, User, ExternalLink, X, Clock } from "lucide-react";
-import { supabase } from "../integrations/supabase/client";
 import { useAuth } from "../contexts/AuthContext";
 import { callOpenAI, buildSelectionPrompt } from "../utils/aiHelpers";
 import { extractTextFromBuffer } from "../utils/textExtraction";
@@ -11,6 +10,7 @@ import Sidebar from "../components/Sidebar";
 import { showToast } from "../components/ui/toast";
 import { getUserInfo } from "../utils/crmHelpers";
 import { viewDocumentSafe } from "../utils/documentUtils";
+import { supabase } from "../integrations/supabase/client";
 
 
 
@@ -63,23 +63,15 @@ const Step1: React.FC = () => {
         // 2. Fetch History
         const isCRM = localStorage.getItem("is_crm_user") === "true";
         if (isCRM) {
-          const { data: crmJobs, error } = await supabase
-            .from('crm_job_requests')
-            .select('id, job_title, resume_url, job_description, application_status, created_at, email')
-            .eq('email', email.trim().toLowerCase())
-            .order('created_at', { ascending: false });
-
-          if (!error && crmJobs) {
-            const jobsWithRecs = await Promise.all(crmJobs.map(async (job) => {
-              const { data: recs } = await supabase
-                .from('crm_recordings')
-                .select('video_url')
-                .eq('job_request_id', job.id)
-                .order('created_at', { ascending: false })
-                .limit(1);
-              return { ...job, video_url: recs?.[0]?.video_url };
-            }));
-            setHistory(jobsWithRecs);
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token;
+          const apiResponse = await fetch('/api/v1/resumes/history?isCRM=true', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          if (apiResponse.ok) {
+            const result = await apiResponse.json();
+            const crmJobs = result.data || [];
+            setHistory(crmJobs);
           }
         }
       } catch (err) {
@@ -120,7 +112,7 @@ const Step1: React.FC = () => {
       const jobRequestId = localStorage.getItem("current_job_request_id");
       const existingResumeUrl = localStorage.getItem("uploadedResumeUrl");
       const existingResumeText = localStorage.getItem("resumeFullText");
-      
+
       let activeJobRequestId = jobRequestId;
 
       if (!activeJobRequestId) {
@@ -129,26 +121,28 @@ const Step1: React.FC = () => {
         const jobTitle = "New Digital Resume";
         const jobDescription = "Generated from resume analysis";
 
+        const { data: { session: createSession } } = await supabase.auth.getSession();
+        const createToken = createSession?.access_token;
+        const response = await fetch('/api/v1/resumes/create-job-request', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${createToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jobTitle,
+            jobDescription,
+          }),
+        });
+        if (!response.ok) throw new Error('Failed to create job request');
+        const result = await response.json();
+        activeJobRequestId = result.data.id;
+        localStorage.setItem('current_job_request_id', result.data.id);
+
         if (isCRMUser) {
-          const { data, error } = await supabase.from('crm_job_requests').insert([{
-            email: userInfo.email, user_id: user.id, job_title: jobTitle, job_description: jobDescription, application_status: 'draft',
-          }]).select('id').single();
-          if (error) throw error;
-          activeJobRequestId = data.id;
-          localStorage.setItem('current_job_request_id', data.id);
           localStorage.setItem('is_crm_user', 'true');
           localStorage.setItem('crm_user_email', userInfo.email || '');
         } else {
-          const { data: profile } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle();
-          if (!profile) {
-            await supabase.from('profiles').insert([{ id: user.id, email: user.email, plan_tier: 'free', plan_status: 'active', credits_remaining: 3 }]);
-          }
-          const { data, error } = await supabase.from('job_requests').insert([{
-            user_id: user.id, email: user.email, job_title: jobTitle, job_description: jobDescription, status: 'draft',
-          }]).select('id').single();
-          if (error) throw error;
-          activeJobRequestId = data.id;
-          localStorage.setItem('current_job_request_id', data.id);
           localStorage.setItem('is_crm_user', 'false');
         }
       }
@@ -158,28 +152,25 @@ const Step1: React.FC = () => {
       let finalFileName = localStorage.getItem("resumeFileName") || "Resume.pdf";
 
       if (selectedFile) {
-        const fileExt = selectedFile.name.split(".").pop()?.toLowerCase();
-        const firstName = localStorage.getItem("first_name") || (user as any)?.user_metadata?.full_name?.split(" ")[0] || "user";
-        const fileName = `${firstName.toLowerCase()}_careercast_${Date.now()}.${fileExt}`;
-        const isCRM = localStorage.getItem("is_crm_user") === "true";
-        const bucket = isCRM ? "CRM_users_resumes" : "resumes";
-        const path = isCRM ? `${localStorage.getItem("crm_user_email")}/${fileName}` : `${user.id}/${fileName}`;
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('jobRequestId', activeJobRequestId || '');
 
-        const { error: upErr } = await supabase.storage.from(bucket).upload(path, selectedFile, { upsert: true, contentType: selectedFile.type });
-        if (upErr) throw upErr;
+        const { data: { session: uploadSession } } = await supabase.auth.getSession();
+        const uploadToken = uploadSession?.access_token;
+        const uploadResponse = await fetch('/api/v1/resumes/upload', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${uploadToken}` },
+          body: formData,
+        });
 
-        const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(path);
-        finalResumeUrl = pubData.publicUrl;
+        if (!uploadResponse.ok) throw new Error('Failed to upload resume');
+        const uploadResult = await uploadResponse.json();
+        finalResumeUrl = uploadResult.data.resumeUrl;
         finalFileName = selectedFile.name;
 
         const buffer = await selectedFile.arrayBuffer();
         finalResumeText = await extractTextFromBuffer(buffer, selectedFile.name);
-
-        if (isCRM) {
-          await supabase.from("crm_job_requests").update({ resume_url: finalResumeUrl, application_status: "ready" }).eq("id", activeJobRequestId);
-        } else {
-          await supabase.from("job_requests").update({ resume_path: finalResumeUrl, status: "ready" }).eq("id", activeJobRequestId);
-        }
       } else if (apiResumeUrl) {
         const proxyUrl = `/api/proxy-pdf?url=${encodeURIComponent(apiResumeUrl)}`;
         const res = await fetch(proxyUrl);
@@ -209,11 +200,20 @@ const Step1: React.FC = () => {
 
           // Save to database immediately
           if (activeJobRequestId) {
-            const isCRM = localStorage.getItem("is_crm_user") === "true";
-            if (isCRM) {
-              await supabase.from("crm_job_requests").update({ job_description: aiScript }).eq("id", activeJobRequestId);
-            } else {
-              await supabase.from("job_requests").update({ job_description: aiScript }).eq("id", activeJobRequestId);
+            const { data: { session: updateSession } } = await supabase.auth.getSession();
+            const updateToken = updateSession?.access_token;
+            const updateResponse = await fetch(`/api/v1/resumes/${activeJobRequestId}/description`, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${updateToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                jobDescription: aiScript,
+              }),
+            });
+            if (!updateResponse.ok) {
+              console.error("Failed to save job description to backend");
             }
           }
         } catch (aiErr) {
@@ -250,11 +250,11 @@ const Step1: React.FC = () => {
     localStorage.setItem("uploadedResumeUrl", item.resume_url || "");
     localStorage.setItem("careercast_jobDescription", item.job_description || "");
     localStorage.setItem("resumeFileName", item.resume_url ? item.resume_url.split('/').pop() : "Resume.pdf");
-    
+
     // Maintain CRM status if we're in continue mode
     if (localStorage.getItem('is_crm_user') !== 'true' && item.email) {
-       localStorage.setItem('is_crm_user', 'true');
-       localStorage.setItem('crm_user_email', item.email);
+      localStorage.setItem('is_crm_user', 'true');
+      localStorage.setItem('crm_user_email', item.email);
     }
 
     navigate(`/step2${mode ? `?mode=${mode}` : ""}`);
@@ -299,7 +299,7 @@ const Step1: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   {(apiResumeUrl || localStorage.getItem("uploadedResumeUrl")) && (
-                    <div 
+                    <div
                       onClick={() => {
                         const url = localStorage.getItem("uploadedResumeUrl") || apiResumeUrl;
                         if (url) viewDocumentSafe(url);
@@ -350,86 +350,86 @@ const Step1: React.FC = () => {
 
             {/* Right Column: History Panel (30%) — only shown when continuing */}
             {showHistory && (
-            <div className="lg:w-[30%]">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden sticky top-8">
-                <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] p-4 flex items-center gap-2">
-                  <History className="w-5 h-5 text-white" />
-                  <h3 className="text-white font-bold">Previous History</h3>
-                </div>
-                
-                <div className="p-4 max-h-[calc(100vh-200px)] overflow-y-auto">
-                  {loadingHistory ? (
-                    <div className="flex flex-col items-center justify-center py-10 gap-3">
-                      <Loader2 className="w-8 h-8 animate-spin text-[#0B4F6C]" />
-                      <p className="text-sm text-gray-400 italic">loading history...</p>
-                    </div>
-                  ) : history.length > 0 ? (
-                    <div className="space-y-4">
-                      {history.map((item, idx) => (
-                        <div key={item.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-md transition-all group">
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="min-w-0">
-                              <h4 className="font-bold text-[#0B4F6C] text-sm truncate">Recording-{history.length - idx}</h4>
-                              <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-1">
-                                <Clock className="w-3 h-3" />
-                                {new Date(item.created_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <div className="bg-white px-2 py-0.5 rounded text-[9px] font-bold text-gray-400 border border-gray-100">
-                              S.No {history.length - idx}
-                            </div>
-                          </div>
+              <div className="lg:w-[30%]">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden sticky top-8">
+                  <div className="bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] p-4 flex items-center gap-2">
+                    <History className="w-5 h-5 text-white" />
+                    <h3 className="text-white font-bold">Previous History</h3>
+                  </div>
 
-                          <div className="grid grid-cols-3 gap-2">
-                            <button
-                              onClick={() => item.resume_url && viewDocumentSafe(item.resume_url)}
-                              disabled={!item.resume_url}
-                              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-blue-200 hover:text-blue-600 transition-colors text-gray-500 disabled:opacity-30"
-                              title="View Resume"
-                            >
-                              <FileText className="w-4 h-4" />
-                              <span className="text-[9px] font-bold uppercase">Resume</span>
-                            </button>
-                            
-                            <button
-                              onClick={() => {
-                                if (item.video_url) {
-                                  console.log("Playing video_url from database:", item.video_url);
-                                  setSelectedVideo(item.video_url);
-                                }
-                              }}
-                              disabled={!item.video_url}
-                              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-emerald-200 hover:text-emerald-600 transition-colors text-gray-500 disabled:opacity-30"
-                              title="Play Video"
-                            >
-                              <Play className="w-4 h-4" />
-                              <span className="text-[9px] font-bold uppercase">Play</span>
-                            </button>
-
-                            <button
-                              onClick={() => handleProceed(item)}
-                              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-[#0B4F6C] text-white hover:bg-[#159A9C] transition-all group/btn"
-                              title="Proceed to Step 2"
-                            >
-                              <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />
-                              <span className="text-[9px] font-bold uppercase">Proceed</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-10 px-4">
-                      <div className="bg-gray-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <User className="w-6 h-6 text-gray-300" />
+                  <div className="p-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+                    {loadingHistory ? (
+                      <div className="flex flex-col items-center justify-center py-10 gap-3">
+                        <Loader2 className="w-8 h-8 animate-spin text-[#0B4F6C]" />
+                        <p className="text-sm text-gray-400 italic">loading history...</p>
                       </div>
-                      <p className="text-sm font-bold text-gray-400">No previous history found</p>
-                      <p className="text-[10px] text-gray-400 mt-1">your recorded profiles will appear here</p>
-                    </div>
-                  )}
+                    ) : history.length > 0 ? (
+                      <div className="space-y-4">
+                        {history.map((item, idx) => (
+                          <div key={item.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-md transition-all group">
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-[#0B4F6C] text-sm truncate">Recording-{history.length - idx}</h4>
+                                <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-1">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(item.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div className="bg-white px-2 py-0.5 rounded text-[9px] font-bold text-gray-400 border border-gray-100">
+                                S.No {history.length - idx}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <button
+                                onClick={() => item.resume_url && viewDocumentSafe(item.resume_url)}
+                                disabled={!item.resume_url}
+                                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-blue-200 hover:text-blue-600 transition-colors text-gray-500 disabled:opacity-30"
+                                title="View Resume"
+                              >
+                                <FileText className="w-4 h-4" />
+                                <span className="text-[9px] font-bold uppercase">Resume</span>
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  if (item.video_url) {
+                                    console.log("Playing video_url from database:", item.video_url);
+                                    setSelectedVideo(item.video_url);
+                                  }
+                                }}
+                                disabled={!item.video_url}
+                                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white border border-gray-100 hover:border-emerald-200 hover:text-emerald-600 transition-colors text-gray-500 disabled:opacity-30"
+                                title="Play Video"
+                              >
+                                <Play className="w-4 h-4" />
+                                <span className="text-[9px] font-bold uppercase">Play</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleProceed(item)}
+                                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-[#0B4F6C] text-white hover:bg-[#159A9C] transition-all group/btn"
+                                title="Proceed to Step 2"
+                              >
+                                <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />
+                                <span className="text-[9px] font-bold uppercase">Proceed</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-10 px-4">
+                        <div className="bg-gray-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <User className="w-6 h-6 text-gray-300" />
+                        </div>
+                        <p className="text-sm font-bold text-gray-400">No previous history found</p>
+                        <p className="text-[10px] text-gray-400 mt-1">your recorded profiles will appear here</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
             )}
           </div>
         </main>
