@@ -45,7 +45,7 @@ export default async function handler(req, res) {
   // --- Get Azure OpenAI config ---
   const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
   const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const azureApiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-12-01-preview";
+  const azureApiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-02-15-preview";
   const azureDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
 
   if (!azureApiKey || !azureEndpoint || !azureDeployment) {
@@ -77,22 +77,28 @@ export default async function handler(req, res) {
       }),
     });
 
-    const data = await azureResponse.json();
-
     if (!azureResponse.ok) {
+      let errText = "Unknown Azure OpenAI error";
+      try {
+        const errorData = await azureResponse.json();
+        errText = errorData.error ? errorData.error.message : JSON.stringify(errorData);
+      } catch (e) {
+        errText = await azureResponse.text();
+      }
       return res.status(500).json({
         error: "Failed to generate introduction",
-        azureError: data.error ? data.error.message : "Unknown Azure OpenAI error",
+        azureError: errText,
       });
     }
 
+    const data = await azureResponse.json();
     if (data.choices && data.choices[0]) {
       return res.status(200).json({
         success: true,
         introduction: data.choices[0].message.content,
       });
     } else {
-      return res.status(500).json({ error: "No response from Azure OpenAI" });
+      return res.status(500).json({ error: "No response from Azure OpenAI", data });
     }
   } catch (error) {
     return res.status(500).json({

@@ -18,11 +18,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const azureOpenAiEndpoint = process.env.AZURE_OPENAI_ENDPOINT || "https://engg--..azure.com";
+    const azureOpenAiEndpoint = process.env.AZURE_OPENAI_ENDPOINT || "https://engg-azure-openai.openai.azure.com";
     const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY || "";
-    const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION || "--01-preview";
-    const azureOpenAiDeployment = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-5-mini";
-    const useJsonMode = ["1", "true", "yes"].includes((process.env.AZURE_USE_JSON_MODE || "true").toLowerCase());
+    const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-02-15-preview";
+    const azureOpenAiDeployment = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o-mini";
+    const useJsonMode = ["1", "true", "yes"].includes((process.env.AZURE_USE_JSON_MODE || "false").toLowerCase());
     const azureMaxTokens = parseInt(process.env.AZURE_MAX_TOKENS || "16000", 10);
 
     if (!azureOpenAiApiKey) {
@@ -138,7 +138,8 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       content: question
     });
 
-    const azureUrl = `${azureOpenAiEndpoint}/openai/deployments/${azureOpenAiDeployment}/chat/completions?api-version=${azureOpenAiApiVersion}`;
+    const baseUrl = azureOpenAiEndpoint.replace(/\/+$/, "");
+    const azureUrl = `${baseUrl}/openai/deployments/${azureOpenAiDeployment}/chat/completions?api-version=${azureOpenAiApiVersion}`;
 
     const requestBody = {
       messages: conversationMessages,
