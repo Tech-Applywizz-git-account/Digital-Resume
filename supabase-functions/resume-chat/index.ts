@@ -13,9 +13,15 @@ serve(async (req: any) => {
     }
 
     try {
-        const openAiKey = Deno.env.get("OPENAI_API_KEY");
-        if (!openAiKey) {
-            console.error("Missing OPENAI_API_KEY");
+        const azureOpenAiEndpoint = Deno.env.get("AZURE_OPENAI_ENDPOINT") || "https://engg--..azure.com";
+        const azureOpenAiApiKey = Deno.env.get("AZURE_OPENAI_API_KEY") || "";
+        const azureOpenAiApiVersion = Deno.env.get("AZURE_OPENAI_API_VERSION") || "--01-preview";
+        const azureOpenAiDeployment = Deno.env.get("AZURE_OPENAI_DEPLOYMENT") || "gpt-5-mini";
+        const useJsonMode = ["1", "true", "yes"].includes((Deno.env.get("AZURE_USE_JSON_MODE") || "true").toLowerCase());
+        const azureMaxTokens = parseInt(Deno.env.get("AZURE_MAX_TOKENS") || "16000", 10);
+
+        if (!azureOpenAiApiKey) {
+            console.error("Missing AZURE_OPENAI_API_KEY");
             throw new Error("Server configuration error: Missing API Key");
         }
 
@@ -123,24 +129,33 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
             content: question
         });
 
-        const completionResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+        const azureUrl = `${azureOpenAiEndpoint}/openai/deployments/${azureOpenAiDeployment}/chat/completions?api-version=${azureOpenAiApiVersion}`;
+
+        const requestBody: any = {
+            messages: conversationMessages,
+            temperature: 0.3,
+            max_tokens: azureMaxTokens,
+        };
+
+        // Note: If useJsonMode is true, the system prompt must explicitly instruct the model to return JSON.
+        if (useJsonMode) {
+            requestBody.response_format = { type: "json_object" };
+        }
+
+        const completionResponse = await fetch(azureUrl, {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${openAiKey}`,
+                "api-key": azureOpenAiApiKey,
                 "Content-Type": "application/json",
                 "x-client-info": "antigravity"
             },
-            body: JSON.stringify({
-                model: "gpt-4o",
-                messages: conversationMessages,
-                temperature: 0.3,
-            }),
+            body: JSON.stringify(requestBody),
         });
 
         if (!completionResponse.ok) {
             const errText = await completionResponse.text();
-            console.error("OpenAI API Error:", errText);
-            throw new Error(`OpenAI API Error: ${completionResponse.statusText}`);
+            console.error("Azure OpenAI API Error:", errText);
+            throw new Error(`Azure OpenAI API Error: ${completionResponse.statusText}`);
         }
 
         const data = await completionResponse.json();

@@ -1,52 +1,62 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "@supabase/supabase-js";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+export default async function handler(req, res) {
+  // --- CORS headers ---
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
+  res.setHeader("Content-Type", "application/json");
 
-serve(async (req: any) => {
-  // Handle CORS preflight request
+  // --- Handle CORS preflight request ---
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return res.status(200).end();
+  }
+
+  // --- Allow only POST ---
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const azureOpenAiEndpoint = Deno.env.get("AZURE_OPENAI_ENDPOINT") || "https://engg--..azure.com";
-    const azureOpenAiApiKey = Deno.env.get("AZURE_OPENAI_API_KEY") || "";
-    const azureOpenAiApiVersion = Deno.env.get("AZURE_OPENAI_API_VERSION") || "--01-preview";
-    const azureOpenAiDeployment = Deno.env.get("AZURE_OPENAI_DEPLOYMENT") || "gpt-5-mini";
-    const useJsonMode = ["1", "true", "yes"].includes((Deno.env.get("AZURE_USE_JSON_MODE") || "true").toLowerCase());
-    const azureMaxTokens = parseInt(Deno.env.get("AZURE_MAX_TOKENS") || "16000", 10);
+    const azureOpenAiEndpoint = process.env.AZURE_OPENAI_ENDPOINT || "https://engg--..azure.com";
+    const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY || "";
+    const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION || "--01-preview";
+    const azureOpenAiDeployment = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-5-mini";
+    const useJsonMode = ["1", "true", "yes"].includes((process.env.AZURE_USE_JSON_MODE || "true").toLowerCase());
+    const azureMaxTokens = parseInt(process.env.AZURE_MAX_TOKENS || "16000", 10);
 
     if (!azureOpenAiApiKey) {
       console.error("Missing AZURE_OPENAI_API_KEY");
-      throw new Error("Server configuration error: Missing API Key");
+      return res.status(500).json({ error: "Server configuration error: Missing API Key" });
     }
 
-    // Parse Body
+    // --- Parse JSON body ---
     let body;
-    try {
-      body = await req.json();
-    } catch (e) {
-      throw new Error("Invalid request body");
+    if (req.body && typeof req.body === 'object') {
+      body = req.body;
+    } else {
+      try {
+        const buffers = [];
+        for await (const chunk of req) buffers.push(chunk);
+        const rawBody = Buffer.concat(buffers).toString();
+        body = JSON.parse(rawBody);
+      } catch (err) {
+        return res.status(400).json({ error: "Invalid request body" });
+      }
     }
 
-    // ✅ ownerId passed from frontend ensures tracking works for anon visitors
     const { resumeText, messages, question, recruiterMode, ownerId } = body;
 
     if (!resumeText || !question) {
-      throw new Error("Missing resumeText or question in request body");
+      return res.status(400).json({ error: "Missing resumeText or question in request body" });
     }
 
     console.log("Processing question for owner:", ownerId, "recruiterMode:", !!recruiterMode, "history:", messages?.length || 0);
 
     // Build the system prompt based on mode
-    let systemPrompt: string;
+    let systemPrompt;
 
     if (recruiterMode) {
-      // ✅ YOUR FULL LONG RECRUITER-FRIENDLY PROMPT (10 Rules)
       systemPrompt = `You ARE the person described in this resume. You are responding to a recruiter or hiring manager who is viewing your portfolio and wants to learn more about you.
             
 NAME OF CANDIDATE (You): 
@@ -79,7 +89,6 @@ Example responses:
 Example end of response:
 SUGGESTED_QUESTIONS: What was your biggest project?|What tech stack do you prefer?|Are you open to relocation?`;
     } else {
-      // ✅ YOUR ORIGINAL THIRD-PERSON ANALYSIS PROMPT
       systemPrompt = `You are a helpful AI assistant analyzing a resume.
 
 CONTEXT:
@@ -113,7 +122,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
 
     // Add valid history (limit to last 6 messages to save tokens)
     if (messages && Array.isArray(messages)) {
-      messages.slice(-6).forEach((msg: any) => {
+      messages.slice(-6).forEach((msg) => {
         if (msg.role && msg.content) {
           conversationMessages.push({
             role: msg.role,
@@ -131,14 +140,12 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
 
     const azureUrl = `${azureOpenAiEndpoint}/openai/deployments/${azureOpenAiDeployment}/chat/completions?api-version=${azureOpenAiApiVersion}`;
 
-    const requestBody: any = {
+    const requestBody = {
       messages: conversationMessages,
       temperature: 0.3,
       max_tokens: azureMaxTokens,
     };
 
-    // Note: If useJsonMode is true, the system prompt must explicitly instruct the model to return JSON.
-    // If you encounter a 400 error about JSON format, you may need to add "Return JSON" to your systemPrompt.
     if (useJsonMode) {
       requestBody.response_format = { type: "json_object" };
     }
@@ -156,7 +163,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
     if (!completionResponse.ok) {
       const errText = await completionResponse.text();
       console.error("Azure OpenAI API Error:", errText);
-      throw new Error(`Azure OpenAI API Error: ${completionResponse.statusText}`);
+      return res.status(502).json({ error: `Azure OpenAI API Error: ${completionResponse.statusText}` });
     }
 
     const data = await completionResponse.json();
@@ -165,18 +172,17 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
 
     // --- Log Usage to Database ---
     try {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL");
-      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
       if (supabaseUrl && supabaseServiceKey && usage) {
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-        // Identify target user. Prioritize the resume owner (passed in body so anon chats work)
         let targetUserId = ownerId;
 
         // Fallback to visitor UID only if ownerId is missing
         if (!targetUserId) {
-          const authHeader = req.headers.get('Authorization');
+          const authHeader = req.headers.authorization || req.headers.Authorization;
           if (authHeader) {
             const token = authHeader.replace('Bearer ', '');
             const { data: { user } } = await supabaseAdmin.auth.getUser(token);
@@ -206,25 +212,12 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       }
     } catch (logErr) {
       console.error("❌ Usage logging error:", logErr);
-      // Don't fail the main request if logging fails
     }
 
-    return new Response(
-      JSON.stringify({ answer: aiResponse }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200
-      },
-    );
+    return res.status(200).json({ answer: aiResponse });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error("Function error:", error.message);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      },
-    );
+    return res.status(500).json({ error: error.message });
   }
-});
+}
