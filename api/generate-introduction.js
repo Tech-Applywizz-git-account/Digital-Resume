@@ -66,7 +66,7 @@ export default async function handler(req, res) {
         { role: "system", content: "You are a professional career coach." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 350,
+      max_tokens: process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : undefined,
       temperature: 0.7,
     };
 
@@ -74,7 +74,10 @@ export default async function handler(req, res) {
     console.log("Endpoint:", baseUrl);
     console.log("Deployment:", azureDeployment);
     console.log("API Version:", azureApiVersion);
-    console.log("Request Payload:", JSON.stringify(requestPayload, null, 2));
+    console.log("Request URL:", url);
+    console.log("Request Body:", JSON.stringify(requestPayload, null, 2));
+    console.log("Max Tokens:", requestPayload.max_tokens);
+    console.log("Temperature:", requestPayload.temperature);
 
     const azureResponse = await fetch(url, {
       method: "POST",
@@ -101,7 +104,6 @@ export default async function handler(req, res) {
       const azureError = errorBody.error || errorBody;
       
       return res.status(500).json({
-        error: "Azure OpenAI API Error",
         status: azureResponse.status,
         code: azureError.code || "unknown_code",
         message: azureError.message || errText,
@@ -111,19 +113,26 @@ export default async function handler(req, res) {
     }
 
     const data = await azureResponse.json();
+    console.log("Azure Response Body:", JSON.stringify(data, null, 2));
     if (data.choices && data.choices[0]) {
       return res.status(200).json({
         success: true,
         introduction: data.choices[0].message.content,
       });
     } else {
-      return res.status(500).json({ error: "No response from Azure OpenAI", data });
+      return res.status(500).json({ 
+        status: 500,
+        code: "invalid_response",
+        message: "No choices returned from Azure OpenAI",
+        data: data 
+      });
     }
   } catch (error) {
     return res.status(500).json({
-      success: false,
-      error: "Failed to generate introduction",
-      details: error.message,
+      status: 500,
+      code: "internal_server_error",
+      message: error.message,
+      stackTrace: error.stack
     });
   }
 }

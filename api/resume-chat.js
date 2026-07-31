@@ -22,8 +22,8 @@ export default async function handler(req, res) {
     const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY;
     const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION;
     const azureOpenAiDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
-    const useJsonMode = ["1", "true", "yes"].includes((process.env.AZURE_USE_JSON_MODE || "false").toLowerCase());
-    const azureMaxTokens = parseInt(process.env.AZURE_MAX_TOKENS || "16000", 10);
+    const useJsonMode = ["1", "true", "yes"].includes(String(process.env.AZURE_USE_JSON_MODE).toLowerCase());
+    const azureMaxTokens = process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : undefined;
 
     if (!azureOpenAiApiKey) {
       console.error("Missing AZURE_OPENAI_API_KEY");
@@ -155,7 +155,10 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
     console.log("Endpoint:", baseUrl);
     console.log("Deployment:", azureOpenAiDeployment);
     console.log("API Version:", azureOpenAiApiVersion);
-    console.log("Request Payload:", JSON.stringify(requestBody, null, 2));
+    console.log("Request URL:", azureUrl);
+    console.log("Request Body:", JSON.stringify(requestBody, null, 2));
+    console.log("Max Tokens:", requestBody.max_tokens);
+    console.log("Temperature:", requestBody.temperature);
 
     const completionResponse = await fetch(azureUrl, {
       method: "POST",
@@ -183,7 +186,6 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       const azureError = errorBody.error || errorBody;
       
       return res.status(502).json({ 
-        error: "Azure OpenAI API Error",
         status: completionResponse.status,
         code: azureError.code || "unknown_code",
         message: azureError.message || errText,
@@ -193,6 +195,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
     }
 
     const data = await completionResponse.json();
+    console.log("Azure Response Body:", JSON.stringify(data, null, 2));
     const aiResponse = data.choices[0].message.content;
     const usage = data.usage;
 
@@ -243,7 +246,12 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
     return res.status(200).json({ answer: aiResponse });
 
   } catch (error) {
-    console.error("Function error:", error.message);
-    return res.status(500).json({ error: error.message });
+    console.error("Function error:", error);
+    return res.status(500).json({ 
+      status: 500,
+      code: "internal_server_error",
+      message: error.message,
+      stackTrace: error.stack
+    });
   }
 }
