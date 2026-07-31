@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { AzureOpenAI } from "openai";
 
 export default async function handler(req, res) {
   // --- CORS headers ---
@@ -18,12 +19,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const azureOpenAiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
     const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY;
-    const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION;
-    const azureOpenAiDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
     const useJsonMode = ["1", "true", "yes"].includes(String(process.env.AZURE_USE_JSON_MODE).toLowerCase());
-    const azureMaxTokens = process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : undefined;
+    const azureMaxTokens = process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800;
+
+    if (!azureOpenAiApiKey) {
+      console.error("Missing AZURE_OPENAI_API_KEY");
+      return res.status(500).json({ error: "Server configuration error: Missing API Key" });
+    }
+
+    const openai = new AzureOpenAI({
+      endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+      apiKey: process.env.AZURE_OPENAI_API_KEY,
+      apiVersion: process.env.AZURE_OPENAI_API_VERSION,
+      deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+    });
 
     if (!azureOpenAiApiKey) {
       console.error("Missing AZURE_OPENAI_API_KEY");
@@ -138,66 +148,34 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       content: question
     });
 
-    const baseUrl = azureOpenAiEndpoint.replace(/\/+$/, "");
-    const azureUrl = `${baseUrl}/openai/deployments/${azureOpenAiDeployment}/chat/completions?api-version=${azureOpenAiApiVersion}`;
-
+    console.log("--- AZURE OPENAI REQUEST ---");
     const requestBody = {
       messages: conversationMessages,
       temperature: 0.3,
-      max_tokens: azureMaxTokens,
+      max_completion_tokens: azureMaxTokens,
     };
-
     if (useJsonMode) {
       requestBody.response_format = { type: "json_object" };
     }
-
-    console.log("--- AZURE OPENAI REQUEST ---");
-    console.log("Endpoint:", baseUrl);
-    console.log("Deployment:", azureOpenAiDeployment);
-    console.log("API Version:", azureOpenAiApiVersion);
-    console.log("Request URL:", azureUrl);
     console.log("Request Body:", JSON.stringify(requestBody, null, 2));
-    console.log("Max Tokens:", requestBody.max_tokens);
-    console.log("Temperature:", requestBody.temperature);
 
-    const completionResponse = await fetch(azureUrl, {
-      method: "POST",
-      headers: {
-        "api-key": azureOpenAiApiKey,
-        "Content-Type": "application/json",
-        "x-client-info": "antigravity"
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    console.log("Response Status:", completionResponse.status);
-    console.log("Response Headers:", Object.fromEntries(completionResponse.headers));
-
-    if (!completionResponse.ok) {
-      let errorBody = {};
-      const errText = await completionResponse.text();
-      try {
-        errorBody = JSON.parse(errText);
-      } catch (e) {
-        errorBody = { message: errText };
-      }
-      console.error("Azure OpenAI API Error Body:", errorBody);
-      
-      const azureError = errorBody.error || errorBody;
-      
+    let completionResponse;
+    try {
+      completionResponse = await openai.chat.completions.create(requestBody);
+    } catch (apiError) {
+      console.error("Azure OpenAI API Error:", apiError);
       return res.status(502).json({ 
-        status: completionResponse.status,
-        code: azureError.code || "unknown_code",
-        message: azureError.message || errText,
-        details: azureError.details || null,
-        innerError: azureError.innererror || null
+        status: apiError.status || 502,
+        code: apiError.code || "unknown_code",
+        message: apiError.message,
+        details: apiError.error || null,
+        stackTrace: apiError.stack || null
       });
     }
 
-    const data = await completionResponse.json();
-    console.log("Azure Response Body:", JSON.stringify(data, null, 2));
-    const aiResponse = data.choices[0].message.content;
-    const usage = data.usage;
+    console.log("Azure Response Body:", JSON.stringify(completionResponse, null, 2));
+    const aiResponse = completionResponse.choices[0].message.content;
+    const usage = completionResponse.usage;
 
     // --- Log Usage to Database ---
     try {

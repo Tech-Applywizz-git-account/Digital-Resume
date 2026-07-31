@@ -1,3 +1,5 @@
+import { AzureOpenAI } from "openai";
+
 export default async function handler(req, res) {
   // --- CORS headers ---
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -42,22 +44,21 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Prompt is required" });
   }
 
-  // --- Get Azure OpenAI config ---
   const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
-  const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const azureApiVersion = process.env.AZURE_OPENAI_API_VERSION;
-  const azureDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
 
-  if (!azureApiKey || !azureEndpoint || !azureDeployment) {
+  if (!azureApiKey) {
     return res.status(200).json({
       success: true,
       introduction: "This is a mock introduction. Please set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_DEPLOYMENT in your environment.",
     });
   }
 
-  // Remove trailing slash from endpoint if present
-  const baseUrl = azureEndpoint.replace(/\/+$/, "");
-  const url = `${baseUrl}/openai/deployments/${azureDeployment}/chat/completions?api-version=${azureApiVersion}`;
+  const openai = new AzureOpenAI({
+    endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+    apiKey: process.env.AZURE_OPENAI_API_KEY,
+    apiVersion: process.env.AZURE_OPENAI_API_VERSION,
+    deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+  });
 
   // --- Call Azure OpenAI API ---
   try {
@@ -66,65 +67,39 @@ export default async function handler(req, res) {
         { role: "system", content: "You are a professional career coach." },
         { role: "user", content: prompt },
       ],
-      max_tokens: process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : undefined,
+      max_completion_tokens: process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800,
       temperature: 0.7,
     };
 
     console.log("--- AZURE OPENAI REQUEST ---");
-    console.log("Endpoint:", baseUrl);
-    console.log("Deployment:", azureDeployment);
-    console.log("API Version:", azureApiVersion);
-    console.log("Request URL:", url);
     console.log("Request Body:", JSON.stringify(requestPayload, null, 2));
-    console.log("Max Tokens:", requestPayload.max_tokens);
-    console.log("Temperature:", requestPayload.temperature);
 
-    const azureResponse = await fetch(url, {
-      method: "POST",
-      headers: {
-        "api-key": azureApiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestPayload),
-    });
-
-    console.log("Response Status:", azureResponse.status);
-    console.log("Response Headers:", Object.fromEntries(azureResponse.headers));
-
-    if (!azureResponse.ok) {
-      let errorBody = {};
-      const errText = await azureResponse.text();
-      try {
-        errorBody = JSON.parse(errText);
-      } catch (e) {
-        errorBody = { message: errText };
-      }
-      console.error("Azure OpenAI API Error Body:", errorBody);
-      
-      const azureError = errorBody.error || errorBody;
-      
-      return res.status(500).json({
-        status: azureResponse.status,
-        code: azureError.code || "unknown_code",
-        message: azureError.message || errText,
-        details: azureError.details || null,
-        innerError: azureError.innererror || null
+    let azureResponse;
+    try {
+      azureResponse = await openai.chat.completions.create(requestPayload);
+    } catch (apiError) {
+      console.error("Azure OpenAI API Error:", apiError);
+      return res.status(500).json({ 
+        status: apiError.status || 500,
+        code: apiError.code || "unknown_code",
+        message: apiError.message,
+        details: apiError.error || null,
+        stackTrace: apiError.stack || null
       });
     }
 
-    const data = await azureResponse.json();
-    console.log("Azure Response Body:", JSON.stringify(data, null, 2));
-    if (data.choices && data.choices[0]) {
+    console.log("Azure Response Body:", JSON.stringify(azureResponse, null, 2));
+    if (azureResponse.choices && azureResponse.choices[0]) {
       return res.status(200).json({
         success: true,
-        introduction: data.choices[0].message.content,
+        introduction: azureResponse.choices[0].message.content,
       });
     } else {
       return res.status(500).json({ 
         status: 500,
         code: "invalid_response",
         message: "No choices returned from Azure OpenAI",
-        data: data 
+        data: azureResponse 
       });
     }
   } catch (error) {

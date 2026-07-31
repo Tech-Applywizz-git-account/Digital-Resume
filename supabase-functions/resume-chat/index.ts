@@ -17,8 +17,8 @@ serve(async (req: any) => {
         const azureOpenAiApiKey = Deno.env.get("AZURE_OPENAI_API_KEY") || "";
         const azureOpenAiApiVersion = Deno.env.get("AZURE_OPENAI_API_VERSION") || "--01-preview";
         const azureOpenAiDeployment = Deno.env.get("AZURE_OPENAI_DEPLOYMENT") || "gpt-5-mini";
-        const useJsonMode = ["1", "true", "yes"].includes((Deno.env.get("AZURE_USE_JSON_MODE") || "true").toLowerCase());
-        const azureMaxTokens = parseInt(Deno.env.get("AZURE_MAX_TOKENS") || "16000", 10);
+        const useJsonMode = ["1", "true", "yes"].includes((Deno.env.get("AZURE_USE_JSON_MODE") || "false").toLowerCase());
+        const azureMaxTokens = parseInt(Deno.env.get("AZURE_MAX_TOKENS") || "800", 10);
 
         if (!azureOpenAiApiKey) {
             console.error("Missing AZURE_OPENAI_API_KEY");
@@ -134,7 +134,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
         const requestBody: any = {
             messages: conversationMessages,
             temperature: 0.3,
-            max_tokens: azureMaxTokens,
+            max_completion_tokens: azureMaxTokens,
         };
 
         // Note: If useJsonMode is true, the system prompt must explicitly instruct the model to return JSON.
