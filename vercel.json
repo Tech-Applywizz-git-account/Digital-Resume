@@ -53,6 +53,10 @@
       "dest": "/api/send-credentials.js"
     },
     {
+      "src": "/api/resume-chat",
+      "dest": "/api/resume-chat.js"
+    },
+    {
       "handle": "filesystem"
     },
     {

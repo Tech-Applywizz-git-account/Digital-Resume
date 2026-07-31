@@ -22,10 +22,14 @@ export default async function handler(req, res) {
   // --- Parse JSON body ---
   let jsonData;
   try {
-    const buffers = [];
-    for await (const chunk of req) buffers.push(chunk);
-    const rawBody = Buffer.concat(buffers).toString();
-    jsonData = JSON.parse(rawBody);
+    if (req.body && typeof req.body === 'object') {
+      jsonData = req.body;
+    } else {
+      const buffers = [];
+      for await (const chunk of req) buffers.push(chunk);
+      const rawBody = Buffer.concat(buffers).toString();
+      jsonData = JSON.parse(rawBody);
+    }
   } catch (err) {
     return res.status(400).json({
       error: "Invalid JSON in request body",
