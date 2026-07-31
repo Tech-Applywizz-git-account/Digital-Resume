@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     });
   }
 
-  // --- Parse JSON body (fix for request.json is not a function) ---
+  // --- Parse JSON body ---
   let jsonData;
   try {
     const buffers = [];
@@ -38,26 +38,32 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Prompt is required" });
   }
 
-  // --- Get API key ---
-  const openaiApiKey = process.env.VITE_OPENAI_API_KEY;
+  // --- Get Azure OpenAI config ---
+  const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
+  const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const azureApiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-12-01-preview";
+  const azureDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
 
-  if (!openaiApiKey) {
+  if (!azureApiKey || !azureEndpoint || !azureDeployment) {
     return res.status(200).json({
       success: true,
-      introduction: "This is a mock introduction. Please set VITE_OPENAI_API_KEY in your environment.",
+      introduction: "This is a mock introduction. Please set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_DEPLOYMENT in your environment.",
     });
   }
 
-  // --- Call OpenAI API ---
+  // Remove trailing slash from endpoint if present
+  const baseUrl = azureEndpoint.replace(/\/+$/, "");
+  const url = `${baseUrl}/openai/deployments/${azureDeployment}/chat/completions?api-version=${azureApiVersion}`;
+
+  // --- Call Azure OpenAI API ---
   try {
-    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const azureResponse = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
+        "api-key": azureApiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
         messages: [
           { role: "system", content: "You are a professional career coach." },
           { role: "user", content: prompt },
@@ -67,12 +73,12 @@ export default async function handler(req, res) {
       }),
     });
 
-    const data = await openaiResponse.json();
+    const data = await azureResponse.json();
 
-    if (!openaiResponse.ok) {
+    if (!azureResponse.ok) {
       return res.status(500).json({
         error: "Failed to generate introduction",
-        openaiError: data.error ? data.error.message : "Unknown OpenAI error",
+        azureError: data.error ? data.error.message : "Unknown Azure OpenAI error",
       });
     }
 
@@ -82,7 +88,7 @@ export default async function handler(req, res) {
         introduction: data.choices[0].message.content,
       });
     } else {
-      return res.status(500).json({ error: "No response from OpenAI" });
+      return res.status(500).json({ error: "No response from Azure OpenAI" });
     }
   } catch (error) {
     return res.status(500).json({
