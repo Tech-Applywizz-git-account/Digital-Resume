@@ -45,7 +45,7 @@ export default async function handler(req, res) {
   // --- Get Azure OpenAI config ---
   const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
   const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const azureApiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-02-15-preview";
+  const azureApiVersion = process.env.AZURE_OPENAI_API_VERSION;
   const azureDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
 
   if (!azureApiKey || !azureEndpoint || !azureDeployment) {
@@ -61,33 +61,52 @@ export default async function handler(req, res) {
 
   // --- Call Azure OpenAI API ---
   try {
+    const requestPayload = {
+      messages: [
+        { role: "system", content: "You are a professional career coach." },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 350,
+      temperature: 0.7,
+    };
+
+    console.log("--- AZURE OPENAI REQUEST ---");
+    console.log("Endpoint:", baseUrl);
+    console.log("Deployment:", azureDeployment);
+    console.log("API Version:", azureApiVersion);
+    console.log("Request Payload:", JSON.stringify(requestPayload, null, 2));
+
     const azureResponse = await fetch(url, {
       method: "POST",
       headers: {
         "api-key": azureApiKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        messages: [
-          { role: "system", content: "You are a professional career coach." },
-          { role: "user", content: prompt },
-        ],
-        max_tokens: 350,
-        temperature: 0.7,
-      }),
+      body: JSON.stringify(requestPayload),
     });
 
+    console.log("Response Status:", azureResponse.status);
+    console.log("Response Headers:", Object.fromEntries(azureResponse.headers));
+
     if (!azureResponse.ok) {
-      let errText = "Unknown Azure OpenAI error";
+      let errorBody = {};
+      const errText = await azureResponse.text();
       try {
-        const errorData = await azureResponse.json();
-        errText = errorData.error ? errorData.error.message : JSON.stringify(errorData);
+        errorBody = JSON.parse(errText);
       } catch (e) {
-        errText = await azureResponse.text();
+        errorBody = { message: errText };
       }
+      console.error("Azure OpenAI API Error Body:", errorBody);
+      
+      const azureError = errorBody.error || errorBody;
+      
       return res.status(500).json({
-        error: "Failed to generate introduction",
-        azureError: errText,
+        error: "Azure OpenAI API Error",
+        status: azureResponse.status,
+        code: azureError.code || "unknown_code",
+        message: azureError.message || errText,
+        details: azureError.details || null,
+        innerError: azureError.innererror || null
       });
     }
 

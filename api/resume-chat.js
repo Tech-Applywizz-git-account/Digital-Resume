@@ -18,10 +18,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const azureOpenAiEndpoint = process.env.AZURE_OPENAI_ENDPOINT || "https://engg-azure-openai.openai.azure.com";
-    const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY || "";
-    const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-02-15-preview";
-    const azureOpenAiDeployment = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o-mini";
+    const azureOpenAiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY;
+    const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION;
+    const azureOpenAiDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
     const useJsonMode = ["1", "true", "yes"].includes((process.env.AZURE_USE_JSON_MODE || "false").toLowerCase());
     const azureMaxTokens = parseInt(process.env.AZURE_MAX_TOKENS || "16000", 10);
 
@@ -151,6 +151,12 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       requestBody.response_format = { type: "json_object" };
     }
 
+    console.log("--- AZURE OPENAI REQUEST ---");
+    console.log("Endpoint:", baseUrl);
+    console.log("Deployment:", azureOpenAiDeployment);
+    console.log("API Version:", azureOpenAiApiVersion);
+    console.log("Request Payload:", JSON.stringify(requestBody, null, 2));
+
     const completionResponse = await fetch(azureUrl, {
       method: "POST",
       headers: {
@@ -161,10 +167,29 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       body: JSON.stringify(requestBody),
     });
 
+    console.log("Response Status:", completionResponse.status);
+    console.log("Response Headers:", Object.fromEntries(completionResponse.headers));
+
     if (!completionResponse.ok) {
+      let errorBody = {};
       const errText = await completionResponse.text();
-      console.error("Azure OpenAI API Error:", errText);
-      return res.status(502).json({ error: `Azure OpenAI API Error: ${completionResponse.statusText}` });
+      try {
+        errorBody = JSON.parse(errText);
+      } catch (e) {
+        errorBody = { message: errText };
+      }
+      console.error("Azure OpenAI API Error Body:", errorBody);
+      
+      const azureError = errorBody.error || errorBody;
+      
+      return res.status(502).json({ 
+        error: "Azure OpenAI API Error",
+        status: completionResponse.status,
+        code: azureError.code || "unknown_code",
+        message: azureError.message || errText,
+        details: azureError.details || null,
+        innerError: azureError.innererror || null
+      });
     }
 
     const data = await completionResponse.json();
