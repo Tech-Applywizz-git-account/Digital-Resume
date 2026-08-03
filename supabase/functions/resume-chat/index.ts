@@ -13,11 +13,10 @@ serve(async (req: any) => {
   }
 
   try {
-    const azureOpenAiEndpoint = Deno.env.get("AZURE_OPENAI_ENDPOINT") || "https://engg--..azure.com";
-    const azureOpenAiApiKey = Deno.env.get("AZURE_OPENAI_API_KEY") || "";
-    const azureOpenAiApiVersion = Deno.env.get("AZURE_OPENAI_API_VERSION") || "--01-preview";
-    const azureOpenAiDeployment = Deno.env.get("AZURE_OPENAI_DEPLOYMENT") || "gpt-5-mini";
-    const useJsonMode = ["1", "true", "yes"].includes((Deno.env.get("AZURE_USE_JSON_MODE") || "false").toLowerCase());
+    const azureOpenAiEndpoint = Deno.env.get("AZURE_OPENAI_ENDPOINT");
+    const azureOpenAiApiKey = Deno.env.get("AZURE_OPENAI_API_KEY");
+    const azureOpenAiApiVersion = Deno.env.get("AZURE_OPENAI_API_VERSION");
+    const azureOpenAiDeployment = Deno.env.get("AZURE_OPENAI_DEPLOYMENT");
     const azureMaxTokens = parseInt(Deno.env.get("AZURE_MAX_TOKENS") || "800", 10);
 
     if (!azureOpenAiApiKey) {
@@ -133,15 +132,8 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
 
     const requestBody: any = {
       messages: conversationMessages,
-      temperature: 0.3,
       max_completion_tokens: azureMaxTokens,
     };
-
-    // Note: If useJsonMode is true, the system prompt must explicitly instruct the model to return JSON.
-    // If you encounter a 400 error about JSON format, you may need to add "Return JSON" to your systemPrompt.
-    if (useJsonMode) {
-      requestBody.response_format = { type: "json_object" };
-    }
 
     const completionResponse = await fetch(azureUrl, {
       method: "POST",

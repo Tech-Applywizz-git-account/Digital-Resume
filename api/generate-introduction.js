@@ -68,7 +68,6 @@ export default async function handler(req, res) {
         { role: "user", content: prompt },
       ],
       max_completion_tokens: process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800,
-      temperature: 0.7,
     };
 
     console.log("--- AZURE OPENAI REQUEST ---");

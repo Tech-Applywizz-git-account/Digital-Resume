@@ -20,12 +20,11 @@ export default async function handler(req, res) {
 
   try {
     const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY;
-    const useJsonMode = ["1", "true", "yes"].includes(String(process.env.AZURE_USE_JSON_MODE).toLowerCase());
     const azureMaxTokens = process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800;
 
     if (!azureOpenAiApiKey) {
       console.error("Missing AZURE_OPENAI_API_KEY");
-      return res.status(500).json({ error: "Server configuration error: Missing API Key" });
+      return res.status(200).json({ answer: "This is a mock response. Please set AZURE_OPENAI_API_KEY in your environment to enable AI chat." });
     }
 
     const openai = new AzureOpenAI({
@@ -35,10 +34,7 @@ export default async function handler(req, res) {
       deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
     });
 
-    if (!azureOpenAiApiKey) {
-      console.error("Missing AZURE_OPENAI_API_KEY");
-      return res.status(500).json({ error: "Server configuration error: Missing API Key" });
-    }
+
 
     // --- Parse JSON body ---
     let body;
@@ -151,12 +147,8 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
     console.log("--- AZURE OPENAI REQUEST ---");
     const requestBody = {
       messages: conversationMessages,
-      temperature: 0.3,
       max_completion_tokens: azureMaxTokens,
     };
-    if (useJsonMode) {
-      requestBody.response_format = { type: "json_object" };
-    }
     console.log("Request Body:", JSON.stringify(requestBody, null, 2));
 
     let completionResponse;
