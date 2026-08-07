@@ -204,7 +204,7 @@ const Step1: React.FC = () => {
       if (finalResumeText) {
         try {
           const aiPrompt = buildSelectionPrompt(finalResumeText);
-          const aiScript = await callOpenAI(aiPrompt);
+          const aiScript = await callOpenAI(aiPrompt, user.id);
           localStorage.setItem("teleprompterText", aiScript);
 
           // Save to database immediately
