@@ -11,6 +11,7 @@ import Sidebar from "../components/Sidebar";
 import { showToast } from "../components/ui/toast";
 import { getUserInfo } from "../utils/crmHelpers";
 import { viewDocumentSafe } from "../utils/documentUtils";
+import { isSafeUUID } from "../utils/uuidHelpers";
 
 
 
@@ -121,7 +122,9 @@ const Step1: React.FC = () => {
       const existingResumeUrl = localStorage.getItem("uploadedResumeUrl");
       const existingResumeText = localStorage.getItem("resumeFullText");
       
-      let activeJobRequestId = jobRequestId;
+      // If the jobRequestId is a synthetic slug like "profile" or "api-resume",
+      // we must create a new real DB record.
+      let activeJobRequestId = isSafeUUID(jobRequestId) ? jobRequestId : null;
 
       if (!activeJobRequestId) {
         const userInfo = await getUserInfo(user.id);
@@ -204,7 +207,7 @@ const Step1: React.FC = () => {
       if (finalResumeText) {
         try {
           const aiPrompt = buildSelectionPrompt(finalResumeText);
-          const aiScript = await callOpenAI(aiPrompt);
+          const aiScript = await callOpenAI(aiPrompt, user.id);
           localStorage.setItem("teleprompterText", aiScript);
 
           // Save to database immediately

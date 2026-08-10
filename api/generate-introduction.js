@@ -1,4 +1,6 @@
+import { createClient } from "@supabase/supabase-js";
 import { AzureOpenAI } from "openai";
+import { logAzureUsage } from "./utils/tokenLogger.js";
 
 export default async function handler(req, res) {
   // --- CORS headers ---
@@ -7,12 +9,10 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Content-Type", "application/json");
 
-  // --- Handle preflight ---
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  // --- Allow only POST ---
   if (req.method !== "POST") {
     return res.status(405).json({
       error: "Method not allowed",
@@ -21,7 +21,6 @@ export default async function handler(req, res) {
     });
   }
 
-  // --- Parse JSON body ---
   let jsonData;
   try {
     if (req.body && typeof req.body === 'object') {
@@ -39,18 +38,45 @@ export default async function handler(req, res) {
     });
   }
 
-  const { prompt } = jsonData || {};
+  const { prompt, ownerId } = jsonData || {};
   if (!prompt) {
     return res.status(400).json({ error: "Prompt is required" });
   }
 
   const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
 
-  if (!azureApiKey) {
-    return res.status(200).json({
-      success: true,
-      introduction: "This is a mock introduction. Please set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_DEPLOYMENT in your environment.",
+  if (!azureApiKey || !endpoint || !apiVersion || !deployment) {
+    return res.status(500).json({
+      success: false,
+      error: "Azure OpenAI configuration is missing on the server.",
     });
+  }
+
+  // --- Retrieve User Info from Supabase ---
+  let user_id = null;
+  let email = null;
+  let lead_id = ownerId || null;
+
+  try {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (supabaseUrl && supabaseServiceKey) {
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
+        if (user) {
+          user_id = user.id;
+          email = user.email;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Auth retrieval error in generate-introduction:", err);
   }
 
   const openai = new AzureOpenAI({
@@ -60,34 +86,36 @@ export default async function handler(req, res) {
     deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
   });
 
-  // --- Call Azure OpenAI API ---
+  const requestPayload = {
+    messages: [
+      { role: "system", content: "You are a professional career coach." },
+      { role: "user", content: prompt },
+    ],
+    max_completion_tokens: process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800,
+  };
+
+  const startTime = Date.now();
+  let azureResponse;
+
   try {
-    const requestPayload = {
-      messages: [
-        { role: "system", content: "You are a professional career coach." },
-        { role: "user", content: prompt },
-      ],
-      max_completion_tokens: process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800,
-    };
+    azureResponse = await openai.chat.completions.create(requestPayload);
+    const responseTimeMs = Date.now() - startTime;
 
-    console.log("--- AZURE OPENAI REQUEST ---");
-    console.log("Request Body:", JSON.stringify(requestPayload, null, 2));
+    // Async log success
+    logAzureUsage({
+      lead_id,
+      user_id,
+      email,
+      task_type: 'generate_introduction',
+      source: 'api_generate_introduction',
+      model: azureResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
+      deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
+      azure_request_id: azureResponse.id || null,
+      usage: azureResponse.usage,
+      response_time_ms: responseTimeMs,
+      is_success: true
+    }).catch(e => console.error("Non-blocking log error:", e));
 
-    let azureResponse;
-    try {
-      azureResponse = await openai.chat.completions.create(requestPayload);
-    } catch (apiError) {
-      console.error("Azure OpenAI API Error:", apiError);
-      return res.status(500).json({ 
-        status: apiError.status || 500,
-        code: apiError.code || "unknown_code",
-        message: apiError.message,
-        details: apiError.error || null,
-        stackTrace: apiError.stack || null
-      });
-    }
-
-    console.log("Azure Response Body:", JSON.stringify(azureResponse, null, 2));
     if (azureResponse.choices && azureResponse.choices[0]) {
       return res.status(200).json({
         success: true,
@@ -101,12 +129,31 @@ export default async function handler(req, res) {
         data: azureResponse 
       });
     }
-  } catch (error) {
-    return res.status(500).json({
-      status: 500,
-      code: "internal_server_error",
-      message: error.message,
-      stackTrace: error.stack
+
+  } catch (apiError) {
+    const responseTimeMs = Date.now() - startTime;
+    
+    // Async log failure
+    logAzureUsage({
+      lead_id,
+      user_id,
+      email,
+      task_type: 'generate_introduction',
+      source: 'api_generate_introduction',
+      model: process.env.AZURE_OPENAI_DEPLOYMENT,
+      deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
+      azure_request_id: null,
+      usage: null,
+      response_time_ms: responseTimeMs,
+      is_success: false,
+      error_message: apiError.message
+    }).catch(e => console.error("Non-blocking log error:", e));
+
+    return res.status(502).json({ 
+      status: apiError.status || 502,
+      code: apiError.code || "unknown_code",
+      message: apiError.message,
+      details: apiError.error || null
     });
   }
 }

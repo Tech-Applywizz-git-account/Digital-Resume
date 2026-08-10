@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import { isSafeUUID } from '../utils/uuidHelpers';
 import {
   Video,
   CheckCircle,
@@ -383,6 +384,33 @@ export default function Dashboard() {
   const confirmReplace = async () => {
     if (!selectedReplaceFile || !replacingId || !user) return;
 
+    // Guard: do not attempt to update Supabase with a non-UUID id
+    if (!isSafeUUID(replacingId)) {
+      // Synthetic/API-only record — there is no Supabase row to update.
+      // Simply re-upload and refresh the display without touching Supabase.
+      try {
+        setIsReplacing(true);
+        const file = selectedReplaceFile;
+        const fileExt = file.name.split('.').pop()?.toLowerCase();
+        const timestamp = Date.now();
+        const fileName = `replaced_resume_${timestamp}.${fileExt}`;
+        const filePath = `${crmEmail || user.email}/${fileName}`;
+        await supabase.storage.from('CRM_users_resumes').upload(filePath, file, { upsert: true, contentType: file.type || 'application/pdf' });
+        showToast("Resume replaced (API-only record — no Supabase row to update).", "success");
+        await fetchcareercasts();
+        setShowReplaceModal(false);
+      } catch (err: any) {
+        console.error('❌ Replace failed for synthetic record:', err);
+        showToast("Failed to replace resume: " + err.message, "error");
+      } finally {
+        setIsReplacing(false);
+        setReplacingId(null);
+        setSelectedReplaceFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     try {
       setIsReplacing(true);
       const file = selectedReplaceFile;
@@ -408,7 +436,7 @@ export default function Dashboard() {
           .getPublicUrl(filePath);
         publicUrl = publicData?.publicUrl ?? null;
 
-        // Update crm_job_requests
+        // Update crm_job_requests (safe: replacingId is a valid UUID here)
         const { error: updateError } = await supabase.from('crm_job_requests')
           .update({
             resume_url: publicUrl,
@@ -498,7 +526,12 @@ export default function Dashboard() {
     // Populate localStorage so steps can resume correctly
     localStorage.setItem('careercast_jobTitle', cast.job_title || '');
     localStorage.setItem('careercast_jobDescription', cast.job_description || '');
-    localStorage.setItem('current_job_request_id', cast.id);
+    // ⚠️ Only store a real UUID as current_job_request_id.
+    // Synthetic/API-only records (is_api_resume: true) have a slug id like
+    // "api-resume" which must NEVER be sent to Supabase UUID columns.
+    // For those, we store 'profile' as the sentinel instead.
+    const safeId = isSafeUUID(cast.id) ? cast.id : 'profile';
+    localStorage.setItem('current_job_request_id', safeId);
     localStorage.setItem('uploadedResumeUrl', cast.resume_path || '');
     localStorage.setItem('resumeFileName', cast.resume_path ? cast.resume_path.split('/').pop() : 'Resume.pdf');
     localStorage.setItem('is_crm_user', isCRM ? 'true' : 'false');
@@ -545,9 +578,11 @@ export default function Dashboard() {
     navigate('/step1?mode=continue');
   };
   const handleViewDetails = (id: string, resumePath?: string) => {
-    // We remove the resumeUrl from the query string to hide sensitive information
-    // FinalResult.tsx is capable of fetching the resume URL from the database using the ID
-    navigate(`/final-result/${id}`);
+    // For synthetic/API-only records (id is not a real UUID like 'api-resume'),
+    // navigate with 'profile' so FinalResult uses the email-based lookup
+    // instead of firing an invalid UUID query against Supabase.
+    const safeId = isSafeUUID(id) ? id : 'profile';
+    navigate(`/final-result/${safeId}`);
   };
   const handleCloseVideo = () => setSelectedVideo(null);
   const handleClosePricingPopup = () => setShowPricingPopup(false);

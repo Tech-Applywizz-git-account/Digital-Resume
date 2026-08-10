@@ -10,6 +10,7 @@ import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
 import { extractTextFromBuffer } from "../utils/textExtraction";
+import { isSafeUUID } from "../utils/uuidHelpers";
 
 // --- Play Intro Button Canvas Generator ---
 // Layout: inline-flex, h=28px, padding: 6px 8px 5px 8px, align-items: flex-start, gap: 6px
@@ -413,9 +414,9 @@ const FinalResult: React.FC = () => {
                 return vResumeUrl;
               });
 
-              // ✅ Sync with Supabase if we have a valid ID and a logged-in user
+              // ✅ Sync with Supabase if we have a valid UUID ID and a logged-in user
               const currentId = castId || idFromQuery;
-              if (user && currentId && currentId !== 'profile') {
+              if (user && currentId && isSafeUUID(currentId)) {
                 console.log("🔄 Syncing external resume to Supabase for ID:", currentId);
                 Promise.all([
                   supabase.from('crm_job_requests').update({ resume_url: vResumeUrl }).eq('id', currentId).is('resume_url', null),
@@ -512,7 +513,7 @@ const FinalResult: React.FC = () => {
 
 
     // If we have a job request ID, fetch the portfolio from the new table
-    if (currentJobRequestId) {
+    if (currentJobRequestId && isSafeUUID(currentJobRequestId)) {
       try {
 
 
@@ -671,6 +672,15 @@ const FinalResult: React.FC = () => {
   const loadExternalData = async (id: string) => {
     try {
       console.log("🚀 loadExternalData fetching with ID:", id);
+
+      // ⚠️ Guard: only query Supabase UUID columns when `id` is a real UUID.
+      // Non-UUID slugs like "api-resume" must never be sent to .eq("id", ...).
+      if (!isSafeUUID(id)) {
+        console.warn("⚠️ loadExternalData: id is not a valid UUID, skipping Supabase queries.", id);
+        // Fall through to Vercel API lookup (fetchVercelDetails handles email-based lookup).
+        return;
+      }
+
       // Parallelize checking CRM and regular tables
       const [crmResult, regularResult] = await Promise.all([
         supabase.from('crm_job_requests').select('*').eq('id', id).maybeSingle(),
@@ -883,7 +893,7 @@ const FinalResult: React.FC = () => {
       showToast("Portfolio updated successfully", "success");
 
       // Optional: Update current session's record too if it exists to ensure dashboard picks it up immediately
-      if (currentJobRequestId && currentJobRequestId !== 'profile') {
+      if (currentJobRequestId && isSafeUUID(currentJobRequestId)) {
         supabase.from('crm_job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId).then(() => {});
         supabase.from('job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId).then(() => {});
       }

@@ -9,6 +9,7 @@ import { showToast } from "../components/ui/toast";
 import { callOpenAI, buildSelectionPrompt } from "../utils/aiHelpers";
 import { supabase } from "../integrations/supabase/client";
 import { extractTextFromBuffer } from "../utils/textExtraction";
+import { isSafeUUID } from "../utils/uuidHelpers";
 
 const Step2: React.FC = () => {
   const navigate = useNavigate();
@@ -37,6 +38,10 @@ const Step2: React.FC = () => {
       const jobRequestId = localStorage.getItem("current_job_request_id");
       if (!jobRequestId || !user) return;
       const isCRM = localStorage.getItem("is_crm_user") === "true";
+      if (!isSafeUUID(jobRequestId)) {
+          console.warn("Skipping recording check for non-UUID jobRequestId:", jobRequestId);
+          return;
+      }
       try {
         if (isCRM) {
           const { data } = await supabase.from('crm_recordings').select('id').eq('job_request_id', jobRequestId).maybeSingle();
@@ -72,14 +77,16 @@ const Step2: React.FC = () => {
           const speedPrefix = `[[SPEED:${teleprompterSpeed.toFixed(1)}]] `;
           const dbContent = speedPrefix + result;
           
-          if (isCRM) {
-            await supabase.from('crm_job_requests')
-              .update({ job_description: dbContent })
-              .eq('id', jobRequestId);
-          } else {
-            await supabase.from('job_requests')
-              .update({ job_description: dbContent })
-              .eq('id', jobRequestId);
+          if (isSafeUUID(jobRequestId)) {
+            if (isCRM) {
+              await supabase.from('crm_job_requests')
+                .update({ job_description: dbContent })
+                .eq('id', jobRequestId);
+            } else {
+              await supabase.from('job_requests')
+                .update({ job_description: dbContent })
+                .eq('id', jobRequestId);
+            }
           }
           localStorage.setItem("careercast_jobDescription", dbContent);
         } catch (dbErr) {
@@ -176,10 +183,12 @@ const Step2: React.FC = () => {
         const speedPrefix = `[[SPEED:${teleprompterSpeed.toFixed(1)}]] `;
         const dbContent = speedPrefix + teleprompterText;
         try {
-            if (isCRM) {
-                await supabase.from('crm_job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
-            } else {
-                await supabase.from('job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
+            if (isSafeUUID(jobRequestId)) {
+                if (isCRM) {
+                    await supabase.from('crm_job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
+                } else {
+                    await supabase.from('job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
+                }
             }
             localStorage.setItem("careercast_jobDescription", dbContent);
         } catch (e) {
