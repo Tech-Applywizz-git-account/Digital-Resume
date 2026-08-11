@@ -56,7 +56,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing resumeText or question in request body" });
     }
 
-    console.log("Processing question for owner:", ownerId, "recruiterMode:", !!recruiterMode, "history:", messages?.length || 0);
+    console.log(`📥 resume-chat: ownerId=${ownerId || 'null'}, ownerEmail=${ownerEmailFromBody || 'null'}, recruiterMode=${!!recruiterMode}`);
 
     // --- Resolve authenticated user (for azure_token_usage logging) ---
     // azure_token_usage requires user_id (uuid NOT NULL) and email (text NOT NULL)
