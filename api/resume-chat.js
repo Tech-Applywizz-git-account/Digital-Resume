@@ -50,7 +50,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const { resumeText, messages, question, recruiterMode, ownerId } = body;
+    const { resumeText, messages, question, recruiterMode, ownerId, ownerEmail: ownerEmailFromBody } = body;
 
     if (!resumeText || !question) {
       return res.status(400).json({ error: "Missing resumeText or question in request body" });
@@ -61,22 +61,27 @@ export default async function handler(req, res) {
     // --- Resolve authenticated user (for azure_token_usage logging) ---
     // azure_token_usage requires user_id (uuid NOT NULL) and email (text NOT NULL)
     let user_id = ownerId || null;
-    let email = null;
+    // Use email sent directly from the frontend as the primary source (most reliable)
+    let email = ownerEmailFromBody || null;
 
     try {
       const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-      if (supabaseUrl && supabaseServiceKey) {
+      if (supabaseUrl && supabaseServiceKey && (!user_id || !email)) {
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-        // Resolve email for the ownerId using the admin API
-        if (user_id) {
-          const { data: { user: ownerUser } } = await supabaseAdmin.auth.admin.getUserById(user_id);
-          if (ownerUser?.email) email = ownerUser.email;
+        // Resolve email for the ownerId using admin API (only if not already known)
+        if (user_id && !email) {
+          try {
+            const { data: { user: ownerUser } } = await supabaseAdmin.auth.admin.getUserById(user_id);
+            if (ownerUser?.email) email = ownerUser.email;
+          } catch (adminErr) {
+            console.warn("Admin getUserById failed:", adminErr?.message);
+          }
         }
 
-        // Fallback: resolve from Bearer token if ownerId not provided or email still missing
+        // Fallback: resolve from Bearer token if still missing
         if (!user_id || !email) {
           const authHeader = req.headers.authorization || req.headers.Authorization;
           if (authHeader) {
@@ -92,6 +97,8 @@ export default async function handler(req, res) {
     } catch (authErr) {
       console.error("Auth resolution error in resume-chat:", authErr);
     }
+
+    console.log(`📋 Token logging context: user_id=${user_id || 'null'}, email=${email || 'null'}`);
 
     // Build the system prompt based on mode
     let systemPrompt;

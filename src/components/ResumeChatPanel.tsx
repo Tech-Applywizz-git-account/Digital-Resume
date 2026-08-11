@@ -26,6 +26,7 @@ export interface ResumeChatPanelProps {
     isDataLoading?: boolean;
     recruiterMode?: boolean;
     ownerId?: string | null;
+    ownerEmail?: string | null;
     hideNavigation?: boolean;
 }
 
@@ -54,6 +55,7 @@ const ResumeChatPanel = ({
     isDataLoading,
     recruiterMode = false,
     ownerId = null,
+    ownerEmail = null,
     hideNavigation = false
 }: ResumeChatPanelProps) => {
     const [messages, setMessages] = useState<Message[]>([
@@ -214,7 +216,8 @@ const ResumeChatPanel = ({
                     messages: messages.map(m => ({ role: m.sender === 'bot' ? 'assistant' : 'user', content: m.text })),
                     question: text,
                     recruiterMode: recruiterMode,
-                    ownerId: ownerId
+                    ownerId: ownerId,
+                    ownerEmail: ownerEmail
                 })
             });
 
