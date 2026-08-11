@@ -10,6 +10,7 @@ import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
 import { extractTextFromBuffer } from "../utils/textExtraction";
+import { isSafeUUID } from "../utils/uuidHelpers";
 
 // --- Play Intro Button Canvas Generator ---
 // Layout: inline-flex, h=28px, padding: 6px 8px 5px 8px, align-items: flex-start, gap: 6px
@@ -413,9 +414,9 @@ const FinalResult: React.FC = () => {
                 return vResumeUrl;
               });
 
-              // ✅ Sync with Supabase if we have a valid ID and a logged-in user
+              // ✅ Sync with Supabase if we have a valid UUID ID and a logged-in user
               const currentId = castId || idFromQuery;
-              if (user && currentId && currentId !== 'profile') {
+              if (user && currentId && isSafeUUID(currentId)) {
                 console.log("🔄 Syncing external resume to Supabase for ID:", currentId);
                 Promise.all([
                   supabase.from('crm_job_requests').update({ resume_url: vResumeUrl }).eq('id', currentId).is('resume_url', null),
@@ -512,7 +513,7 @@ const FinalResult: React.FC = () => {
 
 
     // If we have a job request ID, fetch the portfolio from the new table
-    if (currentJobRequestId) {
+    if (currentJobRequestId && isSafeUUID(currentJobRequestId)) {
       try {
 
 
@@ -638,10 +639,21 @@ const FinalResult: React.FC = () => {
             // Fetch owner's name and email for mapping
             if (data.user_id) {
               setResumeOwnerUserId(data.user_id);
-              // Regular job_requests might have email if we check the table schema
-              setResumeOwnerEmail((data as any).email || (data as any).candidate_email || null);
-              const { data: profile } = await supabase.from('profiles').select('first_name, last_name, full_name').eq('id', data.user_id).single();
-              if (profile) setCandidateName(profile.full_name || profile.first_name || "Candidate");
+              let resolvedEmail = (data as any).email || (data as any).candidate_email || null;
+
+              const [profileRes, crmRes] = await Promise.all([
+                supabase.from('profiles').select('first_name, last_name, full_name, email').eq('id', data.user_id).maybeSingle(),
+                supabase.from('digital_resume_by_crm').select('email').eq('user_id', data.user_id).maybeSingle()
+              ]);
+
+              if (crmRes.data?.email) {
+                resolvedEmail = crmRes.data.email;
+              } else if (profileRes.data?.email && !resolvedEmail) {
+                resolvedEmail = profileRes.data.email;
+              }
+
+              setResumeOwnerEmail(resolvedEmail);
+              if (profileRes.data) setCandidateName(profileRes.data.full_name || profileRes.data.first_name || "Candidate");
             }
 
             return;
@@ -671,6 +683,15 @@ const FinalResult: React.FC = () => {
   const loadExternalData = async (id: string) => {
     try {
       console.log("🚀 loadExternalData fetching with ID:", id);
+
+      // ⚠️ Guard: only query Supabase UUID columns when `id` is a real UUID.
+      // Non-UUID slugs like "api-resume" must never be sent to .eq("id", ...).
+      if (!isSafeUUID(id)) {
+        console.warn("⚠️ loadExternalData: id is not a valid UUID, skipping Supabase queries.", id);
+        // Fall through to Vercel API lookup (fetchVercelDetails handles email-based lookup).
+        return;
+      }
+
       // Parallelize checking CRM and regular tables
       const [crmResult, regularResult] = await Promise.all([
         supabase.from('crm_job_requests').select('*').eq('id', id).maybeSingle(),
@@ -681,27 +702,31 @@ const FinalResult: React.FC = () => {
       const data = crmResult.data || regularResult.data;
 
       // --- Resume/Portfolio Lookup: Handled by Vercel API Sync ---
-      const ownerEmail = (data as any)?.email || (data as any)?.candidate_email || null;
+      let ownerEmail = (data as any)?.email || (data as any)?.candidate_email || null;
+
+      // Fetch CRM record to get application email, true email, and name
+      const { data: crmUser } = await supabase
+        .from('digital_resume_by_crm')
+        .select('email, company_application_email, first_name, last_name, full_name')
+        .eq('job_request_id', id)
+        .maybeSingle();
+
+      if (crmUser) {
+        if (crmUser.email) ownerEmail = crmUser.email; // CRM is authoritative
+        if (crmUser.company_application_email) {
+          setResumeOwnerAppEmail(crmUser.company_application_email);
+        }
+        const name = crmUser.full_name || (crmUser.first_name ? `${crmUser.first_name} ${crmUser.last_name || ''}`.trim() : null);
+        if (name && candidateName === "Candidate") {
+          setCandidateName(name);
+        }
+      }
+
       if (ownerEmail) {
         setResumeOwnerEmail(ownerEmail);
         console.log("📍 Email detected, Vercel sync will handle resume and portfolio.");
-
-        // Fetch CRM record to get application email and name
-        supabase
-          .from('digital_resume_by_crm')
-          .select('company_application_email, first_name, last_name, full_name')
-          .eq('job_request_id', id)
-          .maybeSingle()
-          .then(({ data: crmUser }) => {
-            if (crmUser?.company_application_email) {
-              setResumeOwnerAppEmail(crmUser.company_application_email);
-            }
-            const name = crmUser?.full_name || (crmUser?.first_name ? `${crmUser.first_name} ${crmUser.last_name || ''}`.trim() : null);
-            if (name && candidateName === "Candidate") {
-              setCandidateName(name);
-            }
-          });
       }
+
       if (data) {
         console.log("✅ Request record found:", data);
         setJobTitle(data.job_title || "");
@@ -726,15 +751,26 @@ const FinalResult: React.FC = () => {
         // Handle Candidate Name & Portfolio Override
         if (data.user_id) {
           setResumeOwnerUserId(data.user_id);
-          setResumeOwnerEmail((data as any).email || (data as any).candidate_email || null);
+          
+          let resolvedEmail = ownerEmail;
 
-          // Parallel fetch for profile and portfolio settings
-          const [profileRes, portfolioRes] = await Promise.all([
-            supabase.from('profiles').select('first_name, full_name').eq('id', data.user_id).maybeSingle(),
-            supabase.from('portfolio_settings').select('url').eq('user_id', data.user_id).maybeSingle()
+          // Parallel fetch for profile, portfolio settings, AND crm email
+          const [profileRes, portfolioRes, crmRes] = await Promise.all([
+            supabase.from('profiles').select('first_name, full_name, email').eq('id', data.user_id).maybeSingle(),
+            supabase.from('portfolio_settings').select('url').eq('user_id', data.user_id).maybeSingle(),
+            supabase.from('digital_resume_by_crm').select('email').eq('user_id', data.user_id).maybeSingle()
           ]);
 
+          if (crmRes.data?.email) {
+            resolvedEmail = crmRes.data.email;
+          } else if (profileRes.data?.email && !resolvedEmail) {
+            resolvedEmail = profileRes.data.email;
+          }
+          
+          setResumeOwnerEmail(resolvedEmail || null);
+
           if (profileRes.data) setCandidateName(profileRes.data.full_name || profileRes.data.first_name || "Candidate");
+
           if (portfolioRes.data?.url) {
             console.log("📍 Found portfolio override in Supabase:", portfolioRes.data.url);
             setPortfolioUrl(portfolioRes.data.url);
@@ -883,7 +919,7 @@ const FinalResult: React.FC = () => {
       showToast("Portfolio updated successfully", "success");
 
       // Optional: Update current session's record too if it exists to ensure dashboard picks it up immediately
-      if (currentJobRequestId && currentJobRequestId !== 'profile') {
+      if (currentJobRequestId && isSafeUUID(currentJobRequestId)) {
         supabase.from('crm_job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId).then(() => {});
         supabase.from('job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId).then(() => {});
       }
@@ -1466,6 +1502,7 @@ const FinalResult: React.FC = () => {
             videoUrl={videoUrl}
             resumeUrl={resumeUrl}
             ownerId={resumeOwnerUserId}
+            ownerEmail={resumeOwnerEmail}
             onModeChange={(m: 'chat' | 'video' | 'resume') => setPanelMode(m)}
             onDownload={handleDownloadEnhanced}
             isDataLoading={loading}

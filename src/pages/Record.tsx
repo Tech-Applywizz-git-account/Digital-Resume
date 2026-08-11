@@ -4,6 +4,7 @@ import { supabase } from "../integrations/supabase/client";
 import { useAuth } from "../contexts/AuthContext";
 import { showToast } from "../components/ui/toast";
 import { X, Loader2 } from "lucide-react";
+import { isSafeUUID } from "../utils/uuidHelpers";
 
 /**
  * Enhanced Camera/Recorder Page
@@ -302,6 +303,28 @@ const Record: React.FC = () => {
 
       const isCRMUser = localStorage.getItem("is_crm_user") === "true";
       const crmEmail = localStorage.getItem("crm_user_email");
+
+      let activeJobRequestId = jobRequestId;
+      if (!isSafeUUID(activeJobRequestId)) {
+          console.warn("Non-UUID job request ID detected in Record.tsx. Creating a real record.");
+          const jobTitle = "New Digital Resume";
+          const jobDescription = localStorage.getItem("teleprompterText") || "Generated from resume analysis";
+          if (isCRMUser && crmEmail) {
+             const { data, error } = await supabase.from('crm_job_requests').insert([{
+                email: crmEmail, user_id: currentUser.id, job_title: jobTitle, job_description: jobDescription, application_status: 'draft'
+             }]).select('id').single();
+             if (error) throw error;
+             activeJobRequestId = data.id;
+          } else {
+             const { data, error } = await supabase.from('job_requests').insert([{
+                user_id: currentUser.id, email: currentUser.email, job_title: jobTitle, job_description: jobDescription, status: 'draft'
+             }]).select('id').single();
+             if (error) throw error;
+             activeJobRequestId = data.id;
+          }
+          localStorage.setItem('current_job_request_id', activeJobRequestId);
+      }
+
       const fileName = `${Date.now()}.webm`;
       let publicUrl: string | null = null;
 
@@ -323,18 +346,18 @@ const Record: React.FC = () => {
         publicUrl = supabase.storage.from("CRM_users_recordings").getPublicUrl(dataPath).data.publicUrl;
         console.log("Generated public URL:", publicUrl);
 
-        const insertPayload = { email: crmEmail, user_id: currentUser.id, job_request_id: jobRequestId, video_url: publicUrl, duration: durationSeconds, file_size: blob.size, status: "completed" };
+        const insertPayload = { email: crmEmail, user_id: currentUser.id, job_request_id: activeJobRequestId, video_url: publicUrl, duration: durationSeconds, file_size: blob.size, status: "completed" };
         console.log("Database insert payload (crm_recordings):", insertPayload);
 
-        const { data: existingRecordings } = await supabase.from("crm_recordings").select("id").eq("job_request_id", jobRequestId);
+        const { data: existingRecordings } = await supabase.from("crm_recordings").select("id").eq("job_request_id", activeJobRequestId);
         const existingRecording = existingRecordings && existingRecordings.length > 0 ? existingRecordings[0] : null;
         
         if (existingRecording) {
-          await supabase.from("crm_recordings").update(insertPayload).eq("job_request_id", jobRequestId);
+          await supabase.from("crm_recordings").update(insertPayload).eq("job_request_id", activeJobRequestId);
         } else {
           await supabase.from("crm_recordings").insert(insertPayload);
         }
-        await supabase.from("crm_job_requests").update({ application_status: "recorded", updated_at: new Date().toISOString() }).eq("id", jobRequestId);
+        await supabase.from("crm_job_requests").update({ application_status: "recorded", updated_at: new Date().toISOString() }).eq("id", activeJobRequestId);
 
         if (!existingRecording && creditsRemaining !== null && creditsRemaining > 0) {
           await supabase.from('digital_resume_by_crm').update({ credits_remaining: creditsRemaining - 1 }).eq('email', crmEmail);
@@ -358,18 +381,18 @@ const Record: React.FC = () => {
         publicUrl = supabase.storage.from("recordings").getPublicUrl(dataPath).data.publicUrl;
         console.log("Generated public URL:", publicUrl);
 
-        const insertPayload = { job_request_id: jobRequestId, email: currentUser.email, storage_path: publicUrl, duration_seconds: durationSeconds, size_bytes: blob.size };
+        const insertPayload = { job_request_id: activeJobRequestId, email: currentUser.email, storage_path: publicUrl, duration_seconds: durationSeconds, size_bytes: blob.size };
         console.log("Database insert payload (recordings):", insertPayload);
 
-        const { data: existingRecordings } = await supabase.from("recordings").select("id").eq("job_request_id", jobRequestId);
+        const { data: existingRecordings } = await supabase.from("recordings").select("id").eq("job_request_id", activeJobRequestId);
         const existingRecording = existingRecordings && existingRecordings.length > 0 ? existingRecordings[0] : null;
         
         if (existingRecording) {
-          await supabase.from("recordings").update(insertPayload).eq("job_request_id", jobRequestId);
+          await supabase.from("recordings").update(insertPayload).eq("job_request_id", activeJobRequestId);
         } else {
           await supabase.from("recordings").insert(insertPayload);
         }
-        await supabase.from("job_requests").update({ status: "recorded", updated_at: new Date().toISOString() }).eq("id", jobRequestId);
+        await supabase.from("job_requests").update({ status: "recorded", updated_at: new Date().toISOString() }).eq("id", activeJobRequestId);
 
         if (!existingRecording && creditsRemaining !== null && creditsRemaining > 0) {
           await supabase.from('profiles').update({ credits_remaining: creditsRemaining - 1 }).eq('id', currentUser.id);

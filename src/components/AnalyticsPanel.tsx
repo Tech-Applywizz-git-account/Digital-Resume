@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../integrations/supabase/client';
+import { isSafeUUID } from '../utils/uuidHelpers';
 import {
     BarChart3,
     MapPin,
@@ -69,6 +70,22 @@ export default function AnalyticsPanel({ isOpen, onClose, castId, resumeTitle }:
                 .order('started_at', { ascending: false });
 
             if (castId) {
+                if (!isSafeUUID(castId)) {
+                    // If it's not a UUID (e.g., 'api-resume'), it won't exist in the DB anyway.
+                    // We can just set empty sessions and return early.
+                    setSessions([]);
+                    setStats({
+                        totalViews: 0,
+                        uniqueVisitors: 0,
+                        avgDuration: 0,
+                        pdfDownloads: 0,
+                        videoPlays: 0,
+                        chatOpens: 0,
+                        portfolioClicks: 0
+                    });
+                    setLoading(false);
+                    return;
+                }
                 query = query.eq('resume_id', castId);
             }
 
