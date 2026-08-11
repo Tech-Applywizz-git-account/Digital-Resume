@@ -56,7 +56,6 @@ export default async function handler(req, res) {
   }
 
   const email = ownerEmail || null;
-  const lead_id = ownerId || null;
   
   // Note: User mapping is now strictly delegated to logAzureUsage
   // which queries public.digital_resume_by_crm using the email.
@@ -84,9 +83,9 @@ export default async function handler(req, res) {
     azureResponse = await openai.chat.completions.create(requestPayload);
     const responseTimeMs = Date.now() - startTime;
 
-    // Async log success
-    logAzureUsage({
-      lead_id,
+    // Await log success
+    await logAzureUsage({
+      lead_id: null,
       email,
       task_type: 'generate_introduction',
       model: azureResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
@@ -95,7 +94,7 @@ export default async function handler(req, res) {
       usage: azureResponse.usage,
       response_time_ms: responseTimeMs,
       is_success: true
-    }).catch(e => console.error("Non-blocking log error:", e));
+    });
 
     if (azureResponse.choices && azureResponse.choices[0]) {
       return res.status(200).json({
@@ -114,9 +113,9 @@ export default async function handler(req, res) {
   } catch (apiError) {
     const responseTimeMs = Date.now() - startTime;
     
-    // Async log failure
-    logAzureUsage({
-      lead_id,
+    // Await log failure
+    await logAzureUsage({
+      lead_id: null,
       email,
       task_type: 'generate_introduction',
       model: process.env.AZURE_OPENAI_DEPLOYMENT,
@@ -126,7 +125,7 @@ export default async function handler(req, res) {
       response_time_ms: responseTimeMs,
       is_success: false,
       error_message: apiError.message
-    }).catch(e => console.error("Non-blocking log error:", e));
+    });
 
     return res.status(502).json({ 
       status: apiError.status || 502,

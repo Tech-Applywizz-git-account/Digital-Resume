@@ -168,8 +168,8 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
 
       console.log("Azure Response Body:", JSON.stringify(completionResponse, null, 2));
 
-      // --- Log token usage to azure_token_usage (non-blocking) ---
-      logAzureUsage({
+      // --- Log token usage to azure_token_usage (awaiting) ---
+      await logAzureUsage({
         lead_id: null,
         email,
         task_type: 'resume_chat',
@@ -179,7 +179,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
         usage: completionResponse.usage,
         response_time_ms: responseTimeMs,
         is_success: true,
-      }).catch(e => console.error("Non-blocking log error:", e));
+      });
 
       const aiResponse = completionResponse.choices[0].message.content;
       return res.status(200).json({ answer: aiResponse });
@@ -188,8 +188,8 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       const responseTimeMs = Date.now() - startTime;
       console.error("Azure OpenAI API Error:", apiError);
 
-      // --- Log failure to azure_token_usage (non-blocking) ---
-      logAzureUsage({
+      // --- Log failure to azure_token_usage (awaiting) ---
+      await logAzureUsage({
         lead_id: null,
         email,
         task_type: 'resume_chat',
@@ -200,7 +200,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
         response_time_ms: responseTimeMs,
         is_success: false,
         error_message: apiError.message,
-      }).catch(e => console.error("Non-blocking log error:", e));
+      });
 
       return res.status(502).json({
         status: apiError.status || 502,
