@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { AzureOpenAI } from "openai";
+import { logAzureUsage } from "./utils/tokenLogger.js";
 
 export default async function handler(req, res) {
   // --- CORS headers ---
@@ -34,8 +35,6 @@ export default async function handler(req, res) {
       deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
     });
 
-
-
     // --- Parse JSON body ---
     let body;
     if (req.body && typeof req.body === 'object') {
@@ -58,6 +57,41 @@ export default async function handler(req, res) {
     }
 
     console.log("Processing question for owner:", ownerId, "recruiterMode:", !!recruiterMode, "history:", messages?.length || 0);
+
+    // --- Resolve authenticated user (for azure_token_usage logging) ---
+    // azure_token_usage requires user_id (uuid NOT NULL) and email (text NOT NULL)
+    let user_id = ownerId || null;
+    let email = null;
+
+    try {
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+      if (supabaseUrl && supabaseServiceKey) {
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+        // Resolve email for the ownerId using the admin API
+        if (user_id) {
+          const { data: { user: ownerUser } } = await supabaseAdmin.auth.admin.getUserById(user_id);
+          if (ownerUser?.email) email = ownerUser.email;
+        }
+
+        // Fallback: resolve from Bearer token if ownerId not provided or email still missing
+        if (!user_id || !email) {
+          const authHeader = req.headers.authorization || req.headers.Authorization;
+          if (authHeader) {
+            const token = authHeader.replace('Bearer ', '');
+            const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+            if (user) {
+              user_id = user_id || user.id;
+              email = email || user.email;
+            }
+          }
+        }
+      }
+    } catch (authErr) {
+      console.error("Auth resolution error in resume-chat:", authErr);
+    }
 
     // Build the system prompt based on mode
     let systemPrompt;
@@ -151,12 +185,52 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
     };
     console.log("Request Body:", JSON.stringify(requestBody, null, 2));
 
+    const startTime = Date.now();
     let completionResponse;
+
     try {
       completionResponse = await openai.chat.completions.create(requestBody);
+      const responseTimeMs = Date.now() - startTime;
+
+      console.log("Azure Response Body:", JSON.stringify(completionResponse, null, 2));
+
+      // --- Log token usage to azure_token_usage (non-blocking) ---
+      logAzureUsage({
+        lead_id: null,
+        user_id,
+        email,
+        task_type: 'resume_chat',
+        model: completionResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
+        deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
+        azure_request_id: completionResponse.id || null,
+        usage: completionResponse.usage,
+        response_time_ms: responseTimeMs,
+        is_success: true,
+      }).catch(e => console.error("Non-blocking log error:", e));
+
+      const aiResponse = completionResponse.choices[0].message.content;
+      return res.status(200).json({ answer: aiResponse });
+
     } catch (apiError) {
+      const responseTimeMs = Date.now() - startTime;
       console.error("Azure OpenAI API Error:", apiError);
-      return res.status(502).json({ 
+
+      // --- Log failure to azure_token_usage (non-blocking) ---
+      logAzureUsage({
+        lead_id: null,
+        user_id,
+        email,
+        task_type: 'resume_chat',
+        model: process.env.AZURE_OPENAI_DEPLOYMENT,
+        deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
+        azure_request_id: null,
+        usage: null,
+        response_time_ms: responseTimeMs,
+        is_success: false,
+        error_message: apiError.message,
+      }).catch(e => console.error("Non-blocking log error:", e));
+
+      return res.status(502).json({
         status: apiError.status || 502,
         code: apiError.code || "unknown_code",
         message: apiError.message,
@@ -165,59 +239,9 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       });
     }
 
-    console.log("Azure Response Body:", JSON.stringify(completionResponse, null, 2));
-    const aiResponse = completionResponse.choices[0].message.content;
-    const usage = completionResponse.usage;
-
-    // --- Log Usage to Database ---
-    try {
-      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-      if (supabaseUrl && supabaseServiceKey && usage) {
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-        let targetUserId = ownerId;
-
-        // Fallback to visitor UID only if ownerId is missing
-        if (!targetUserId) {
-          const authHeader = req.headers.authorization || req.headers.Authorization;
-          if (authHeader) {
-            const token = authHeader.replace('Bearer ', '');
-            const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-            targetUserId = user?.id;
-          }
-        }
-
-        // Calculate Cost (GPT-4o Pricing: $2.50/1M input, $10.00/1M output)
-        const inputTokenPrice = 0.0000025;
-        const outputTokenPrice = 0.00001;
-        const cost = (usage.prompt_tokens * inputTokenPrice) + (usage.completion_tokens * outputTokenPrice);
-
-        console.log(`📊 AI Usage [resume_chat] logged to owner [${targetUserId || 'Anon'}]: ${usage.total_tokens} tokens, Cost: $${cost.toFixed(6)}`);
-
-        const { error: logError } = await supabaseAdmin
-          .from('openai_usage_logs')
-          .insert({
-            user_id: targetUserId,
-            feature_name: 'resume_chat',
-            prompt_tokens: usage.prompt_tokens,
-            completion_tokens: usage.completion_tokens,
-            total_tokens: usage.total_tokens,
-            cost: cost
-          });
-
-        if (logError) console.error("❌ Failed to log AI usage:", logError);
-      }
-    } catch (logErr) {
-      console.error("❌ Usage logging error:", logErr);
-    }
-
-    return res.status(200).json({ answer: aiResponse });
-
   } catch (error) {
     console.error("Function error:", error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       status: 500,
       code: "internal_server_error",
       message: error.message,
