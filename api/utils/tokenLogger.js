@@ -39,6 +39,23 @@ export async function logAzureUsage(options) {
   // ── 1. Validate inputs ──────────────────────────────────────────────────────
   const email = rawEmail ? rawEmail.trim().toLowerCase() : null;
 
+  console.log("========== AZURE TOKEN LOGGER START ==========");
+  console.log("Task Type:", task_type);
+  console.log("Raw Email:", rawEmail);
+  console.log("Normalized Email:", email);
+
+  console.log(
+    "SUPABASE_URL configured:",
+    !!(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)
+  );
+
+  console.log(
+    "SUPABASE_SERVICE_ROLE_KEY configured:",
+    !!process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  console.log("==============================================");
+
   if (!email) {
     console.error("❌ logAzureUsage: `email` is required but was not provided.", { task_type });
     return;
@@ -58,11 +75,30 @@ export async function logAzureUsage(options) {
   let user_id = null;
 
   try {
+    console.log("🔎 Looking up digital_resume_by_crm:", email);
+
     const { data: crmRecord, error: crmErr } = await supabaseAdmin
       .from('digital_resume_by_crm')
       .select('email, user_id')
       .eq('email', email)
       .maybeSingle();
+
+    console.log("========== CRM LOOKUP RESULT ==========");
+    console.log("Email searched:", email);
+    console.log("CRM record found:", !!crmRecord);
+    console.log("CRM email:", crmRecord?.email || null);
+    console.log("CRM user_id:", crmRecord?.user_id || null);
+
+    if (crmErr) {
+      console.error("CRM error:", {
+        code: crmErr.code,
+        message: crmErr.message,
+        details: crmErr.details,
+        hint: crmErr.hint,
+      });
+    }
+
+    console.log("========================================");
 
     if (crmErr) {
       console.error("❌ logAzureUsage: CRM lookup failed.", {
@@ -121,51 +157,72 @@ export async function logAzureUsage(options) {
   const api_completion_tokens = [total_completion_tokens];
 
   // ── 4. Insert into azure_token_usage ───────────────────────────────────────
-  try {
-    console.log(`📝 logAzureUsage: Inserting row — email="${email}", user_id="${user_id}", task_type="${task_type}", model="${model}"`);
+  console.log("========== TOKEN INSERT DATA ==========");
+  console.log({
+    lead_id: null,
+    user_id,
+    email,
+    task_date: new Date().toISOString().split("T")[0],
+    task_type,
+    source: "Azure OpenAI",
+    model,
+    deployment_name,
+    azure_request_id,
+    total_input_tokens,
+    total_output_tokens,
+    total_completion_tokens,
+    response_time_ms,
+    is_success,
+  });
+  console.log("=======================================");
 
-    const { error: insertErr } = await supabaseAdmin
-      .from('azure_token_usage')
-      .insert({
-        lead_id,
-        user_id,
-        email,
-        task_date:              new Date().toISOString().split('T')[0], // 'YYYY-MM-DD'
-        task_type,
-        source:                 'Azure OpenAI',
-        model,
-        deployment_name,
-        azure_request_id,
-        total_input_tokens,
-        total_output_tokens,
-        total_completion_tokens,
-        api_input_tokens_list,
-        api_output_tokens_list,
-        api_completion_tokens,
-        response_time_ms,
-        is_success,
-        error_message,
-        // created_at → set automatically by Postgres: timezone('utc', now())
-      });
+  const { error: insertErr } = await supabaseAdmin
+    .from('azure_token_usage')
+    .insert({
+      lead_id: null,
+      user_id,
+      email,
+      task_date:              new Date().toISOString().split('T')[0], // 'YYYY-MM-DD'
+      task_type,
+      source:                 'Azure OpenAI',
+      model,
+      deployment_name,
+      azure_request_id,
+      total_input_tokens,
+      total_output_tokens,
+      total_completion_tokens,
+      api_input_tokens_list,
+      api_output_tokens_list,
+      api_completion_tokens,
+      response_time_ms,
+      is_success,
+      error_message,
+      // created_at → set automatically by Postgres: timezone('utc', now())
+    });
 
-    if (insertErr) {
-      console.error(`❌ logAzureUsage: Supabase insert failed for task_type="${task_type}".`, {
-        code:    insertErr.code,
-        message: insertErr.message,
-        details: insertErr.details,
-        hint:    insertErr.hint,
-        user_id,
-        email,
-        task_type,
-      });
-    } else {
-      console.log(
-        `📊 logAzureUsage ✅ [${task_type}] ` +
-        `input=${total_input_tokens} output=${total_output_tokens} total=${total_completion_tokens} ` +
-        `success=${is_success} response_ms=${response_time_ms ?? 'n/a'}`
-      );
-    }
-  } catch (insertCatchErr) {
-    console.error("❌ logAzureUsage: Unexpected error during insert.", insertCatchErr?.message);
+  if (insertErr) {
+    console.error("❌❌❌ SUPABASE TOKEN INSERT FAILED ❌❌❌");
+
+    console.error("Code:", insertErr.code);
+    console.error("Message:", insertErr.message);
+    console.error("Details:", insertErr.details);
+    console.error("Hint:", insertErr.hint);
+
+    console.error("User ID:", user_id);
+    console.error("Email:", email);
+    console.error("Task Type:", task_type);
+
+    throw insertErr;
   }
+
+  console.log("✅✅✅ SUPABASE TOKEN INSERT SUCCESS ✅✅✅");
+
+  console.log({
+    user_id,
+    email,
+    task_type,
+    total_input_tokens,
+    total_output_tokens,
+    total_completion_tokens,
+  });
 }
