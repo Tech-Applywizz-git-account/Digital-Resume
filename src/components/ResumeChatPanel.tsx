@@ -185,6 +185,7 @@ const ResumeChatPanel = ({
 
         try {
             console.log("📤 Sending Resume Chat Request...");
+            console.log(`resume-chat request ownerEmail present: ${!!ownerEmail}`);
 
             let currentResumeText = resumeText;
 
