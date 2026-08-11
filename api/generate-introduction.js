@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const { prompt, ownerId } = jsonData || {};
+  const { prompt, ownerId, ownerEmail } = jsonData || {};
   if (!prompt) {
     return res.status(400).json({ error: "Prompt is required" });
   }
@@ -55,29 +55,12 @@ export default async function handler(req, res) {
     });
   }
 
-  // --- Retrieve User Info from Supabase ---
-  let user_id = null;
-  let email = null;
-  let lead_id = ownerId || null;
-
-  try {
-    const authHeader = req.headers.authorization || req.headers.Authorization;
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '');
-      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      if (supabaseUrl && supabaseServiceKey) {
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-        const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
-        if (user) {
-          user_id = user.id;
-          email = user.email;
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Auth retrieval error in generate-introduction:", err);
-  }
+  const email = ownerEmail || null;
+  const lead_id = ownerId || null;
+  
+  // Note: User mapping is now strictly delegated to logAzureUsage
+  // which queries public.digital_resume_by_crm using the email.
+  console.log(`📋 Token logging context passed to logger: email=${email || 'null'}`);
 
   const openai = new AzureOpenAI({
     endpoint: process.env.AZURE_OPENAI_ENDPOINT,
@@ -104,7 +87,6 @@ export default async function handler(req, res) {
     // Async log success
     logAzureUsage({
       lead_id,
-      user_id,
       email,
       task_type: 'generate_introduction',
       model: azureResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
@@ -135,7 +117,6 @@ export default async function handler(req, res) {
     // Async log failure
     logAzureUsage({
       lead_id,
-      user_id,
       email,
       task_type: 'generate_introduction',
       model: process.env.AZURE_OPENAI_DEPLOYMENT,

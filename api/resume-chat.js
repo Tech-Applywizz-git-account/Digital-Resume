@@ -59,46 +59,13 @@ export default async function handler(req, res) {
     console.log(`📥 resume-chat: ownerId=${ownerId || 'null'}, ownerEmail=${ownerEmailFromBody || 'null'}, recruiterMode=${!!recruiterMode}`);
 
     // --- Resolve authenticated user (for azure_token_usage logging) ---
-    // azure_token_usage requires user_id (uuid NOT NULL) and email (text NOT NULL)
-    let user_id = ownerId || null;
-    // Use email sent directly from the frontend as the primary source (most reliable)
-    let email = ownerEmailFromBody || null;
+    const email = ownerEmailFromBody || null;
+    
+    // Note: User mapping is now strictly delegated to logAzureUsage
+    // which queries public.digital_resume_by_crm using the email.
+    // We no longer resolve auth.users or profiles here.
 
-    try {
-      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-      if (supabaseUrl && supabaseServiceKey && (!user_id || !email)) {
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-        // Resolve email for the ownerId using admin API (only if not already known)
-        if (user_id && !email) {
-          try {
-            const { data: { user: ownerUser } } = await supabaseAdmin.auth.admin.getUserById(user_id);
-            if (ownerUser?.email) email = ownerUser.email;
-          } catch (adminErr) {
-            console.warn("Admin getUserById failed:", adminErr?.message);
-          }
-        }
-
-        // Fallback: resolve from Bearer token if still missing
-        if (!user_id || !email) {
-          const authHeader = req.headers.authorization || req.headers.Authorization;
-          if (authHeader) {
-            const token = authHeader.replace('Bearer ', '');
-            const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-            if (user) {
-              user_id = user_id || user.id;
-              email = email || user.email;
-            }
-          }
-        }
-      }
-    } catch (authErr) {
-      console.error("Auth resolution error in resume-chat:", authErr);
-    }
-
-    console.log(`📋 Token logging context: user_id=${user_id || 'null'}, email=${email || 'null'}`);
+    console.log(`📋 Token logging context passed to logger: email=${email || 'null'}`);
 
     // Build the system prompt based on mode
     let systemPrompt;
@@ -204,7 +171,6 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       // --- Log token usage to azure_token_usage (non-blocking) ---
       logAzureUsage({
         lead_id: null,
-        user_id,
         email,
         task_type: 'resume_chat',
         model: completionResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
@@ -225,7 +191,6 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       // --- Log failure to azure_token_usage (non-blocking) ---
       logAzureUsage({
         lead_id: null,
-        user_id,
         email,
         task_type: 'resume_chat',
         model: process.env.AZURE_OPENAI_DEPLOYMENT,
