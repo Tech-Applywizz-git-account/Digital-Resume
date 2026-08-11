@@ -55,11 +55,8 @@ export default async function handler(req, res) {
     });
   }
 
-  const email = ownerEmail || null;
-  
-  // Note: User mapping is now strictly delegated to logAzureUsage
-  // which queries public.digital_resume_by_crm using the email.
-  console.log(`📋 Token logging context passed to logger: email=${email || 'null'}`);
+  // --- Resolve authenticated user (for azure_token_usage logging) ---
+  const user_id = ownerId || null;
 
   const openai = new AzureOpenAI({
     endpoint: process.env.AZURE_OPENAI_ENDPOINT,
@@ -86,7 +83,7 @@ export default async function handler(req, res) {
     // Await log success
     await logAzureUsage({
       lead_id: null,
-      email,
+      user_id,
       task_type: 'generate_introduction',
       model: azureResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
       deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
@@ -116,7 +113,7 @@ export default async function handler(req, res) {
     // Await log failure
     await logAzureUsage({
       lead_id: null,
-      email,
+      user_id,
       task_type: 'generate_introduction',
       model: process.env.AZURE_OPENAI_DEPLOYMENT,
       deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,

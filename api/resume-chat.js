@@ -59,13 +59,11 @@ export default async function handler(req, res) {
     console.log(`📥 resume-chat: ownerId=${ownerId || 'null'}, ownerEmail=${ownerEmailFromBody || 'null'}, recruiterMode=${!!recruiterMode}`);
 
     // --- Resolve authenticated user (for azure_token_usage logging) ---
-    const email = ownerEmailFromBody || null;
+    const user_id = ownerId || null;
     
     // Note: User mapping is now strictly delegated to logAzureUsage
-    // which queries public.digital_resume_by_crm using the email.
+    // which queries public.digital_resume_by_crm using the user_id.
     // We no longer resolve auth.users or profiles here.
-
-    console.log(`📋 Token logging context passed to logger: email=${email || 'null'}`);
 
     // Build the system prompt based on mode
     let systemPrompt;
@@ -171,7 +169,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       // --- Log token usage to azure_token_usage (awaiting) ---
       await logAzureUsage({
         lead_id: null,
-        email,
+        user_id,
         task_type: 'resume_chat',
         model: completionResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
         deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
@@ -191,7 +189,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       // --- Log failure to azure_token_usage (awaiting) ---
       await logAzureUsage({
         lead_id: null,
-        email,
+        user_id,
         task_type: 'resume_chat',
         model: process.env.AZURE_OPENAI_DEPLOYMENT,
         deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,

@@ -4,14 +4,13 @@ import { createClient } from "@supabase/supabase-js";
  * Logs a single Azure OpenAI API call to `public.azure_token_usage`.
  *
  * User resolution strategy (server-side only):
- *   1. Receive `email` — the portfolio owner's authenticated email.
- *   2. Query `public.digital_resume_by_crm` by email to get the authoritative
- *      `user_id` (→ auth.users.id).
- *   3. If the CRM record is missing or user_id is NULL → log error, skip insert.
+ *   1. Receive `user_id` — the portfolio owner's ID.
+ *   2. Query `public.digital_resume_by_crm` by user_id to get the authoritative `email`.
+ *   3. If the CRM record is missing or email is NULL → log error, skip insert.
  *      The Azure response is never blocked by logging failures.
  *
  * @param {Object}       options
- * @param {string}       options.email             - Portfolio owner's email (required)
+ * @param {string}       options.user_id           - Portfolio owner's ID (required)
  * @param {string}       options.task_type         - 'generate_introduction' | 'resume_chat'
  * @param {string}       options.model             - Model name from Azure response
  * @param {string|null}  [options.deployment_name] - Azure deployment name
@@ -24,7 +23,7 @@ import { createClient } from "@supabase/supabase-js";
  */
 export async function logAzureUsage(options) {
   const {
-    email: rawEmail,
+    user_id: rawUserId,
     task_type,
     model,
     deployment_name  = null,
@@ -37,12 +36,12 @@ export async function logAzureUsage(options) {
   } = options;
 
   // ── 1. Validate inputs ──────────────────────────────────────────────────────
-  const email = rawEmail ? rawEmail.trim().toLowerCase() : null;
+  const user_id = rawUserId || null;
 
   console.log("========== AZURE TOKEN LOGGER START ==========");
   console.log("Task Type:", task_type);
-  console.log("Raw Email:", rawEmail);
-  console.log("Normalized Email:", email);
+  console.log("User ID:", user_id);
+  console.log("Lead ID:", lead_id);
 
   console.log(
     "SUPABASE_URL configured:",
@@ -56,8 +55,8 @@ export async function logAzureUsage(options) {
 
   console.log("==============================================");
 
-  if (!email) {
-    console.error("❌ logAzureUsage: `email` is required but was not provided.", { task_type });
+  if (!user_id) {
+    console.error("❌ logAzureUsage: `user_id` is required.", { task_type });
     return;
   }
 
@@ -71,20 +70,18 @@ export async function logAzureUsage(options) {
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-  // ── 2. Resolve user_id from digital_resume_by_crm ──────────────────────────
-  let user_id = null;
+  // ── 2. Resolve email from digital_resume_by_crm ──────────────────────────
+  let email = null;
 
   try {
-    console.log("🔎 Looking up digital_resume_by_crm:", email);
-
     const { data: crmRecord, error: crmErr } = await supabaseAdmin
       .from('digital_resume_by_crm')
       .select('email, user_id')
-      .eq('email', email)
+      .eq('user_id', user_id)
       .maybeSingle();
 
-    console.log("========== CRM LOOKUP RESULT ==========");
-    console.log("Email searched:", email);
+    console.log("========== CRM LOOKUP ==========");
+    console.log("Lookup by user_id:", user_id);
     console.log("CRM record found:", !!crmRecord);
     console.log("CRM email:", crmRecord?.email || null);
     console.log("CRM user_id:", crmRecord?.user_id || null);
@@ -98,7 +95,7 @@ export async function logAzureUsage(options) {
       });
     }
 
-    console.log("========================================");
+    console.log("================================");
 
     if (crmErr) {
       console.error("❌ logAzureUsage: CRM lookup failed.", {
@@ -106,7 +103,7 @@ export async function logAzureUsage(options) {
         message: crmErr.message,
         details: crmErr.details,
         hint:    crmErr.hint,
-        email,
+        user_id,
         task_type,
       });
       return;
@@ -114,24 +111,21 @@ export async function logAzureUsage(options) {
 
     if (!crmRecord) {
       console.error(
-        `❌ logAzureUsage: No digital_resume_by_crm record found for email="${email}". ` +
-        `Token usage for task_type="${task_type}" will NOT be saved. ` +
-        `Add this user to digital_resume_by_crm to enable logging.`
+        `❌ logAzureUsage: No digital_resume_by_crm record found for user_id="${user_id}". ` +
+        `Token usage for task_type="${task_type}" will NOT be saved.`
       );
       return;
     }
 
-    if (!crmRecord.user_id) {
+    if (!crmRecord.email) {
       console.error(
-        `❌ logAzureUsage: digital_resume_by_crm.user_id is NULL for email="${email}". ` +
-        `Token usage for task_type="${task_type}" will NOT be saved. ` +
-        `Populate user_id in digital_resume_by_crm to enable logging.`
+        `❌ logAzureUsage: digital_resume_by_crm.email is NULL for user_id="${user_id}". ` +
+        `Token usage for task_type="${task_type}" will NOT be saved.`
       );
       return;
     }
 
-    user_id = crmRecord.user_id;
-    console.log(`✅ logAzureUsage: Resolved user_id="${user_id}" for email="${email}" via digital_resume_by_crm.`);
+    email = crmRecord.email.trim().toLowerCase();
 
   } catch (lookupErr) {
     console.error("❌ logAzureUsage: Unexpected error during CRM lookup.", lookupErr?.message);
@@ -145,7 +139,6 @@ export async function logAzureUsage(options) {
   const total_completion_tokens = usage?.total_tokens       ?? 0;
 
   // Store per-request breakdown in the JSONB arrays.
-  // For a single call: [actual_value]. Granular details kept if Azure returns them.
   const api_input_tokens_list = usage?.prompt_tokens_details
     ? [usage.prompt_tokens_details]
     : [total_input_tokens];
@@ -158,22 +151,13 @@ export async function logAzureUsage(options) {
 
   // ── 4. Insert into azure_token_usage ───────────────────────────────────────
   console.log("========== TOKEN INSERT DATA ==========");
-  console.log({
-    lead_id: null,
-    user_id,
-    email,
-    task_date: new Date().toISOString().split("T")[0],
-    task_type,
-    source: "Azure OpenAI",
-    model,
-    deployment_name,
-    azure_request_id,
-    total_input_tokens,
-    total_output_tokens,
-    total_completion_tokens,
-    response_time_ms,
-    is_success,
-  });
+  console.log("user_id:", user_id);
+  console.log("email:", email);
+  console.log("lead_id:", null);
+  console.log("task_type:", task_type);
+  console.log("input tokens:", total_input_tokens);
+  console.log("output tokens:", total_output_tokens);
+  console.log("total tokens:", total_completion_tokens);
   console.log("=======================================");
 
   const { error: insertErr } = await supabaseAdmin
@@ -201,7 +185,7 @@ export async function logAzureUsage(options) {
     });
 
   if (insertErr) {
-    console.error("❌❌❌ SUPABASE TOKEN INSERT FAILED ❌❌❌");
+    console.error("❌ SUPABASE TOKEN INSERT FAILED");
 
     console.error("Code:", insertErr.code);
     console.error("Message:", insertErr.message);
@@ -215,14 +199,5 @@ export async function logAzureUsage(options) {
     throw insertErr;
   }
 
-  console.log("✅✅✅ SUPABASE TOKEN INSERT SUCCESS ✅✅✅");
-
-  console.log({
-    user_id,
-    email,
-    task_type,
-    total_input_tokens,
-    total_output_tokens,
-    total_completion_tokens,
-  });
+  console.log("✅ SUPABASE TOKEN INSERT SUCCESS");
 }
