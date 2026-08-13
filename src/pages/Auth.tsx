@@ -562,9 +562,6 @@ export default function Auth() {
         if (adminData || normalizedEmail === 'dinesh@applywizz.com') {
           sessionStorage.setItem('digital_resume_admin_access', 'true');
           sessionStorage.setItem('admin_email', normalizedEmail);
-          // #region agent log
-          fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'pre-fix',hypothesisId:'D',location:'Auth.tsx:handleLogin:navAdmin',message:'Navigating to digital-resume-dashboard',data:{},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           navigate("/digital-resume-dashboard");
           return;
         }
@@ -575,62 +572,55 @@ export default function Auth() {
       // Resolve customer subscription tier for routing
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
+      const userId = session?.user?.id;
+      let tier: string | null = null;
+
       if (token) {
         try {
           const tierResponse = await fetch('/api/v1/subscription/me', {
             headers: { Authorization: `Bearer ${token}` },
           });
-          const tierStatus = tierResponse.status;
-          const tierOk = tierResponse.ok;
-          let tierBody: any = null;
-          try { tierBody = await tierResponse.clone().json(); } catch { tierBody = null; }
-          // #region agent log
-          fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'post-fix',hypothesisId:'C',location:'Auth.tsx:handleLogin:tierApi',message:'Subscription me API response',data:{status:tierStatus,ok:tierOk,tier:tierBody?.data?.tier??null,success:tierBody?.success??null,message:tierBody?.message??null},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           if (tierResponse.ok) {
-            const { data } = tierBody || await tierResponse.json();
-            if (data?.tier === 'career_identity') {
-              // #region agent log
-              fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'pre-fix',hypothesisId:'C',location:'Auth.tsx:handleLogin:navCareer',message:'Navigating to career-identity-dashboard',data:{tier:data?.tier},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
-              navigate("/career-identity-dashboard");
-              return;
-            }
-            if (data?.tier === 'digital_resume') {
-              // #region agent log
-              fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'pre-fix',hypothesisId:'C',location:'Auth.tsx:handleLogin:navDashboard',message:'Navigating to dashboard',data:{tier:data?.tier},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
-              navigate("/dashboard");
-              return;
-            }
-            // tier === null — no product access
-            // #region agent log
-            fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'pre-fix',hypothesisId:'C',location:'Auth.tsx:handleLogin:navHomeNullTier',message:'Redirecting home: null/invalid tier',data:{tier:data?.tier??null,rawData:data??null},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-            navigate("/");
-            return;
+            const body = await tierResponse.json();
+            tier = body?.data?.tier ?? null;
           }
-          // #region agent log
-          fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'pre-fix',hypothesisId:'B',location:'Auth.tsx:handleLogin:tierNotOk',message:'Tier API not ok; will fail-closed to home',data:{status:tierStatus},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
         } catch (tierErr) {
-          // API failure — fail closed, no product access
           console.warn('Tier resolution failed:', tierErr);
-          // #region agent log
-          fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'pre-fix',hypothesisId:'B',location:'Auth.tsx:handleLogin:tierCatch',message:'Tier fetch threw; fail-closed to home',data:{error:String(tierErr)},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
         }
       }
 
-      // Fail closed — cannot verify tier
-      // #region agent log
-      fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'pre-fix',hypothesisId:'A',location:'Auth.tsx:handleLogin:failClosed',message:'Fail-closed navigate to /',data:{hasToken:!!token},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
+      // Client fallback when API is unavailable (e.g. misconfigured proxy)
+      if (tier !== 'career_identity' && tier !== 'digital_resume' && userId) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tier')
+            .eq('id', userId)
+            .maybeSingle();
+          if (profile?.tier === 'career_identity' || profile?.tier === 'digital_resume') {
+            tier = profile.tier;
+          } else if (profile || localStorage.getItem('is_crm_user') === 'true') {
+            tier = 'digital_resume';
+          }
+        } catch {
+          if (localStorage.getItem('is_crm_user') === 'true') {
+            tier = 'digital_resume';
+          }
+        }
+      }
+
+      if (tier === 'career_identity') {
+        navigate("/career-identity-dashboard");
+        return;
+      }
+      if (tier === 'digital_resume') {
+        navigate("/dashboard");
+        return;
+      }
+
+      // No product access
       navigate("/");
     } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'pre-fix',hypothesisId:'E',location:'Auth.tsx:handleLogin:loginThrow',message:'Login threw before routing',data:{error:err instanceof Error?err.message:String(err)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       // handled in context
     }
   };

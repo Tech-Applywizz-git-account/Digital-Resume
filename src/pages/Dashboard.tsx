@@ -24,12 +24,30 @@ export default function Dashboard() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) { if (!cancelled) setRedirect('/auth'); return; }
+
+        let t: string | null = null;
         const res = await fetch('/api/v1/subscription/me', {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
-        if (!res.ok) { if (!cancelled) setRedirect('/'); return; }
-        const body = await res.json();
-        const t = body?.data?.tier;
+        if (res.ok) {
+          const body = await res.json();
+          t = body?.data?.tier ?? null;
+        }
+
+        // Client fallback when API is unavailable
+        if (t !== 'career_identity' && t !== 'digital_resume') {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tier')
+            .eq('id', session.user.id)
+            .maybeSingle();
+          if (profile?.tier === 'career_identity' || profile?.tier === 'digital_resume') {
+            t = profile.tier;
+          } else if (profile || localStorage.getItem('is_crm_user') === 'true') {
+            t = 'digital_resume';
+          }
+        }
+
         if (t === 'career_identity') { if (!cancelled) setRedirect('/career-identity-dashboard'); return; }
         if (t !== 'digital_resume') { if (!cancelled) setRedirect('/'); return; }
         if (!cancelled) setTierChecked(true);

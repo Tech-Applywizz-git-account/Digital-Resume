@@ -57,6 +57,10 @@
       "dest": "/api/email-correction.js"
     },
     {
+      "src": "/api/v1/subscription/me",
+      "dest": "/api/v1/subscription/me.js"
+    },
+    {
       "handle": "filesystem"
     },
     {

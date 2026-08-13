@@ -47,30 +47,18 @@ export class SubscriptionService {
         const profile = await profileRepository.findById(userId);
         const validated = validateTier(profile?.tier);
         if (validated) {
-            // #region agent log
-            fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'post-fix',hypothesisId:'C',location:'subscription.service.ts:getEffectiveUserTier',message:'Returning explicit profiles.tier',data:{userId,tier:validated,hasProfile:!!profile},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             return { tier: validated };
         }
 
         if (profile) {
-            // #region agent log
-            fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'post-fix',hypothesisId:'C',location:'subscription.service.ts:getEffectiveUserTier',message:'Profile exists with unset tier; defaulting to digital_resume',data:{userId,rawTier:profile?.tier??null},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             return { tier: DEFAULT_SUBSCRIPTION_TIER };
         }
 
         const crmUser = await crmUserRepository.findOne({ user_id: userId } as Partial<CrmUserRecord>);
         if (crmUser) {
-            // #region agent log
-            fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'post-fix',hypothesisId:'C',location:'subscription.service.ts:getEffectiveUserTier',message:'CRM user without profile.tier; defaulting to digital_resume',data:{userId},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             return { tier: DEFAULT_SUBSCRIPTION_TIER };
         }
 
-        // #region agent log
-        fetch('http://127.0.0.1:7399/ingest/b70637ca-c578-4c1f-a48f-92fd78054009',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8bcdd5'},body:JSON.stringify({sessionId:'8bcdd5',runId:'post-fix',hypothesisId:'C',location:'subscription.service.ts:getEffectiveUserTier',message:'No profile/CRM — null tier',data:{userId},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         return { tier: null };
     }
 }
