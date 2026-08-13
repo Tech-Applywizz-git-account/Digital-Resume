@@ -403,8 +403,8 @@ const FinalResult: React.FC = () => {
           if (ps?.url) {
             supabasePortfolioUrl = ps.url;
             console.log("✅ Supabase portfolio (authoritative):", supabasePortfolioUrl);
-            setPortfolioUrl(supabasePortfolioUrl);
-            setTempPortfolioUrl(supabasePortfolioUrl);
+            setPortfolioUrl(supabasePortfolioUrl || "");
+            setTempPortfolioUrl(supabasePortfolioUrl || "");
           }
         } catch (err) {
           console.error("Error reading portfolio_settings:", err);
@@ -465,10 +465,11 @@ const FinalResult: React.FC = () => {
 
               // Seed this value into Supabase so future loads are consistent
               if (user && targetUserId && vPortfolioUrl) {
-                supabase.from('portfolio_settings')
-                  .upsert({ url: vPortfolioUrl, user_id: targetUserId }, { onConflict: 'user_id', ignoreDuplicates: true })
-                  .then(() => console.log("✅ Seeded Vercel portfolio into Supabase"))
-                  .catch(err => console.error("❌ Seed failed:", err));
+                Promise.resolve(
+                  supabase.from('portfolio_settings')
+                    .upsert({ url: vPortfolioUrl, user_id: targetUserId }, { onConflict: 'user_id', ignoreDuplicates: true })
+                ).then(() => console.log("✅ Seeded Vercel portfolio into Supabase"))
+                  .catch((err: unknown) => console.error("❌ Seed failed:", err));
               }
             }
           }
