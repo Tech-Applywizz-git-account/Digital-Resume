@@ -8,6 +8,7 @@
 # testing
 /coverage
 
+
 # production
 /build
 *.sql
@@ -28,3 +29,4 @@ supabase_backup.sql
 supabase_backup_fixed.sql
 *.node_modules
 *.md
+.vercel

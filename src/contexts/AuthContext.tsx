@@ -33,6 +33,31 @@ interface SignupData {
 // ✅ Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// ✅ Resolve the email that should actually be used to sign in with Supabase.
+// A user may type either their primary email (auth.users / digital_resume_by_crm.email)
+// or their alternate/company application email (digital_resume_by_crm.company_application_email).
+// Both must authenticate into the exact same auth.users account. No separate
+// email_aliases table is needed: digital_resume_by_crm.email already stores the
+// primary login email for any account that has an alternate email on file.
+async function resolveLoginEmail(enteredEmail: string): Promise<string> {
+  const normalizedEmail = enteredEmail.trim().toLowerCase();
+
+  // Check if the entered email is registered as an alternate/company application email
+  const { data: crmMatch } = await supabase
+    .from('digital_resume_by_crm')
+    .select('email')
+    .eq('company_application_email', normalizedEmail)
+    .maybeSingle();
+
+  if (crmMatch?.email) {
+    return crmMatch.email;
+  }
+
+  // Not an alternate email - use what was entered (covers primary emails,
+  // and lets the existing "invalid login" error path trigger naturally otherwise).
+  return normalizedEmail;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -83,9 +108,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     clearError();
     clearSessionCache(); // Clear everything BEFORE logging in as a new user
+    let loginEmail = normalizedEmail;
     try {
-      console.log('Attempting login for:', normalizedEmail);
-      const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+      loginEmail = await resolveLoginEmail(normalizedEmail);
+      console.log('Attempting login for:', loginEmail);
+      const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
       if (error) throw error;
 
       const uid = data.user?.id;
@@ -127,13 +154,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(true);
       setUser(mockUser);
     } catch (err: any) {
-      const normalizedEmail = email.trim().toLowerCase();
       if (err.message && err.message.toLowerCase().includes('invalid login credentials')) {
         // Double check if the user exists in profiles, crm_admins, or digital_resume_by_crm
+        // (use loginEmail so an alternate email that resolved to a primary email is checked correctly)
         const [{ data: profileUser }, { data: adminUser }, { data: crmUser }] = await Promise.all([
-          supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle(),
-          supabase.from('crm_admins').select('email').eq('email', normalizedEmail).maybeSingle(),
-          supabase.from('digital_resume_by_crm').select('email').eq('email', normalizedEmail).maybeSingle()
+          supabase.from('profiles').select('email').eq('email', loginEmail).maybeSingle(),
+          supabase.from('crm_admins').select('email').eq('email', loginEmail).maybeSingle(),
+          supabase.from('digital_resume_by_crm').select('email').eq('email', loginEmail).maybeSingle()
         ]);
 
         if (profileUser || adminUser || crmUser) {
@@ -258,7 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const isOTPVerified = (email: string): boolean => verifiedEmails.has(email);
-  
+
   const clearSessionCache = () => {
     // 1. Identify current user info for specific cache clearing
     const userDataStr = localStorage.getItem('userData');
@@ -267,30 +294,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const pd = JSON.parse(userDataStr);
         if (pd.email) emailKey = pd.email.replace(/[^a-zA-Z0-9]/g, '_');
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 2. Define global keys to clear
     const globalKeys = [
-      'authToken', 
-      'userData', 
-      'is_crm_user', 
+      'authToken',
+      'userData',
+      'is_crm_user',
       'crm_user_email',
-      'last_careercasts', 
-      'last_premium_active', 
+      'last_careercasts',
+      'last_premium_active',
       'last_credits',
-      'current_job_request_id', 
-      'uploadedResumeUrl', 
-      'resumeFileName', 
+      'current_job_request_id',
+      'uploadedResumeUrl',
+      'resumeFileName',
       'resumeFullText',
-      'teleprompterText', 
+      'teleprompterText',
       'teleprompterSpeed',
-      'careercast_jobTitle', 
+      'careercast_jobTitle',
       'careercast_jobDescription',
       'recordedVideoUrl',
       'userCountry'
     ];
-    
+
     globalKeys.forEach(key => localStorage.removeItem(key));
 
     // 3. Define user-specific keys to clear if we found an email
