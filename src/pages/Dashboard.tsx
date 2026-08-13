@@ -8,6 +8,7 @@ import {
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import ResumeWorkspace from '../features/resume-dashboard/components/ResumeWorkspace';
+import { apiUrl } from '../lib/apiBase';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ export default function Dashboard() {
         if (!session?.access_token) { if (!cancelled) setRedirect('/auth'); return; }
 
         let t: string | null = null;
-        const res = await fetch('/api/v1/subscription/me', {
+        const res = await fetch(apiUrl('/api/v1/subscription/me'), {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         if (res.ok) {

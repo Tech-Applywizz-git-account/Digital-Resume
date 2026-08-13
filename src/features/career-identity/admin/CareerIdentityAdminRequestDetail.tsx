@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import CareerIdentityAdminEditor from './CareerIdentityAdminEditor';
 import type { CareerIdentityContent, CareerIdentityProfileStatus } from '../../../types/careerIdentity';
+import { apiUrl } from '../../../lib/apiBase';
 
 interface RequestDetail {
     userId: string;
@@ -68,7 +69,7 @@ export default function CareerIdentityAdminRequestDetail() {
                 return;
             }
 
-            const res = await fetch(`/api/v1/career-identity/admin/requests/${userId}`, {
+            const res = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
                 headers: { Authorization: `Bearer ${session.access_token}` },
             });
 
@@ -128,7 +129,7 @@ export default function CareerIdentityAdminRequestDetail() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session?.access_token) throw new Error('Not authenticated');
 
-            const res = await fetch(`/api/v1/career-identity/admin/requests/${userId}`, {
+            const res = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
                 method: 'PATCH',
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,
@@ -158,7 +159,7 @@ export default function CareerIdentityAdminRequestDetail() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session?.access_token) throw new Error('Not authenticated');
 
-            const res = await fetch(`/api/v1/career-identity/admin/requests/${userId}`, {
+            const res = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
                 method: 'PATCH',
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,
@@ -224,7 +225,7 @@ export default function CareerIdentityAdminRequestDetail() {
             if (data.workflowStatus) body.workflowStatus = data.workflowStatus;
             if (data.status) body.status = data.status;
 
-            const res = await fetch(`/api/v1/career-identity/admin/requests/${userId}`, {
+            const res = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
                 method: 'PATCH',
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,
@@ -703,7 +704,7 @@ export default function CareerIdentityAdminRequestDetail() {
                                                     try {
                                                         const { data: { session } } = await supabase.auth.getSession();
                                                         if (!session?.access_token) throw new Error('Not authenticated');
-                                                        await fetch(`/api/v1/career-identity/admin/requests/${userId}`, {
+                                                        await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
                                                             method: 'PATCH',
                                                             headers: {
                                                                 Authorization: `Bearer ${session.access_token}`,

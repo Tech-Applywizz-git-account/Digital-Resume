@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import { User, Mail, Phone, MapPin, Briefcase, Save, Menu } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../integrations/supabase/client';
+import { apiUrl } from '../lib/apiBase';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -41,7 +42,7 @@ export default function Profile() {
 
       if (!token) throw new Error('No session token available');
 
-      const response = await fetch('/api/v1/profile', {
+      const response = await fetch(apiUrl('/api/v1/profile'), {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -88,7 +89,7 @@ export default function Profile() {
 
       if (!token) throw new Error('No session token available');
 
-      const response = await fetch('/api/v1/profile', {
+      const response = await fetch(apiUrl('/api/v1/profile'), {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

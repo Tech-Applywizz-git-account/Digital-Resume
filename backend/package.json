@@ -4,6 +4,9 @@
     "description": "Digital Resume Backend API — Express + TypeScript + Supabase PostgreSQL",
     "type": "module",
     "main": "dist/index.js",
+    "engines": {
+        "node": ">=20"
+    },
     "scripts": {
         "dev": "tsx watch src/index.ts",
         "build": "tsc",

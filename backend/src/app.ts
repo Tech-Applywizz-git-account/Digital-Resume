@@ -22,7 +22,14 @@ export function createApp(): express.Application {
     app.use(helmet());
     app.use(compression());
     app.use(cors({
-        origin: environment.corsOrigin,
+        origin(origin, callback) {
+            // Allow non-browser clients (no Origin) and configured frontends
+            if (!origin || environment.corsOrigins.includes(origin) || environment.corsOrigins.includes('*')) {
+                callback(null, true);
+                return;
+            }
+            callback(null, false);
+        },
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
         exposedHeaders: ['X-Request-Id'],

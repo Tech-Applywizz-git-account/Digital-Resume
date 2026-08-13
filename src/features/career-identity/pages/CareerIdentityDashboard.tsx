@@ -7,6 +7,7 @@ import { updateCareerIdentityProfile } from '../services/careerIdentityService';
 import { Loader2, Eye, Sparkles, Send, AlertCircle, RefreshCw, Clock, CheckCircle } from 'lucide-react';
 import ResumeWorkspace from '../../resume-dashboard/components/ResumeWorkspace';
 import type { CareerIdentityWorkflowStatus } from '../../../types/careerIdentity';
+import { apiUrl } from '../../../lib/apiBase';
 
 type TierState = 'loading' | 'digital_resume' | 'career_identity' | 'null_tier' | 'error';
 
@@ -64,7 +65,7 @@ export default function CareerIdentityDashboard() {
             try {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session?.access_token) { if (!cancelled) setTier('error'); return; }
-                const res = await fetch('/api/v1/subscription/me', { headers: { Authorization: `Bearer ${session.access_token}` } });
+                const res = await fetch(apiUrl('/api/v1/subscription/me'), { headers: { Authorization: `Bearer ${session.access_token}` } });
                 if (!res.ok) { if (!cancelled) setTier('null_tier'); return; }
                 const body = await res.json();
                 const rawTier = body?.data?.tier;

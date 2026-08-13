@@ -12,6 +12,7 @@ import {
     DEFAULT_SUBSCRIPTION_TIER,
     SubscriptionTier,
 } from "../../../types/subscription";
+import { apiUrl } from "../../../lib/apiBase";
 
 /**
  * Returns the authenticated customer's effective subscription tier.
@@ -24,7 +25,7 @@ export const getMyTier = async (): Promise<SubscriptionTier | null> => {
             return null;
         }
 
-        const res = await fetch('/api/v1/subscription/me', {
+        const res = await fetch(apiUrl('/api/v1/subscription/me'), {
             headers: { Authorization: `Bearer ${session.access_token}` },
         });
 

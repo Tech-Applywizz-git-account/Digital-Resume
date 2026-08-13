@@ -17,6 +17,7 @@ import { HeroSection } from '../components/HeroSection';
 import { SkillsSection } from '../components/ResumeSections';
 import type { CareerIdentityProfileResponse } from '../../../types/careerIdentity';
 import { trackEvent, trackSessionEnd } from '../../../utils/tracking';
+import { apiUrl } from '../../../lib/apiBase';
 
 const getValidLink = (url?: string | null) => {
     if (!url) return undefined;
@@ -151,7 +152,7 @@ const CareerIdentityPage: React.FC = () => {
                 if (!castId) { setDataLoading(false); return; }
 
                 // Load from Express backend public endpoint (same backend that handles publishing)
-                const response = await fetch(`/api/v1/career-identity/profile/public/${encodeURIComponent(castId)}`);
+                const response = await fetch(apiUrl(`/api/v1/career-identity/profile/public/${encodeURIComponent(castId)}`));
                 if (!response.ok) {
                     const body = await response.json().catch(() => ({}));
                     throw new Error(body?.error?.message || body?.message || `Failed to load Career Identity profile (${response.status})`);

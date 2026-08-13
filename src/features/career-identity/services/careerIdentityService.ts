@@ -14,8 +14,9 @@ import {
     CareerIdentityUpdatePayload,
 } from "../../../types/careerIdentity";
 import { supabase } from "../../../integrations/supabase/client";
+import { apiUrl } from "../../../lib/apiBase";
 
-const API_BASE = "/api/v1/career-identity";
+const API_BASE = apiUrl("/api/v1/career-identity");
 
 /**
  * Builds the Authorization header with the current Supabase session token.
@@ -85,7 +86,7 @@ export const downloadWalletCard = async (castId: string): Promise<Blob> => {
         throw new Error('You must be logged in to download a wallet card.');
     }
 
-    const res = await fetch(`/api/v1/wallet/${encodeURIComponent(castId)}/card`, {
+    const res = await fetch(apiUrl(`/api/v1/wallet/${encodeURIComponent(castId)}/card`), {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
     });

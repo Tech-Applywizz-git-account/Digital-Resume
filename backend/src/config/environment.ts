@@ -15,8 +15,8 @@ export interface Environment {
     supabaseServiceRoleKey: string;
     supabaseAnonKey: string;
 
-    // CORS
-    corsOrigin: string;
+    // CORS — comma-separated origins, e.g. https://app.vercel.app,http://localhost:5173
+    corsOrigins: string[];
 
     // Rate Limiting
     rateLimitWindowMs: number;
@@ -57,7 +57,13 @@ export const environment: Environment = {
     supabaseServiceRoleKey: requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
     supabaseAnonKey: requireEnv('SUPABASE_ANON_KEY'),
 
-    corsOrigin: optionalEnv('CORS_ORIGIN', 'http://localhost:5173'),
+    corsOrigins: optionalEnv(
+        'CORS_ORIGIN',
+        'http://localhost:5173,http://localhost:3000',
+    )
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
 
     rateLimitWindowMs: optionalEnvInt('RATE_LIMIT_WINDOW_MS', 60000),
     rateLimitMax: optionalEnvInt('RATE_LIMIT_MAX', 100),

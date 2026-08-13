@@ -11,6 +11,7 @@ import { showToast } from "../components/ui/toast";
 import { getUserInfo } from "../utils/crmHelpers";
 import { viewDocumentSafe } from "../utils/documentUtils";
 import { supabase } from "../integrations/supabase/client";
+import { apiUrl } from "../lib/apiBase";
 
 
 
@@ -65,7 +66,7 @@ const Step1: React.FC = () => {
         if (isCRM) {
           const { data: { session } } = await supabase.auth.getSession();
           const token = session?.access_token;
-          const apiResponse = await fetch('/api/v1/resumes/history?isCRM=true', {
+          const apiResponse = await fetch(apiUrl('/api/v1/resumes/history?isCRM=true'), {
             headers: { 'Authorization': `Bearer ${token}` },
           });
           if (apiResponse.ok) {
@@ -123,7 +124,7 @@ const Step1: React.FC = () => {
 
         const { data: { session: createSession } } = await supabase.auth.getSession();
         const createToken = createSession?.access_token;
-        const response = await fetch('/api/v1/resumes/create-job-request', {
+        const response = await fetch(apiUrl('/api/v1/resumes/create-job-request'), {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${createToken}`,
@@ -158,7 +159,7 @@ const Step1: React.FC = () => {
 
         const { data: { session: uploadSession } } = await supabase.auth.getSession();
         const uploadToken = uploadSession?.access_token;
-        const uploadResponse = await fetch('/api/v1/resumes/upload', {
+        const uploadResponse = await fetch(apiUrl('/api/v1/resumes/upload'), {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${uploadToken}` },
           body: formData,
@@ -202,7 +203,7 @@ const Step1: React.FC = () => {
           if (activeJobRequestId) {
             const { data: { session: updateSession } } = await supabase.auth.getSession();
             const updateToken = updateSession?.access_token;
-            const updateResponse = await fetch(`/api/v1/resumes/${activeJobRequestId}/description`, {
+            const updateResponse = await fetch(apiUrl(`/api/v1/resumes/${activeJobRequestId}/description`), {
               method: 'PUT',
               headers: {
                 'Authorization': `Bearer ${updateToken}`,

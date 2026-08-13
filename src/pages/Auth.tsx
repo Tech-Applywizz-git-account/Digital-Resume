@@ -464,6 +464,7 @@ import {
 } from "lucide-react";
 import { useAuthContext } from "../contexts/AuthContext";
 import { supabase } from "../integrations/supabase/client";
+import { apiUrl } from "../lib/apiBase";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -577,7 +578,7 @@ export default function Auth() {
 
       if (token) {
         try {
-          const tierResponse = await fetch('/api/v1/subscription/me', {
+          const tierResponse = await fetch(apiUrl('/api/v1/subscription/me'), {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (tierResponse.ok) {

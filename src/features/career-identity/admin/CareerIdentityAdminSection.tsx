@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../integrations/supabase/client';
 import { Loader2, Eye, Clock, CheckCircle, RefreshCw, Sparkles, Send, AlertCircle, ExternalLink } from 'lucide-react';
+import { apiUrl } from '../../../lib/apiBase';
 
 interface CIRequest {
     userId: string;
@@ -77,7 +78,7 @@ export default function CareerIdentityAdminSection() {
                 }
             }
 
-            const url = `/api/v1/career-identity/admin/requests${params.toString() ? `?${params.toString()}` : ''}`;
+            const url = apiUrl(`/api/v1/career-identity/admin/requests${params.toString() ? `?${params.toString()}` : ''}`);
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${session.access_token}` },
             });
