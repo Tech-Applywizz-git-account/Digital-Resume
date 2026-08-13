@@ -61,6 +61,10 @@
       "dest": "/api/v1/subscription/me.js"
     },
     {
+      "src": "/api/v1/resumes/(.*)",
+      "dest": "/api/v1/resumes/[...path]?path=$1"
+    },
+    {
       "handle": "filesystem"
     },
     {
