@@ -163,8 +163,6 @@ const FinalResult: React.FC = () => {
   const [resumeOwnerAppEmail, setResumeOwnerAppEmail] = useState<string | null>(null);
   const [resumeOwnerUserId, setResumeOwnerUserId] = useState<string | null>(null);
   const [hasManuallyUpdatedPortfolio, setHasManuallyUpdatedPortfolio] = useState(false);
-  // True when we've confirmed a portfolio from Supabase (source of truth). Prevents Vercel API from overriding.
-  const [hasSupabasePortfolio, setHasSupabasePortfolio] = useState(false);
 
   const isFromPdf = searchParams.get('from') === 'pdf' || searchParams.get('source') === 'pdf';
   const initialId = castId || idFromQuery;
@@ -375,7 +373,7 @@ const FinalResult: React.FC = () => {
     extractNameFromResume();
   }, [resumeUrl, candidateName, resumeFileName]);
 
-  // ✅ Sync with Vercel User Details API (ONLY source for resume/portfolio)
+  // ✅ Sync with Vercel User Details API for resume; Supabase is authoritative for portfolio
   useEffect(() => {
     const fetchVercelDetails = async () => {
       const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
@@ -385,9 +383,38 @@ const FinalResult: React.FC = () => {
       }
 
       setIsSyncingWithVercel(true);
-      let foundPortfolio = false;
+
+      // ─── STEP 1: Check Supabase portfolio_settings FIRST (source of truth) ───
+      // If the user has ever saved a portfolio URL, it lives here and wins unconditionally.
+      const targetUserId = resumeOwnerUserId || user?.id;
+      const targetEmail = resumeOwnerEmail || (emailsToTry.length > 0 ? emailsToTry[0] : null);
+      let supabasePortfolioUrl: string | null = null;
+
+      if (targetUserId || targetEmail) {
+        try {
+          const orFilter = [targetUserId ? `user_id.eq.${targetUserId}` : null, targetEmail ? `email.eq.${targetEmail}` : null]
+            .filter(Boolean).join(',');
+          const { data: ps } = await supabase
+            .from('portfolio_settings')
+            .select('url')
+            .or(orFilter)
+            .maybeSingle();
+
+          if (ps?.url) {
+            supabasePortfolioUrl = ps.url;
+            console.log("✅ Supabase portfolio (authoritative):", supabasePortfolioUrl);
+            setPortfolioUrl(supabasePortfolioUrl);
+            setTempPortfolioUrl(supabasePortfolioUrl);
+          }
+        } catch (err) {
+          console.error("Error reading portfolio_settings:", err);
+        }
+      }
+
+      // ─── STEP 2: Call the Vercel API for resume URL (and portfolio fallback) ───
+      let foundPortfolio = !!supabasePortfolioUrl; // already satisfied if Supabase had a value
       for (const email of emailsToTry) {
-        if (foundPortfolio) break;
+        if (foundPortfolio) break; // skip API portfolio if Supabase already provided one
         const normalizedEmail = email.trim().toLowerCase();
         try {
           const response = await fetch(
@@ -406,100 +433,47 @@ const FinalResult: React.FC = () => {
               setCandidateName(vName);
             }
 
+            // Sync resume URL (Vercel is source for resume)
             if (vResumeUrl && typeof vResumeUrl === "string") {
               setResumeUrl(current => {
-                // Priority: Use existing resume if it exists (from URL param or previous fetch)
                 if (current) return current;
-
                 const fileNameFromUrl = vResumeUrl.split('?')[0].split('/').pop();
                 setResumeFileName(fileNameFromUrl || "Resume.pdf");
                 return vResumeUrl;
               });
 
-              // ✅ Sync with Supabase if we have a valid UUID ID and a logged-in user
               const currentId = castId || idFromQuery;
               if (user && currentId && isSafeUUID(currentId)) {
                 console.log("🔄 Syncing external resume to Supabase for ID:", currentId);
                 Promise.all([
                   supabase.from('crm_job_requests').update({ resume_url: vResumeUrl }).eq('id', currentId).is('resume_url', null),
                   supabase.from('job_requests').update({ resume_path: vResumeUrl }).eq('id', currentId).is('resume_path', null)
-                ]).then(([crmRes, regRes]) => {
-                  if (!crmRes.error || !regRes.error) {
-                    console.log("✅ Successfully synced resume path to Supabase");
-                  }
-                }).catch(err => console.error("❌ Sync failed:", err));
+                ]).catch(err => console.error("❌ Resume sync failed:", err));
               }
             }
 
+            // Portfolio: only use Vercel value if Supabase had nothing
             const isValidVercelUrl =
               typeof vPortfolioUrl === "string" &&
               (vPortfolioUrl.startsWith("http") || vPortfolioUrl.includes("localhost"));
 
-            if (isValidVercelUrl) {
-              // ✅ Only apply Vercel portfolio if Supabase hasn't already provided a confirmed value
-              if (!hasSupabasePortfolio) {
-                setPortfolioUrl(vPortfolioUrl || "");
-                setTempPortfolioUrl(vPortfolioUrl || "");
-              } else {
-                console.log("ℹ️ Skipping Vercel portfolio update — Supabase value takes priority.");
-              }
+            if (isValidVercelUrl && !supabasePortfolioUrl) {
+              console.log("📡 No Supabase portfolio — using Vercel API value:", vPortfolioUrl);
+              setPortfolioUrl(vPortfolioUrl);
+              setTempPortfolioUrl(vPortfolioUrl);
               foundPortfolio = true;
 
-              // ✅ Sync Portfolio to Supabase only if Supabase doesn't already have a value for this user
-              const targetUserId = resumeOwnerUserId || user?.id;
-              if (user && targetUserId && vPortfolioUrl && !hasSupabasePortfolio) {
-                console.log("🔄 Syncing external portfolio to Supabase for user:", targetUserId);
+              // Seed this value into Supabase so future loads are consistent
+              if (user && targetUserId && vPortfolioUrl) {
                 supabase.from('portfolio_settings')
-                  .select('id, url')
-                  .eq('user_id', targetUserId)
-                  .maybeSingle()
-                  .then(({ data: existing }) => {
-                    if (existing) {
-                      // Only update if Supabase record is blank (don't overwrite manual saves)
-                      if (!existing.url) {
-                        supabase.from('portfolio_settings')
-                          .update({ url: vPortfolioUrl })
-                          .eq('user_id', targetUserId)
-                          .then(() => console.log("✅ Updated portfolio in Supabase"));
-                      }
-                    } else {
-                      supabase.from('portfolio_settings')
-                        .insert({ url: vPortfolioUrl, user_id: targetUserId })
-                        .then(() => console.log("✅ Inserted new portfolio record in Supabase"));
-                    }
-                  });
+                  .upsert({ url: vPortfolioUrl, user_id: targetUserId }, { onConflict: 'user_id', ignoreDuplicates: true })
+                  .then(() => console.log("✅ Seeded Vercel portfolio into Supabase"))
+                  .catch(err => console.error("❌ Seed failed:", err));
               }
             }
           }
         } catch (err) {
           console.error(`❌ Error fetching Vercel details:`, err);
-        }
-      }
-
-      if (!foundPortfolio) {
-        // Fallback: Check Supabase portfolio_settings if API returned nothing
-        console.log("🔍 API returned no portfolio, checking Supabase portfolio_settings fallback...");
-        const targetEmail = resumeOwnerEmail || (emailsToTry.length > 0 ? emailsToTry[0] : null);
-        const targetUserId = resumeOwnerUserId || user?.id;
-
-        if (targetUserId || targetEmail) {
-          try {
-            const { data: ps } = await supabase
-              .from('portfolio_settings')
-              .select('url')
-              .or(`user_id.eq.${targetUserId},email.eq.${targetEmail}`)
-              .maybeSingle();
-
-            if (ps?.url) {
-              console.log("✅ Found fallback portfolio in Supabase:", ps.url);
-              setPortfolioUrl(ps.url);
-              setTempPortfolioUrl(ps.url);
-              setHasSupabasePortfolio(true);
-              foundPortfolio = true;
-            }
-          } catch (err) {
-            console.error("Error in portfolio fallback check:", err);
-          }
         }
       }
 
@@ -786,7 +760,6 @@ const FinalResult: React.FC = () => {
             console.log("📍 Found portfolio override in Supabase:", portfolioRes.data.url);
             setPortfolioUrl(portfolioRes.data.url);
             setTempPortfolioUrl(portfolioRes.data.url);
-            setHasSupabasePortfolio(true); // Mark Supabase as authoritative source
           }
         } else if (ownerEmail) {
           // Fallback: If no user_id but we have email, try to find a profile by email
@@ -928,7 +901,6 @@ const FinalResult: React.FC = () => {
       setPortfolioUrl(trimmedUrl);
       setTempPortfolioUrl(trimmedUrl);
       setHasManuallyUpdatedPortfolio(true);
-      setHasSupabasePortfolio(true); // Mark as saved so Vercel sync won't override
       setIsEditingPortfolio(false);
       showToast("Portfolio updated successfully", "success");
 
