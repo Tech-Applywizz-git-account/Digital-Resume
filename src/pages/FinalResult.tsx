@@ -163,6 +163,8 @@ const FinalResult: React.FC = () => {
   const [resumeOwnerAppEmail, setResumeOwnerAppEmail] = useState<string | null>(null);
   const [resumeOwnerUserId, setResumeOwnerUserId] = useState<string | null>(null);
   const [hasManuallyUpdatedPortfolio, setHasManuallyUpdatedPortfolio] = useState(false);
+  // True when we've confirmed a portfolio from Supabase (source of truth). Prevents Vercel API from overriding.
+  const [hasSupabasePortfolio, setHasSupabasePortfolio] = useState(false);
 
   const isFromPdf = searchParams.get('from') === 'pdf' || searchParams.get('source') === 'pdf';
   const initialId = castId || idFromQuery;
@@ -434,24 +436,32 @@ const FinalResult: React.FC = () => {
               (vPortfolioUrl.startsWith("http") || vPortfolioUrl.includes("localhost"));
 
             if (isValidVercelUrl) {
-              setPortfolioUrl(vPortfolioUrl || "");
-              setTempPortfolioUrl(vPortfolioUrl || "");
+              // ✅ Only apply Vercel portfolio if Supabase hasn't already provided a confirmed value
+              if (!hasSupabasePortfolio) {
+                setPortfolioUrl(vPortfolioUrl || "");
+                setTempPortfolioUrl(vPortfolioUrl || "");
+              } else {
+                console.log("ℹ️ Skipping Vercel portfolio update — Supabase value takes priority.");
+              }
               foundPortfolio = true;
 
-              // ✅ Sync Portfolio to Supabase using user_id as the key
+              // ✅ Sync Portfolio to Supabase only if Supabase doesn't already have a value for this user
               const targetUserId = resumeOwnerUserId || user?.id;
-              if (user && targetUserId && vPortfolioUrl) {
+              if (user && targetUserId && vPortfolioUrl && !hasSupabasePortfolio) {
                 console.log("🔄 Syncing external portfolio to Supabase for user:", targetUserId);
                 supabase.from('portfolio_settings')
-                  .select('id')
+                  .select('id, url')
                   .eq('user_id', targetUserId)
                   .maybeSingle()
                   .then(({ data: existing }) => {
                     if (existing) {
-                      supabase.from('portfolio_settings')
-                        .update({ url: vPortfolioUrl })
-                        .eq('user_id', targetUserId)
-                        .then(() => console.log("✅ Updated portfolio in Supabase"));
+                      // Only update if Supabase record is blank (don't overwrite manual saves)
+                      if (!existing.url) {
+                        supabase.from('portfolio_settings')
+                          .update({ url: vPortfolioUrl })
+                          .eq('user_id', targetUserId)
+                          .then(() => console.log("✅ Updated portfolio in Supabase"));
+                      }
                     } else {
                       supabase.from('portfolio_settings')
                         .insert({ url: vPortfolioUrl, user_id: targetUserId })
@@ -484,6 +494,7 @@ const FinalResult: React.FC = () => {
               console.log("✅ Found fallback portfolio in Supabase:", ps.url);
               setPortfolioUrl(ps.url);
               setTempPortfolioUrl(ps.url);
+              setHasSupabasePortfolio(true);
               foundPortfolio = true;
             }
           } catch (err) {
@@ -775,6 +786,7 @@ const FinalResult: React.FC = () => {
             console.log("📍 Found portfolio override in Supabase:", portfolioRes.data.url);
             setPortfolioUrl(portfolioRes.data.url);
             setTempPortfolioUrl(portfolioRes.data.url);
+            setHasSupabasePortfolio(true); // Mark Supabase as authoritative source
           }
         } else if (ownerEmail) {
           // Fallback: If no user_id but we have email, try to find a profile by email
@@ -914,7 +926,9 @@ const FinalResult: React.FC = () => {
 }
 
       setPortfolioUrl(trimmedUrl);
+      setTempPortfolioUrl(trimmedUrl);
       setHasManuallyUpdatedPortfolio(true);
+      setHasSupabasePortfolio(true); // Mark as saved so Vercel sync won't override
       setIsEditingPortfolio(false);
       showToast("Portfolio updated successfully", "success");
 
@@ -1249,7 +1263,7 @@ const FinalResult: React.FC = () => {
               <span className="text-xs md:text-sm font-medium">Back<span className="hidden sm:inline"> to Dashboard</span></span>
             </Button>
           )}
-          {user && !isFromPdf && portfolioUrl && (
+          {user && !isFromPdf && (
             <div className="flex items-center shrink-0">
               {isEditingPortfolio ? (
                 <div className="flex items-center gap-2 bg-white border border-blue-400 rounded-xl p-1 pr-2 shadow-md animate-in fade-in zoom-in duration-200 h-11 w-full sm:w-auto">
@@ -1269,12 +1283,12 @@ const FinalResult: React.FC = () => {
                     <button
                       onClick={handleSavePortfolio}
                       className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                      title="Save"
+                      title="Save portfolio URL"
                     >
                       <CheckCircle className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => setIsEditingPortfolio(false)}
+                      onClick={() => { setIsEditingPortfolio(false); setTempPortfolioUrl(portfolioUrl); }}
                       className="p-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors shadow-sm"
                       title="Cancel"
                     >
@@ -1304,8 +1318,8 @@ const FinalResult: React.FC = () => {
                           {portfolioUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}
                         </div>
                       ) : (
-                        <span className="text-[11px] md:text-sm font-semibold text-gray-300 leading-tight">
-                          No portfolio
+                        <span className="text-[11px] md:text-sm font-semibold text-blue-400 leading-tight">
+                          + Add portfolio
                         </span>
                       )}
                     </div>
