@@ -12,6 +12,7 @@ import { getUserInfo } from "../utils/crmHelpers";
 import { viewDocumentSafe } from "../utils/documentUtils";
 import { supabase } from "../integrations/supabase/client";
 import { apiUrl } from "../lib/apiBase";
+import { isSafeUUID } from "../utils/uuidHelpers";
 
 
 
@@ -114,7 +115,8 @@ const Step1: React.FC = () => {
       const existingResumeUrl = localStorage.getItem("uploadedResumeUrl");
       const existingResumeText = localStorage.getItem("resumeFullText");
 
-      let activeJobRequestId = jobRequestId;
+      // Synthetic slugs like "profile" / "api-resume" must create a new real DB row
+      let activeJobRequestId = isSafeUUID(jobRequestId) ? jobRequestId : null;
 
       if (!activeJobRequestId) {
         const userInfo = await getUserInfo(user.id);

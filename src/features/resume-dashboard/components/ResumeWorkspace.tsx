@@ -5,6 +5,7 @@ import { getUserInfo } from '../../../utils/crmHelpers';
 import { showToast } from "../../../components/ui/toast";
 import AnalyticsPanel from '../../../components/AnalyticsPanel';
 import { viewDocumentSafe } from '../../../utils/documentUtils';
+import { isSafeUUID } from '../../../utils/uuidHelpers';
 import {
     Video,
     CheckCircle,
@@ -328,6 +329,35 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
 
     const confirmReplace = async () => {
         if (!selectedReplaceFile || !replacingId || !user) return;
+
+        // Synthetic/API-only record — upload only, do not update a UUID Supabase row
+        if (!isSafeUUID(replacingId)) {
+            try {
+                setIsReplacing(true);
+                const file = selectedReplaceFile;
+                const fileExt = file.name.split('.').pop()?.toLowerCase();
+                const timestamp = Date.now();
+                const fileName = `replaced_resume_${timestamp}.${fileExt}`;
+                const filePath = `${crmEmail || user.email}/${fileName}`;
+                await supabase.storage.from('CRM_users_resumes').upload(filePath, file, {
+                    upsert: true,
+                    contentType: file.type || 'application/pdf',
+                });
+                showToast("Resume replaced (API-only record — no Supabase row to update).", "success");
+                await fetchcareercasts();
+                setShowReplaceModal(false);
+            } catch (err: any) {
+                console.error('❌ Replace failed for synthetic record:', err);
+                showToast("Failed to replace resume: " + err.message, "error");
+            } finally {
+                setIsReplacing(false);
+                setReplacingId(null);
+                setSelectedReplaceFile(null);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            }
+            return;
+        }
+
         try {
             setIsReplacing(true);
             const file = selectedReplaceFile;
@@ -397,7 +427,9 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
     const populateLocalStorage = (cast: any) => {
         localStorage.setItem('careercast_jobTitle', cast.job_title || '');
         localStorage.setItem('careercast_jobDescription', cast.job_description || '');
-        localStorage.setItem('current_job_request_id', cast.id);
+        // Only store a real UUID; synthetic/API-only ids must never hit UUID columns
+        const safeId = isSafeUUID(cast.id) ? cast.id : 'profile';
+        localStorage.setItem('current_job_request_id', safeId);
         localStorage.setItem('uploadedResumeUrl', cast.resume_path || '');
         localStorage.setItem('resumeFileName', cast.resume_path ? cast.resume_path.split('/').pop() : 'Resume.pdf');
         localStorage.setItem('is_crm_user', isCRM ? 'true' : 'false');
@@ -430,7 +462,9 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
     };
 
     const handleViewDetails = (id: string, _resumePath?: string) => {
-        navigate(`/final-result/${id}`);
+        // Synthetic/API-only records use email lookup via "profile"
+        const safeId = isSafeUUID(id) ? id : 'profile';
+        navigate(`/final-result/${safeId}`);
     };
 
     // ── Country detection ──────────────────────────────────────────────
