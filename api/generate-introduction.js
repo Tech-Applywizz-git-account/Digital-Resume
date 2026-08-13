@@ -1,3 +1,7 @@
+import { createClient } from "@supabase/supabase-js";
+import { AzureOpenAI } from "openai";
+import { logAzureUsage } from "./utils/tokenLogger.js";
+
 export default async function handler(req, res) {
   // --- CORS headers ---
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -5,12 +9,10 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Content-Type", "application/json");
 
-  // --- Handle preflight ---
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  // --- Allow only POST ---
   if (req.method !== "POST") {
     return res.status(405).json({
       error: "Method not allowed",
@@ -19,13 +21,16 @@ export default async function handler(req, res) {
     });
   }
 
-  // --- Parse JSON body (fix for request.json is not a function) ---
   let jsonData;
   try {
-    const buffers = [];
-    for await (const chunk of req) buffers.push(chunk);
-    const rawBody = Buffer.concat(buffers).toString();
-    jsonData = JSON.parse(rawBody);
+    if (req.body && typeof req.body === 'object') {
+      jsonData = req.body;
+    } else {
+      const buffers = [];
+      for await (const chunk of req) buffers.push(chunk);
+      const rawBody = Buffer.concat(buffers).toString();
+      jsonData = JSON.parse(rawBody);
+    }
   } catch (err) {
     return res.status(400).json({
       error: "Invalid JSON in request body",
@@ -33,62 +38,97 @@ export default async function handler(req, res) {
     });
   }
 
-  const { prompt } = jsonData || {};
+  const { prompt, ownerId, ownerEmail } = jsonData || {};
   if (!prompt) {
     return res.status(400).json({ error: "Prompt is required" });
   }
 
-  // --- Get API key ---
-  const openaiApiKey = process.env.VITE_OPENAI_API_KEY;
+  const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
 
-  if (!openaiApiKey) {
-    return res.status(200).json({
-      success: true,
-      introduction: "This is a mock introduction. Please set VITE_OPENAI_API_KEY in your environment.",
+  if (!azureApiKey || !endpoint || !apiVersion || !deployment) {
+    return res.status(500).json({
+      success: false,
+      error: "Azure OpenAI configuration is missing on the server.",
     });
   }
 
-  // --- Call OpenAI API ---
+  // --- Resolve authenticated user (for azure_token_usage logging) ---
+  const user_id = ownerId || null;
+
+  const openai = new AzureOpenAI({
+    endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+    apiKey: process.env.AZURE_OPENAI_API_KEY,
+    apiVersion: process.env.AZURE_OPENAI_API_VERSION,
+    deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+  });
+
+  const requestPayload = {
+    messages: [
+      { role: "system", content: "You are a professional career coach." },
+      { role: "user", content: prompt },
+    ],
+    max_completion_tokens: process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800,
+  };
+
+  const startTime = Date.now();
+  let azureResponse;
+
   try {
-    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "You are a professional career coach." },
-          { role: "user", content: prompt },
-        ],
-        max_tokens: 350,
-        temperature: 0.7,
-      }),
+    azureResponse = await openai.chat.completions.create(requestPayload);
+    const responseTimeMs = Date.now() - startTime;
+
+    // Await log success
+    await logAzureUsage({
+      lead_id: null,
+      user_id,
+      task_type: 'generate_introduction',
+      model: azureResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
+      deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
+      azure_request_id: azureResponse.id || null,
+      usage: azureResponse.usage,
+      response_time_ms: responseTimeMs,
+      is_success: true
     });
 
-    const data = await openaiResponse.json();
-
-    if (!openaiResponse.ok) {
-      return res.status(500).json({
-        error: "Failed to generate introduction",
-        openaiError: data.error ? data.error.message : "Unknown OpenAI error",
-      });
-    }
-
-    if (data.choices && data.choices[0]) {
+    if (azureResponse.choices && azureResponse.choices[0]) {
       return res.status(200).json({
         success: true,
-        introduction: data.choices[0].message.content,
+        introduction: azureResponse.choices[0].message.content,
       });
     } else {
-      return res.status(500).json({ error: "No response from OpenAI" });
+      return res.status(500).json({ 
+        status: 500,
+        code: "invalid_response",
+        message: "No choices returned from Azure OpenAI",
+        data: azureResponse 
+      });
     }
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Failed to generate introduction",
-      details: error.message,
+
+  } catch (apiError) {
+    const responseTimeMs = Date.now() - startTime;
+    
+    // Await log failure
+    await logAzureUsage({
+      lead_id: null,
+      user_id,
+      task_type: 'generate_introduction',
+      model: process.env.AZURE_OPENAI_DEPLOYMENT,
+      deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
+      azure_request_id: null,
+      usage: null,
+      response_time_ms: responseTimeMs,
+      is_success: false,
+      error_message: apiError.message
+    });
+
+    return res.status(502).json({ 
+      status: apiError.status || 502,
+      code: apiError.code || "unknown_code",
+      message: apiError.message,
+      details: apiError.error || null
     });
   }
 }

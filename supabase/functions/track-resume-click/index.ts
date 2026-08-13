@@ -11,6 +11,11 @@ const corsHeaders = {
 // Country lookup via ipapi.co (AbortController timeout — Deno compatible)
 // ---------------------------------------------------------------------------
 
+function isUUID(str: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return typeof str === 'string' && uuidRegex.test(str.trim());
+}
+
 async function getCountry(req: Request, ip: string): Promise<string> {
     try {
         // 1. Try Supabase/Cloudflare geolocation headers first (fast & reliable)
@@ -127,6 +132,13 @@ serve(async (req) => {
         if (!resume_id) {
             return new Response(JSON.stringify({ error: "resume_id is required" }), {
                 status: 400,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+
+        // Skip database tracking for synthetic/non-UUID identifiers
+        if (!isUUID(resume_id)) {
+            return new Response(JSON.stringify({ success: true, message: "Skipped DB insert for non-UUID" }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
         }

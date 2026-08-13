@@ -13,9 +13,14 @@ serve(async (req: any) => {
   }
 
   try {
-    const openAiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openAiKey) {
-      console.error("Missing OPENAI_API_KEY");
+    const azureOpenAiEndpoint = Deno.env.get("AZURE_OPENAI_ENDPOINT");
+    const azureOpenAiApiKey = Deno.env.get("AZURE_OPENAI_API_KEY");
+    const azureOpenAiApiVersion = Deno.env.get("AZURE_OPENAI_API_VERSION");
+    const azureOpenAiDeployment = Deno.env.get("AZURE_OPENAI_DEPLOYMENT");
+    const azureMaxTokens = parseInt(Deno.env.get("AZURE_MAX_TOKENS") || "800", 10);
+
+    if (!azureOpenAiApiKey) {
+      console.error("Missing AZURE_OPENAI_API_KEY");
       throw new Error("Server configuration error: Missing API Key");
     }
 
@@ -123,24 +128,27 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       content: question
     });
 
-    const completionResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const azureUrl = `${azureOpenAiEndpoint}/openai/deployments/${azureOpenAiDeployment}/chat/completions?api-version=${azureOpenAiApiVersion}`;
+
+    const requestBody: any = {
+      messages: conversationMessages,
+      max_completion_tokens: azureMaxTokens,
+    };
+
+    const completionResponse = await fetch(azureUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${openAiKey}`,
+        "api-key": azureOpenAiApiKey,
         "Content-Type": "application/json",
         "x-client-info": "antigravity"
       },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: conversationMessages,
-        temperature: 0.3,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!completionResponse.ok) {
       const errText = await completionResponse.text();
-      console.error("OpenAI API Error:", errText);
-      throw new Error(`OpenAI API Error: ${completionResponse.statusText}`);
+      console.error("Azure OpenAI API Error:", errText);
+      throw new Error(`Azure OpenAI API Error: ${completionResponse.statusText}`);
     }
 
     const data = await completionResponse.json();

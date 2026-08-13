@@ -5311,6 +5311,7 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../integrations/supabase/client";
 import ResumeChatPanel from "../components/ResumeChatPanel";
+import { isSafeUUID } from "../utils/uuidHelpers";
 
 import {
   ArrowRight,
@@ -5424,6 +5425,12 @@ export default function Landing() {
     try {
       setIsLoadingResume(true);
       console.log("[DigitalResume] Loading data for context ID:", id);
+
+      if (!isSafeUUID(id)) {
+          console.warn("[DigitalResume] Skipping Supabase query for non-UUID id:", id);
+          setIsLoadingResume(false);
+          return;
+      }
 
       // Parallelize checking CRM and regular tables
       const [crmResult, regularResult] = await Promise.all([

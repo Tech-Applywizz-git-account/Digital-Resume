@@ -26,6 +26,7 @@ export interface ResumeChatPanelProps {
     isDataLoading?: boolean;
     recruiterMode?: boolean;
     ownerId?: string | null;
+    ownerEmail?: string | null;
     hideNavigation?: boolean;
 }
 
@@ -54,6 +55,7 @@ const ResumeChatPanel = ({
     isDataLoading,
     recruiterMode = false,
     ownerId = null,
+    ownerEmail = null,
     hideNavigation = false
 }: ResumeChatPanelProps) => {
     const [messages, setMessages] = useState<Message[]>([
@@ -183,6 +185,7 @@ const ResumeChatPanel = ({
 
         try {
             console.log("📤 Sending Resume Chat Request...");
+            console.log(`resume-chat request ownerEmail present: ${!!ownerEmail}`);
 
             let currentResumeText = resumeText;
 
@@ -204,40 +207,35 @@ const ResumeChatPanel = ({
                 }
             }
 
-            const { data, error } = await supabase.functions.invoke('resume-chat', {
-                body: {
+            const response = await fetch('/api/resume-chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
                     resumeText: currentResumeText,
                     messages: messages.map(m => ({ role: m.sender === 'bot' ? 'assistant' : 'user', content: m.text })),
                     question: text,
                     recruiterMode: recruiterMode,
-                    ownerId: ownerId
-                }
+                    ownerId: ownerId,
+                    ownerEmail: ownerEmail
+                })
             });
 
-            if (error) {
-                console.error("Supabase function error:", error);
-
-                // Try to extract a more descriptive message from the error object
-                let detailMsg = "";
-                if (error instanceof Error) {
-                    detailMsg = error.message;
-                }
-
-                // If it's a FunctionsHttpError, it might have the body text
-                const anyError = error as any;
-                if (anyError.context && typeof anyError.context.json === 'function') {
-                    try {
-                        const errorBody = await anyError.context.json();
-                        if (errorBody && errorBody.error) {
-                            detailMsg = errorBody.error;
-                        }
-                    } catch (e) {
-                        // ignore body parse error
+            if (!response.ok) {
+                let detailMsg = `Server returned status ${response.status}`;
+                try {
+                    const errorBody = await response.json();
+                    if (errorBody && errorBody.error) {
+                        detailMsg = errorBody.error;
                     }
+                } catch (e) {
+                    // Ignore parse error
                 }
-
-                throw new Error(detailMsg || `Function returned status ${anyError.context?.status || 'unknown'}`);
+                throw new Error(detailMsg);
             }
+
+            const data = await response.json();
 
             let botText = data.answer || "I couldn't generate a response.";
 
