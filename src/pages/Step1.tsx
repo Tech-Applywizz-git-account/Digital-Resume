@@ -10,6 +10,8 @@ import Sidebar from "../components/Sidebar";
 import { showToast } from "../components/ui/toast";
 import { getUserInfo } from "../utils/crmHelpers";
 import { viewDocumentSafe } from "../utils/documentUtils";
+import { supabase } from "../integrations/supabase/client";
+import { apiUrl } from "../lib/apiBase";
 import { isSafeUUID } from "../utils/uuidHelpers";
 
 

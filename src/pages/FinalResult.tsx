@@ -10,6 +10,7 @@ import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
 import { extractTextFromBuffer } from "../utils/textExtraction";
+import { useSubscriptionTier } from "../features/subscription/hooks/useSubscriptionTier";
 import { isSafeUUID } from "../utils/uuidHelpers";
 
 // --- Play Intro Button Canvas Generator ---
