@@ -464,6 +464,7 @@ import {
 } from "lucide-react";
 import { useAuthContext } from "../contexts/AuthContext";
 import { supabase } from "../integrations/supabase/client";
+import { apiUrl } from "../lib/apiBase";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -569,7 +570,57 @@ export default function Auth() {
         console.warn('Admin check failed, proceeding to user dashboard:', adminErr);
       }
 
-      navigate("/dashboard");
+      // Resolve customer subscription tier for routing
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const userId = session?.user?.id;
+      let tier: string | null = null;
+
+      if (token) {
+        try {
+          const tierResponse = await fetch(apiUrl('/api/v1/subscription/me'), {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (tierResponse.ok) {
+            const body = await tierResponse.json();
+            tier = body?.data?.tier ?? null;
+          }
+        } catch (tierErr) {
+          console.warn('Tier resolution failed:', tierErr);
+        }
+      }
+
+      // Client fallback when API is unavailable (e.g. misconfigured proxy)
+      if (tier !== 'career_identity' && tier !== 'digital_resume' && userId) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tier')
+            .eq('id', userId)
+            .maybeSingle();
+          if (profile?.tier === 'career_identity' || profile?.tier === 'digital_resume') {
+            tier = profile.tier;
+          } else if (profile || localStorage.getItem('is_crm_user') === 'true') {
+            tier = 'digital_resume';
+          }
+        } catch {
+          if (localStorage.getItem('is_crm_user') === 'true') {
+            tier = 'digital_resume';
+          }
+        }
+      }
+
+      if (tier === 'career_identity') {
+        navigate("/career-identity-dashboard");
+        return;
+      }
+      if (tier === 'digital_resume') {
+        navigate("/dashboard");
+        return;
+      }
+
+      // No product access
+      navigate("/");
     } catch (err) {
       // handled in context
     }
@@ -714,6 +765,20 @@ export default function Auth() {
                       {loading ? "Signing In..." : "Sign In"} <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </form>
+
+                  <div className="text-center mt-4">
+                    <span className="text-slate-500 text-sm">
+                      Entered the wrong email during registration?
+                    </span>
+                    <br />
+                    <button
+                      type="button"
+                      onClick={() => navigate("/email-correction")}
+                      className="text-cyan-700 hover:text-cyan-900 font-semibold text-sm underline-offset-2 hover:underline transition-colors"
+                    >
+                      Request Email Correction
+                    </button>
+                  </div>
                 </div>
 
                 {/* SIGNUP */}
