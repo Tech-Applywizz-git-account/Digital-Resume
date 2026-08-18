@@ -2,9 +2,10 @@
  * Visual Career Identity card — luxury pass used as the source image
  * for Apple Wallet / Google Wallet and for admin preview.
  */
+import os from 'node:os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import puppeteer from 'puppeteer';
 import QRCode from 'qrcode';
 import type { WalletProvider, WalletCardData, WalletProviderType } from '../../wallet.types.js';
@@ -108,10 +109,14 @@ class NeatPassProvider implements WalletProvider {
             .replace(/\{\{careerIdentityUrl\}\}/g, this.escapeHtml(data.careerIdentityUrl))
             .replace(/\{\{qrCodeDataUrl\}\}/g, qrCodeDataUrl);
 
-        const executablePath = this.resolveBrowserExecutable();
+        const executablePath = await this.resolveBrowserExecutable();
+        if (process.env.PUPPETEER_EXECUTABLE_PATH && !existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+            delete process.env.PUPPETEER_EXECUTABLE_PATH;
+        }
+
         const browser = await puppeteer.launch({
             headless: true,
-            executablePath,
+            ...(executablePath ? { executablePath } : {}),
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -166,7 +171,7 @@ class NeatPassProvider implements WalletProvider {
         return this.escapeHtml(text);
     }
 
-    private resolveBrowserExecutable(): string | undefined {
+    private async resolveBrowserExecutable(): Promise<string | undefined> {
         const explicit = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
         if (explicit && existsSync(explicit)) {
             return explicit;
@@ -192,6 +197,59 @@ class NeatPassProvider implements WalletProvider {
             }
         }
 
+        try {
+            const bundled = await puppeteer.executablePath();
+            if (bundled && existsSync(bundled)) {
+                return bundled;
+            }
+        } catch {
+            // Puppeteer has no bundled browser in this environment.
+        }
+
+        return this.findCachedChrome();
+    }
+
+    private findCachedChrome(): string | undefined {
+        const roots = [
+            process.env.PUPPETEER_CACHE_DIR,
+            path.resolve(process.cwd(), '.cache/puppeteer'),
+            path.join(os.homedir(), '.cache', 'puppeteer'),
+            '/opt/render/.cache/puppeteer',
+        ].filter((value): value is string => !!value);
+
+        const names = process.platform === 'win32' ? ['chrome.exe'] : ['chrome', 'chromium', 'chromium-browser'];
+        for (const root of roots) {
+            const found = this.walkForBinary(root, names, 6);
+            if (found) return found;
+        }
+        return undefined;
+    }
+
+    private walkForBinary(dir: string, names: string[], depth: number): string | undefined {
+        if (depth < 0 || !existsSync(dir)) return undefined;
+        let entries: string[] = [];
+        try {
+            entries = readdirSync(dir);
+        } catch {
+            return undefined;
+        }
+
+        for (const entry of entries) {
+            const full = path.join(dir, entry);
+            let stats;
+            try {
+                stats = statSync(full);
+            } catch {
+                continue;
+            }
+            if (stats.isFile() && names.includes(entry)) {
+                return full;
+            }
+            if (stats.isDirectory()) {
+                const nested = this.walkForBinary(full, names, depth - 1);
+                if (nested) return nested;
+            }
+        }
         return undefined;
     }
 }
