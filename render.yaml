@@ -8,6 +8,11 @@ services:
     buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
+    aptPackages:
+      - chromium
+      - fonts-liberation
+      - fonts-noto-color-emoji
+      - fonts-noto-cjk
     envVars:
       - key: NODE_VERSION
         value: "22"
@@ -15,6 +20,10 @@ services:
         value: production
       - key: PORT
         value: 10000
+      - key: PUPPETEER_SKIP_DOWNLOAD
+        value: "true"
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/chromium
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

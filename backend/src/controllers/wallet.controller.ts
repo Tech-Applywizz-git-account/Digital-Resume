@@ -3,8 +3,10 @@ import { walletService, walletProviderRegistry } from '../services/wallet/wallet
 import { getWalletStatus } from '../services/wallet/walletProfile.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { trackingService } from '../services/analytics/tracking.service.js';
+import { logger } from '../logger/index.js';
 
 function sendWalletError(res: Response, err: any) {
+    logger.error({ err }, 'Wallet request failed');
     const message = err?.message || 'Wallet request failed';
     if (message.includes('not configured') || message.includes('Missing PassKit')) {
         return res.status(503).json({ success: false, message });

@@ -21,7 +21,16 @@ class NeatPassProvider implements WalletProvider {
     readonly label = 'Career Identity Wallet Card';
 
     private getTemplatePath(): string {
-        return path.resolve(__dirname, 'templates', 'WalletCard', 'index.html');
+        const candidates = [
+            path.resolve(__dirname, 'templates', 'WalletCard', 'index.html'),
+            path.resolve(process.cwd(), 'src/services/wallet/providers/neatpass/templates/WalletCard/index.html'),
+            path.resolve(process.cwd(), 'dist/services/wallet/providers/neatpass/templates/WalletCard/index.html'),
+        ];
+        const found = candidates.find((candidate) => existsSync(candidate));
+        if (!found) {
+            throw new Error(`Wallet card template not found. Looked in: ${candidates.join(', ')}`);
+        }
+        return found;
     }
 
     getMimeType(): string {
@@ -103,14 +112,21 @@ class NeatPassProvider implements WalletProvider {
         const browser = await puppeteer.launch({
             headless: true,
             executablePath,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-zygote',
+                '--disable-software-rasterizer',
+            ],
         });
 
         try {
             const page = await browser.newPage();
             await page.setViewport({ width: CARD_WIDTH, height: CARD_HEIGHT, deviceScaleFactor: 2 });
-            await page.setContent(html, { waitUntil: 'networkidle0' as any, timeout: 30000 });
-            await page.waitForNetworkIdle({ idleTime: 400 }).catch(() => undefined);
+            await page.setContent(html, { waitUntil: 'load', timeout: 30000 });
+            await page.waitForNetworkIdle({ idleTime: 400, timeout: 4000 }).catch(() => undefined);
             const cardShot = await page.screenshot({ type: 'png', omitBackground: false });
 
             await page.setViewport({ width: 58, height: 58, deviceScaleFactor: 3 });
@@ -156,18 +172,23 @@ class NeatPassProvider implements WalletProvider {
             return explicit;
         }
 
-        if (process.platform === 'win32') {
-            const candidates = [
+        const candidates = process.platform === 'win32'
+            ? [
                 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
                 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
                 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
                 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            ]
+            : [
+                '/usr/bin/chromium',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/google-chrome',
+                '/usr/bin/google-chrome-stable',
             ];
 
-            for (const candidate of candidates) {
-                if (existsSync(candidate)) {
-                    return candidate;
-                }
+        for (const candidate of candidates) {
+            if (existsSync(candidate)) {
+                return candidate;
             }
         }
 
