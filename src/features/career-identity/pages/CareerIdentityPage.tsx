@@ -16,6 +16,12 @@ import { Scribble } from '../components/CommonElements';
 import { HeroSection } from '../components/HeroSection';
 import { SkillsSection } from '../components/ResumeSections';
 import type { CareerIdentityProfileResponse } from '../../../types/careerIdentity';
+import {
+    downloadWalletCard,
+    fetchGoogleWalletUrl,
+    fetchWalletStatus,
+    getAppleWalletPassUrl,
+} from '../services/careerIdentityService';
 import { trackEvent, trackSessionEnd } from '../../../utils/tracking';
 import { apiUrl } from '../../../lib/apiBase';
 
@@ -133,7 +139,12 @@ const CareerIdentityPage: React.FC = () => {
     const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
     const [hasClickedIntroOnce, setHasClickedIntroOnce] = useState(false);
     const [walletPassUrl, setWalletPassUrl] = useState<string | null>(null);
+    const [walletCardUrl, setWalletCardUrl] = useState<string | null>(null);
+    const [appleWalletReady, setAppleWalletReady] = useState(false);
+    const [googleWalletReady, setGoogleWalletReady] = useState(false);
+    const [walletLoading, setWalletLoading] = useState(false);
     const [showWalletUnavailable, setShowWalletUnavailable] = useState(false);
+    const [walletActionLoading, setWalletActionLoading] = useState<'apple' | 'google' | 'card' | null>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
 
     useEffect(() => {
@@ -182,15 +193,41 @@ const CareerIdentityPage: React.FC = () => {
         }
     }, [profile, isPreviewMode, previewAvatar]);
 
-    // Extract wallet pass URL from profile data
+    // Extract wallet links from published profile JSON
     useEffect(() => {
         if (profile?.profile) {
-            const profileData = profile.profile as unknown as Record<string, unknown>;
-            if (profileData.walletPassUrl) {
-                setWalletPassUrl(profileData.walletPassUrl as string);
-            }
+            setWalletPassUrl(profile.profile.walletPassUrl || null);
+            setWalletCardUrl(profile.profile.walletCardUrl || null);
         }
     }, [profile]);
+
+    useEffect(() => {
+        const castId = castIdParam;
+        if (!castId || isPreviewMode) return;
+
+        let cancelled = false;
+        const loadWallet = async () => {
+            try {
+                setWalletLoading(true);
+                const status = await fetchWalletStatus(castId);
+                if (cancelled) return;
+                setAppleWalletReady(status.apple);
+                setGoogleWalletReady(status.google);
+                if (status.walletPassUrl) setWalletPassUrl(status.walletPassUrl);
+                if (status.walletCardUrl) setWalletCardUrl(status.walletCardUrl);
+            } catch {
+                if (!cancelled) {
+                    setAppleWalletReady(false);
+                    setGoogleWalletReady(false);
+                }
+            } finally {
+                if (!cancelled) setWalletLoading(false);
+            }
+        };
+
+        loadWallet();
+        return () => { cancelled = true; };
+    }, [castIdParam, isPreviewMode]);
 
     useEffect(() => {
         if (videoUrl && !isIntroVideoOpen && !hasAutoPlayed) {
@@ -253,6 +290,57 @@ const CareerIdentityPage: React.FC = () => {
         window.open(`/final-result/${castIdParam}?autoDownload=true&resumeUrl=${encodeURIComponent(resumeUrl)}&candidateName=${encodeURIComponent(displayName)}&email=${encodeURIComponent(displayEmail)}&source=pdf`, '_blank');
         trackEvent('pdf_download', castIdParam, { source: sourceParam });
         setIsDownloadingResume(false);
+    };
+
+    const handleDownloadWalletCard = async () => {
+        if (!castIdParam) return;
+        try {
+            setWalletActionLoading('card');
+            const blob = await downloadWalletCard(castIdParam);
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${displayName.replace(/\s+/g, '_')}_career_identity_card.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch {
+            setShowWalletUnavailable(true);
+            setTimeout(() => setShowWalletUnavailable(false), 3000);
+        } finally {
+            setWalletActionLoading(null);
+        }
+    };
+
+    const handleGoogleWallet = async () => {
+        if (!castIdParam) return;
+        try {
+            setWalletActionLoading('google');
+            const saveUrl = await fetchGoogleWalletUrl(castIdParam);
+            window.open(saveUrl, '_blank', 'noopener,noreferrer');
+        } catch {
+            setShowWalletUnavailable(true);
+            setTimeout(() => setShowWalletUnavailable(false), 3000);
+        } finally {
+            setWalletActionLoading(null);
+        }
+    };
+
+    const handleAppleWallet = () => {
+        if (!castIdParam) return;
+        if (appleWalletReady) {
+            setWalletActionLoading('apple');
+            window.open(getAppleWalletPassUrl(castIdParam), '_blank', 'noopener,noreferrer');
+            setTimeout(() => setWalletActionLoading(null), 1000);
+            return;
+        }
+        if (walletPassUrl) {
+            window.open(walletPassUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
+        setShowWalletUnavailable(true);
+        setTimeout(() => setShowWalletUnavailable(false), 3000);
     };
 
     const handleEmailCandidate = () => {
@@ -471,32 +559,39 @@ const CareerIdentityPage: React.FC = () => {
                                         className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${isHumanMode ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
                                         <Mail size={18} />Contact
                                     </button>
-                                    {/* Apple Wallet Button */}
-                                    {walletPassUrl ? (
-                                        <a
-                                            href={walletPassUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all bg-green-600 text-white hover:bg-green-700"
-                                        >
-                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" /></svg>
-                                            Add to Apple Wallet
-                                        </a>
-                                    ) : (
-                                        <button
-                                            onClick={() => {
-                                                setShowWalletUnavailable(true);
-                                                setTimeout(() => setShowWalletUnavailable(false), 3000);
-                                            }}
-                                            className="w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all bg-slate-300 text-slate-500 cursor-not-allowed"
-                                        >
-                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" /></svg>
-                                            Add to Apple Wallet
-                                        </button>
-                                    )}
+                                    <button
+                                        onClick={handleAppleWallet}
+                                        disabled={walletLoading || walletActionLoading === 'apple'}
+                                        className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${
+                                            appleWalletReady || walletPassUrl
+                                                ? 'bg-black text-white hover:bg-slate-900'
+                                                : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        {walletActionLoading === 'apple'
+                                            ? <Loader2 size={18} className="animate-spin" />
+                                            : <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" /></svg>}
+                                        {appleWalletReady ? 'Add to Apple Wallet' : walletPassUrl ? 'Open Apple Wallet Link' : 'Add to Apple Wallet'}
+                                    </button>
+                                    <button
+                                        onClick={handleGoogleWallet}
+                                        disabled={!googleWalletReady || walletLoading || walletActionLoading === 'google'}
+                                        className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${googleWalletReady ? 'bg-[#0F9D58] text-white hover:bg-[#0B8043]' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
+                                    >
+                                        {walletActionLoading === 'google' ? <Loader2 size={18} className="animate-spin" /> : <Layers size={18} />}
+                                        Add to Google Wallet
+                                    </button>
+                                    <button
+                                        onClick={handleDownloadWalletCard}
+                                        disabled={walletLoading || walletActionLoading === 'card'}
+                                        className="w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all bg-[#0e121b] text-white hover:bg-slate-800"
+                                    >
+                                        {walletActionLoading === 'card' ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                                        Download Career Identity Card
+                                    </button>
                                     {showWalletUnavailable && (
                                         <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-                                            Wallet pass not yet available. Please check back later.
+                                            Wallet option not available yet. Please check the pass configuration.
                                         </div>
                                     )}
                                 </div>

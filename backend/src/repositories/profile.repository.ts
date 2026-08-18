@@ -15,6 +15,8 @@ export interface ProfileRecord {
     plan_renews_at?: string;
     tier?: string;
     career_identity_data?: Record<string, unknown> | null;
+    /** Append-only JSONB array of tier switch operations. */
+    tier_change_logs?: unknown[];
     created_at?: string;
     updated_at?: string;
     [key: string]: unknown;

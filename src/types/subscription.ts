@@ -15,6 +15,27 @@
 
 export type SubscriptionTier = "digital_resume" | "career_identity";
 
+/** One append-only entry stored in profiles.tier_change_logs (JSONB array). */
+export interface TierChangeLogEntry {
+    id: string;
+    operation: "tier_switch";
+    from_tier: string;
+    to_tier: SubscriptionTier;
+    changed_by_email: string;
+    changed_by_user_id: string | null;
+    reason: string | null;
+    metadata: Record<string, unknown>;
+    created_at: string;
+}
+
+/** Flattened log row for the admin Tier Logs tab. */
+export interface TierChangeLogRow extends TierChangeLogEntry {
+    user_id: string;
+    user_email: string;
+    full_name: string | null;
+    current_tier: string | null;
+}
+
 /** Fallback tier for any resume/profile without an explicit subscription row. */
 export const DEFAULT_SUBSCRIPTION_TIER: SubscriptionTier = "digital_resume";
 

@@ -1,293 +1,283 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=800">
+    <meta name="viewport" content="width=1050">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --card-width: 800px;
-            --card-height: 480px;
-            --bg: #0F1419;
-            --surface: #1A1F2E;
-            --text-primary: #F1F5F9;
-            --text-secondary: #8892A4;
-            --text-muted: #5C6475;
-            --accent: #5B8DEF;
-            --accent-subtle: rgba(91, 141, 239, 0.12);
-            --border-subtle: rgba(255, 255, 255, 0.06);
-            --qr-border: rgba(255, 255, 255, 0.08);
-            --qr-shadow: rgba(0, 0, 0, 0.3);
+            --w: 1050px;
+            --h: 660px;
+            --ink: #F6E7C1;
+            --ink-soft: #D9C8A0;
+            --muted: #9A8B72;
+            --void: #07090D;
+            --panel: #10141C;
+            --gold: #C8A45A;
+            --gold-2: #E8D5A3;
         }
-
-        body {
-            width: var(--card-width);
-            height: var(--card-height);
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-            background: #0A0E14;
+        html, body {
+            width: var(--w);
+            height: var(--h);
+            background: #000;
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
         }
-
         .card {
-            width: var(--card-width);
-            height: var(--card-height);
-            background: var(--bg);
-            display: flex;
-            flex-direction: column;
+            width: var(--w);
+            height: var(--h);
             position: relative;
+            color: var(--ink);
+            font-family: 'Outfit', sans-serif;
             overflow: hidden;
+            isolation: isolate;
         }
-
-        /* Subtle top accent glow */
         .card::before {
             content: '';
             position: absolute;
-            top: -120px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 600px;
-            height: 300px;
-            background: radial-gradient(ellipse, rgba(91, 141, 239, 0.06) 0%, transparent 70%);
+            inset: 0;
+            {{heroBackgroundCss}}
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            transform: scale(1.02);
+            z-index: 0;
+        }
+        .card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(135deg, rgba(255,255,255,0.02), transparent 28%),
+                linear-gradient(180deg, rgba(9,11,16,0.08), rgba(9,11,16,0.32));
+            z-index: 1;
+        }
+        .frame {
+            position: absolute;
+            inset: 18px;
+            border: 1px solid rgba(200,164,90,0.38);
+            border-radius: 28px;
             pointer-events: none;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
         }
-
-        /* ── Header ──────────────────────────────────── */
-        .header {
-            padding: 36px 44px 24px;
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
+        .corner {
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            border: 1.5px solid var(--gold);
+            z-index: 3;
+        }
+        .corner.tl { top: 28px; left: 28px; border-right: 0; border-bottom: 0; }
+        .corner.tr { top: 28px; right: 28px; border-left: 0; border-bottom: 0; }
+        .corner.bl { bottom: 28px; left: 28px; border-right: 0; border-top: 0; }
+        .corner.br { bottom: 28px; right: 28px; border-left: 0; border-top: 0; }
+        .inner {
             position: relative;
-            z-index: 1;
-        }
-
-        .name {
-            font-size: 32px;
-            font-weight: 700;
-            color: var(--text-primary);
-            letter-spacing: -0.03em;
-            line-height: 1.15;
-            max-width: 520px;
-            word-wrap: break-word;
-        }
-
-        .accent-line {
-            width: 32px;
-            height: 3px;
-            background: var(--accent);
-            border-radius: 2px;
-            margin-top: 16px;
-            flex-shrink: 0;
-        }
-
-        /* ── Body ────────────────────────────────────── */
-        .body {
-            flex: 1;
-            padding: 0 44px 28px;
-            display: flex;
-            gap: 40px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .body-left {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-            min-width: 0;
-            justify-content: center;
-        }
-
-        /* ── Headline ────────────────────────────────── */
-        .headline {
-            font-size: 18px;
-            font-weight: 500;
-            color: var(--accent);
-            letter-spacing: -0.01em;
-            line-height: 1.3;
-            word-wrap: break-word;
-            margin-bottom: 2px;
-        }
-
-        .company {
-            font-size: 13px;
-            font-weight: 400;
-            color: var(--text-secondary);
-            margin-bottom: 18px;
-            letter-spacing: 0.02em;
-        }
-
-        /* ── Divider ─────────────────────────────────── */
-        .divider {
-            width: 100%;
-            height: 1px;
-            background: var(--border-subtle);
-            margin-bottom: 18px;
-        }
-
-        /* ── Contact ─────────────────────────────────── */
-        .contact-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .contact-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 13px;
-            color: var(--text-secondary);
-            line-height: 1.4;
-        }
-
-        .contact-icon {
-            width: 20px;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-
-        .contact-value {
-            min-width: 0;
-            word-wrap: break-word;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: var(--text-secondary);
-            font-weight: 400;
-        }
-
-        /* ── Profile URL ─────────────────────────────── */
-        .profile-url {
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px solid var(--border-subtle);
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .profile-url-label {
-            font-size: 10px;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-        }
-
-        .profile-url-value {
-            font-size: 12px;
-            color: var(--accent);
-            word-wrap: break-word;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            font-weight: 450;
-            opacity: 0.85;
-        }
-
-        /* ── QR Code ─────────────────────────────────── */
-        .body-right {
-            flex-shrink: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            width: 160px;
-        }
-
-        .qr-container {
-            width: 140px;
-            height: 140px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 16px;
-            padding: 10px;
-            background: var(--surface);
-            border: 1px solid var(--qr-border);
-            box-shadow: 0 4px 24px var(--qr-shadow);
-        }
-
-        .qr-container img {
-            width: 100%;
+            z-index: 2;
             height: 100%;
-            display: block;
+            padding: 48px 52px 40px;
+            display: flex;
+            flex-direction: column;
         }
-
-        .qr-label {
+        .top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            letter-spacing: 0.28em;
             font-size: 11px;
             font-weight: 500;
-            color: var(--text-muted);
-            text-align: center;
-            line-height: 1.3;
-            max-width: 140px;
+            color: var(--gold);
+            text-transform: uppercase;
+        }
+        .brand { color: var(--ink-soft); letter-spacing: 0.32em; font-weight: 400; }
+        .hairline {
+            height: 1px;
+            margin: 22px 0 28px;
+            background: linear-gradient(90deg, transparent, rgba(200,164,90,0.55), transparent);
+        }
+        .main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 220px 1fr 220px;
+            gap: 30px;
+            align-items: center;
+            min-height: 0;
+        }
+        .portrait-wrap {
+            width: 220px;
+            height: 360px;
+            border-radius: 30px;
+            padding: 7px;
+            background: linear-gradient(180deg, rgba(232,213,163,0.95), rgba(200,164,90,0.88) 38%, rgba(118,88,34,0.94));
+            box-shadow: 0 28px 60px rgba(0,0,0,0.44);
+        }
+        .portrait {
+            width: 100%;
+            height: 100%;
+            border-radius: 24px;
+            overflow: hidden;
+            background: #161B24;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .portrait img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .mono {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 72px;
+            color: var(--gold-2);
             letter-spacing: 0.04em;
         }
-
-        /* ── Footer accent strip ─────────────────────── */
-        .footer {
-            height: 3px;
-            background: linear-gradient(90deg, var(--accent) 0%, rgba(91, 141, 239, 0.3) 60%, transparent 100%);
-            flex-shrink: 0;
-            position: relative;
-            z-index: 1;
+        .identity {
+            min-width: 0;
+            align-self: stretch;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 34px 38px;
+            border-radius: 28px;
+            background: linear-gradient(180deg, rgba(12,16,24,0.72), rgba(8,10,14,0.82));
+            backdrop-filter: blur(14px);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+        }
+        .name {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 58px;
+            font-weight: 600;
+            line-height: 0.95;
+            letter-spacing: -0.02em;
+            color: #F8EED4;
+            margin-top: 12px;
+        }
+        .title {
+            font-size: 19px;
+            font-weight: 400;
+            color: var(--gold-2);
+            letter-spacing: 0.04em;
+        }
+        .company {
+            margin-top: 4px;
+            font-size: 13px;
+            color: var(--muted);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 22px;
+        }
+        .chip {
+            font-size: 10px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--gold-2);
+            border: 1px solid rgba(200,164,90,0.35);
+            border-radius: 999px;
+            padding: 6px 10px;
+            background: rgba(200,164,90,0.08);
+        }
+        .meta {
+            margin-top: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--ink-soft);
+        }
+        .meta span {
+            letter-spacing: 0.02em;
+            display: block;
+        }
+        .qr-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+        .qr-plate {
+            width: 208px;
+            height: 208px;
+            border-radius: 28px;
+            background: #F7F1E3;
+            padding: 16px;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.35), 0 0 0 1px rgba(200,164,90,0.25);
+        }
+        .qr-plate img { width: 100%; height: 100%; display: block; }
+        .qr-caption {
+            font-size: 10px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+        .foot {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-top: 18px;
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        .url {
+            max-width: 70%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--ink-soft);
+            letter-spacing: 0.02em;
+            text-transform: none;
+            font-size: 12px;
         }
     </style>
 </head>
-
 <body>
     <div class="card">
-        <!-- Header -->
-        <div class="header">
-            <div>
-                <div class="name">{{fullName}}</div>
-                <div class="accent-line"></div>
+        <div class="frame"></div>
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="inner">
+            <div class="top">
+                <span>Career Identity</span>
+                <span class="brand">ApplyWizz</span>
             </div>
-        </div>
-
-        <!-- Body -->
-        <div class="body">
-            <div class="body-left">
-                <!-- Headline + Company -->
-                <div class="headline">{{jobTitle}}</div>
-                {{companyHtml}}
-
-                <!-- Contact -->
-                <div class="divider"></div>
-                <div class="contact-list">{{contactHtml}}</div>
-
-                <!-- Profile URL -->
-                <div class="profile-url">
-                    <span class="profile-url-label">Professional Profile</span>
-                    <span class="profile-url-value">{{careerIdentityUrl}}</span>
+            <div class="hairline"></div>
+            <div class="main">
+                <div class="portrait-wrap">
+                    <div class="portrait">{{portraitHtml}}</div>
+                </div>
+                <div class="identity">
+                    <div class="title">{{jobTitle}}</div>
+                    <div class="name">{{fullName}}</div>
+                    {{companyHtml}}
+                    {{chipsHtml}}
+                    <div class="meta">{{contactHtml}}</div>
+                </div>
+                <div class="qr-col">
+                    <div class="qr-plate">
+                        <img src="{{qrCodeDataUrl}}" alt="QR" />
+                    </div>
+                    <div class="qr-caption">Scan to open profile</div>
                 </div>
             </div>
-
-            <!-- QR Code -->
-            <div class="body-right">
-                <div class="qr-container">
-                    <img src="{{qrCodeDataUrl}}" alt="QR" />
-                </div>
-                <span class="qr-label">Scan to connect</span>
+            <div class="foot">
+                <span class="url">{{careerIdentityUrl}}</span>
+                <span>Member pass</span>
             </div>
         </div>
-
-        <!-- Footer accent -->
-        <div class="footer"></div>
     </div>
 </body>
-
 </html>

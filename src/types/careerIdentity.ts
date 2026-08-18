@@ -41,6 +41,9 @@ export interface CareerIdentityProfile {
     content: CareerIdentityContent;
     createdAt: string;
     updatedAt: string;
+    walletPassUrl?: string | null;
+    walletCardUrl?: string | null;
+    walletCardUpdatedAt?: string | null;
 }
 
 export interface CareerIdentityContent {

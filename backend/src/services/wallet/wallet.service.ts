@@ -1,27 +1,19 @@
 /**
- * Wallet Service (Provider Orchestrator + Native Pass)
- * ------------------------------------------------------------------
- * Registry of wallet providers. New providers register here.
- * Controller routes call getProvider(type) to dispatch work.
- *
- * Existing native Apple Wallet (.pkpass) generation is preserved
- * in this file. The provider pattern for NeatPass/Tap2 is additive.
+ * Wallet Service (Provider Orchestrator + Native Apple Pass)
  */
 import { PKPass } from 'passkit-generator';
-import { getDatabase } from '../../config/database.js';
-import { profileRepository } from '../../repositories/profile.repository.js';
-import { crmJobRequestRepository } from '../../repositories/crmJobRequest.repository.js';
-import { jobRequestRepository } from '../../repositories/jobRequest.repository.js';
 import { subscriptionService } from '../subscription/subscription.service.js';
-import { NotFoundError } from '../../types/errors.js';
 import { neatpassProvider } from './providers/neatpass/neatpass.service.js';
 import { tap2Provider } from './providers/tap2/tap2.service.js';
-import type { WalletProvider, WalletProviderType } from './wallet.types.js';
+import { googleWalletService } from './providers/google/googleWallet.service.js';
+import {
+    assertWalletAccess,
+    loadWalletCardData,
+    publicCareerIdentityUrl,
+} from './walletProfile.js';
+import type { WalletCardData, WalletProvider, WalletProviderType } from './wallet.types.js';
 
-// Re-export types
 export type { WalletProvider, WalletProviderType } from './wallet.types.js';
-
-// ── Provider Registry ─────────────────────────────────────────
 
 class WalletProviderRegistry {
     private providers: Map<WalletProviderType, WalletProvider> = new Map();
@@ -57,9 +49,6 @@ class WalletProviderRegistry {
 
 export const walletProviderRegistry = new WalletProviderRegistry();
 
-// ── Native Apple Wallet (.pkpass) Service ─────────────────────
-// Preserved from the original implementation.
-
 export interface AppleWalletCredentials {
     passTypeIdentifier: string;
     teamIdentifier: string;
@@ -69,24 +58,7 @@ export interface AppleWalletCredentials {
     wwdr: Buffer;
 }
 
-export interface CareerIdentityPassData {
-    castId: string;
-    fullName: string | null;
-    jobTitle: string | null;
-    headline: string | null;
-    location: string | null;
-    yearsOfExperience: number | null;
-    verified: boolean;
-    openToWork: boolean;
-    openToRelocate: boolean;
-    remote: boolean;
-    immediateJoiner: boolean;
-}
-
 class WalletService {
-    /**
-     * Loads Apple PassKit signing credentials from environment.
-     */
     private loadCredentials(): AppleWalletCredentials | null {
         const passTypeIdentifier = process.env.APPLE_PASS_TYPE_IDENTIFIER;
         const teamIdentifier = process.env.APPLE_TEAM_IDENTIFIER;
@@ -108,176 +80,105 @@ class WalletService {
         };
     }
 
-    /**
-     * Resolves the castId record WITHOUT loading Career Identity profile content.
-     */
-    private async resolveWalletRecord(castId: string): Promise<{ record: any; isCRM: boolean }> {
-        const [crmResult, regularResult] = await Promise.all([
-            crmJobRequestRepository.findOne({ id: castId } as any),
-            jobRequestRepository.findOne({ id: castId } as any),
-        ]);
-
-        const record = crmResult || regularResult;
-        if (!record) {
-            throw new NotFoundError('Career Identity profile', castId);
-        }
-        return { record, isCRM: !!crmResult };
+    isAppleConfigured(): boolean {
+        return !!this.loadCredentials();
     }
 
-    /**
-     * Verifies that the authenticated user owns the resolved record.
-     */
-    private verifyOwnership(record: any, authenticatedUserId: string): void {
-        const ownerId: string | null = record.user_id || null;
-        if (!ownerId) {
-            throw new Error('Forbidden: you do not own this Career Identity profile');
-        }
-        if (ownerId !== authenticatedUserId) {
-            throw new Error('Forbidden: you do not own this Career Identity profile');
-        }
+    async generateVisualCard(castId: string, authenticatedUserId?: string): Promise<{ buffer: Buffer; data: WalletCardData }> {
+        const { record, userId } = await assertWalletAccess(castId, authenticatedUserId);
+        const data = await loadWalletCardData(castId, record, userId);
+        const buffer = await neatpassProvider.generateCard(data);
+        return { buffer, data };
     }
 
-    /**
-     * Fetches Career Identity profile content and maps it to pass data.
-     */
-    private async getCareerIdentityPassData(castId: string, record: any): Promise<CareerIdentityPassData> {
-        const userId: string | null = record.user_id || null;
-        let ciData: any = {};
-        if (userId) {
-            const profile = await profileRepository.findById(userId);
-            if (profile) {
-                ciData = (profile as any).career_identity_data ?? {};
-            }
+    async generateGoogleSaveUrl(castId: string, authenticatedUserId?: string): Promise<string> {
+        if (!googleWalletService.isAvailable()) {
+            throw new Error(googleWalletService.getUnavailableMessage());
         }
-
-        const content: Record<string, any> = ciData.content ?? {};
-        const hero: Record<string, any> = content.hero ?? {};
-
-        let fullName: string | null = hero.fullName || null;
-        let location: string | null = content.contact?.location || null;
-
-        if (!fullName && userId) {
-            const profile = await profileRepository.findById(userId);
-            fullName = profile?.full_name || profile?.first_name || null;
-        }
-
-        const yearsOfExperience = this.estimateYears(content.experience || []);
-
-        return {
-            castId,
-            fullName,
-            jobTitle: record.job_title || null,
-            headline: hero.headline || null,
-            location,
-            yearsOfExperience,
-            verified: hero.verified ?? false,
-            openToWork: hero.openToWork ?? false,
-            openToRelocate: hero.openToRelocate ?? false,
-            remote: hero.remote ?? false,
-            immediateJoiner: hero.immediateJoiner ?? false,
-        };
+        const { record, userId } = await assertWalletAccess(castId, authenticatedUserId);
+        const data = await loadWalletCardData(castId, record, userId);
+        return googleWalletService.createSaveUrl(data);
     }
 
-    private estimateYears(items: { startDate?: string }[]): number | null {
-        const years = items
-            .map((item) => {
-                const match = item.startDate?.match(/\d{4}/);
-                return match ? parseInt(match[0], 10) : null;
-            })
-            .filter((y): y is number => y !== null);
-        if (years.length === 0) return null;
-        const diff = new Date().getFullYear() - Math.min(...years);
-        return diff > 0 ? diff : null;
-    }
-
-    /**
-     * Generates a signed .pkpass for a Career Identity profile.
-     * Preserved from original implementation.
-     */
-    async generatePass(castId: string, authenticatedUserId: string, _authenticatedEmail: string): Promise<Buffer> {
+    async generatePass(castId: string, authenticatedUserId?: string): Promise<Buffer> {
         const credentials = this.loadCredentials();
         if (!credentials) {
             throw new Error('Apple Wallet pass generation is not configured. Missing PassKit credentials.');
         }
 
-        const { record } = await this.resolveWalletRecord(castId);
-        this.verifyOwnership(record, authenticatedUserId);
-
+        const { record, userId } = await assertWalletAccess(castId, authenticatedUserId);
         const tier = await subscriptionService.getTier(castId);
         if (tier !== 'career_identity') {
             throw new Error('Apple Wallet is only available for Career Identity profiles.');
         }
 
-        const data = await this.getCareerIdentityPassData(castId, record);
+        const data = await loadWalletCardData(castId, record, userId);
+        const { iconPng } = await neatpassProvider.renderAssets(data);
+        const publicUrl = data.careerIdentityUrl || publicCareerIdentityUrl(castId);
+
+        const passJson = {
+            formatVersion: 1,
+            passTypeIdentifier: credentials.passTypeIdentifier,
+            teamIdentifier: credentials.teamIdentifier,
+            organizationName: 'ApplyWizz',
+            description: `Career Identity — ${data.fullName || 'Professional'}`,
+            serialNumber: `ci-${castId}`.slice(0, 64),
+            logoText: 'CAREER IDENTITY',
+            foregroundColor: 'rgb(246, 231, 193)',
+            backgroundColor: 'rgb(10, 14, 20)',
+            labelColor: 'rgb(200, 164, 90)',
+            generic: {
+                primaryFields: [
+                    { key: 'name', label: 'NAME', value: data.fullName || 'Professional' },
+                ],
+                secondaryFields: [
+                    data.jobTitle ? { key: 'role', label: 'ROLE', value: data.jobTitle } : null,
+                    data.location ? { key: 'location', label: 'BASED IN', value: data.location } : null,
+                ].filter(Boolean),
+                auxiliaryFields: [
+                    data.email ? { key: 'email', label: 'EMAIL', value: data.email } : null,
+                    data.phone ? { key: 'phone', label: 'PHONE', value: data.phone } : null,
+                ].filter(Boolean),
+                backFields: [
+                    { key: 'profile', label: 'CAREER IDENTITY', value: publicUrl },
+                    data.headline ? { key: 'headline', label: 'HEADLINE', value: data.headline } : null,
+                    data.company ? { key: 'company', label: 'COMPANY', value: data.company } : null,
+                ].filter(Boolean),
+            },
+            barcodes: [
+                {
+                    format: 'PKBarcodeFormatQR',
+                    message: publicUrl,
+                    messageEncoding: 'iso-8859-1',
+                    altText: 'Scan Career Identity',
+                },
+            ],
+        };
 
         const pass = new PKPass(
             {
-                passTypeIdentifier: credentials.passTypeIdentifier,
-                teamIdentifier: credentials.teamIdentifier,
-                organizationName: 'Applywizz',
-                description: `Career Identity - ${data.fullName || 'Professional Profile'}`,
-                serialNumber: `ci-${castId}-${Date.now()}`,
-                foregroundColor: 'rgb(11, 79, 108)',
-                backgroundColor: 'rgb(255, 255, 255)',
-                labelColor: 'rgb(100, 116, 139)',
-            } as any,
+                'pass.json': Buffer.from(JSON.stringify(passJson)),
+                'icon.png': iconPng,
+                'icon@2x.png': iconPng,
+                'logo.png': iconPng,
+                'logo@2x.png': iconPng,
+            },
             {
                 signerCert: credentials.signerCert,
                 signerKey: credentials.signerKey,
-                signerKeyPassphrase: credentials.signerKeyPassphrase || undefined,
+                signerKeyPassphrase: credentials.signerKeyPassphrase,
                 wwdr: credentials.wwdr,
-            } as any,
+            },
         );
 
-        if (data.fullName) {
-            pass.primaryFields.push({ key: 'name', label: 'NAME', value: data.fullName });
-        }
-        if (data.jobTitle) {
-            pass.primaryFields.push({ key: 'role', label: 'ROLE', value: data.jobTitle });
-        }
-        if (data.headline) {
-            pass.secondaryFields.push({ key: 'headline', label: 'HEADLINE', value: data.headline });
-        }
-        if (data.location) {
-            pass.secondaryFields.push({ key: 'location', label: 'LOCATION', value: data.location });
-        }
-        if (data.yearsOfExperience) {
-            pass.secondaryFields.push({
-                key: 'experience',
-                label: 'EXPERIENCE',
-                value: `${data.yearsOfExperience}+ years`,
-            });
-        }
-
-        const signals: string[] = [];
-        if (data.verified) signals.push('Verified');
-        if (data.openToWork) signals.push('Open to Work');
-        if (data.openToRelocate) signals.push('Open to Relocate');
-        if (data.remote) signals.push('Remote');
-        if (data.immediateJoiner) signals.push('Immediate Joiner');
-
-        if (signals.length > 0) {
-            pass.auxiliaryFields.push({
-                key: 'signals',
-                label: 'PROFESSIONAL SIGNALS',
-                value: signals.join('  ·  '),
-            });
-        }
-
-        const publicUrl = process.env.CAREER_IDENTITY_PUBLIC_URL ||
-            `https://applywizz.com/career-identity/${castId}`;
-
-        (pass as any).setBarcodes([{
+        pass.setBarcodes({
             format: 'PKBarcodeFormatQR',
             message: publicUrl,
             messageEncoding: 'iso-8859-1',
-            altText: publicUrl,
-        } as any]);
+            altText: 'Scan Career Identity',
+        });
 
-        (pass as any).setRelevantDate(new Date().toISOString());
-
-        const passBuffer = await pass.getAsBuffer();
-        return passBuffer;
+        return pass.getAsBuffer();
     }
 }
 

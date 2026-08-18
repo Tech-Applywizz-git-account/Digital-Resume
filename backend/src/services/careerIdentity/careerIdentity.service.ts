@@ -227,9 +227,10 @@ export class CareerIdentityService {
 
         const profileDTO = userId ? this.toProfileDTO(ciData, castId, userId) : null;
 
-        // Include wallet pass URL in the profile for frontend
-        if (profileDTO && ciData.walletPassUrl) {
-            (profileDTO as any).walletPassUrl = ciData.walletPassUrl;
+        if (profileDTO) {
+            if (ciData.walletPassUrl) (profileDTO as any).walletPassUrl = ciData.walletPassUrl;
+            if (ciData.walletCardUrl) (profileDTO as any).walletCardUrl = ciData.walletCardUrl;
+            if (ciData.walletCardUpdatedAt) (profileDTO as any).walletCardUpdatedAt = ciData.walletCardUpdatedAt;
         }
 
         return {
@@ -716,8 +717,8 @@ export class CareerIdentityService {
 
         // Find the user's castId (resume ID)
         const [crmJobs, regJobs] = await Promise.all([
-            db.from('crm_job_requests').select('id, company_name').eq('user_id', userId).limit(1),
-            db.from('job_requests').select('id, company_name').eq('user_id', userId).limit(1),
+            db.from('crm_job_requests').select('id, company_name, job_title').eq('user_id', userId).limit(1),
+            db.from('job_requests').select('id, company_name, job_title').eq('user_id', userId).limit(1),
         ]);
         const allJobs: any[] = [...(crmJobs.data || []), ...(regJobs.data || [])];
         const firstJob: any = allJobs[0];
@@ -737,10 +738,16 @@ export class CareerIdentityService {
             location: (contact.location as string) || null,
             email: (contact.email as string) || null,
             phone: (contact.phone as string) || null,
+            linkedin: (contact.linkedin as string) || null,
             profileImageUrl: (hero.profileImageUrl as string) || null,
             careerIdentityUrl: `${CARD_BASE_URL}/career-identity/${castId}`,
             castId,
             company: firstJob?.company_name || null,
+            verified: !!hero.verified,
+            openToWork: !!hero.openToWork,
+            openToRelocate: !!hero.openToRelocate,
+            remote: !!hero.remote,
+            immediateJoiner: !!hero.immediateJoiner,
         };
         console.log(`[DIAG] generateWalletCard: walletData prepared, calling neatpass provider`);
 

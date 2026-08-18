@@ -28,15 +28,20 @@ import {
     Sparkles,
     Brain,
     Coins,
-    Link
+    Link,
+    History,
+    ArrowLeftRight
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import AnalyticsPanel from '../../../components/AnalyticsPanel';
 import { viewDocumentSafe } from '../../../utils/documentUtils';
-import type { SubscriptionTier } from '../../../types/subscription';
+import type { SubscriptionTier, TierChangeLogEntry, TierChangeLogRow } from '../../../types/subscription';
 import CareerIdentityAdminSection from '../../career-identity/admin/CareerIdentityAdminSection';
+import { fetchTierLogs, switchUserTier } from '../../subscription/services/adminTierService';
+
+type AdminTab = 'users' | 'ai-usage' | 'career-identity' | 'tier-logs';
 
 /**
  * ResumeManagementConsole
@@ -82,6 +87,8 @@ interface CRMUser {
     profiles?: {
         full_name: string | null;
     } | null;
+    tier?: SubscriptionTier;
+    tier_change_logs?: TierChangeLogEntry[];
 }
 
 interface CRMAdmin {
@@ -151,7 +158,7 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
     const [analyticsTitle, setAnalyticsTitle] = useState('');
 
     // AI Usage state
-    const [activeTab, setActiveTab] = useState<'users' | 'ai-usage' | 'career-identity'>(() => (sessionStorage.getItem('admin_dashboard_activeTab') as 'users' | 'ai-usage' | 'career-identity') || 'users');
+    const [activeTab, setActiveTab] = useState<AdminTab>(() => (sessionStorage.getItem('admin_dashboard_activeTab') as AdminTab) || 'users');
     const [usageLogs, setUsageLogs] = useState<UsageLog[]>(() => {
         try {
             const cached = sessionStorage.getItem('cached_usage_logs');
@@ -165,6 +172,15 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
         } catch (e) { return { totalCalls: 0, totalTokens: 0, totalCost: 0 }; }
     });
     const [isUsageLoading, setIsUsageLoading] = useState(false);
+
+    const [tierLogs, setTierLogs] = useState<TierChangeLogRow[]>([]);
+    const [isTierLogsLoading, setIsTierLogsLoading] = useState(false);
+    const [switchingEmail, setSwitchingEmail] = useState<string | null>(null);
+    const [tierSwitchTarget, setTierSwitchTarget] = useState<CRMUser | null>(null);
+    const [tierSwitchReason, setTierSwitchReason] = useState('');
+    const [historyUser, setHistoryUser] = useState<CRMUser | null>(null);
+    const [historyLogs, setHistoryLogs] = useState<TierChangeLogRow[]>([]);
+    const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
     // Pagination state
     const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10);
@@ -218,6 +234,9 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
     useEffect(() => {
         sessionStorage.setItem('admin_dashboard_activeTab', activeTab);
         setCurrentPage(1); // Reset page on tab change
+        if (activeTab === 'tier-logs') {
+            loadTierLogs();
+        }
     }, [activeTab]);
 
     // Restore scroll position after data loads
@@ -333,11 +352,37 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                     return results;
                 };
 
+                const fetchProfiles = async (ids: string[], emails: string[]) => {
+                    const selectWithLogs = 'id, email, full_name, tier, tier_change_logs';
+                    const selectWithoutLogs = 'id, email, full_name, tier';
+                    const run = async (select: string) => {
+                        const [byId, byEmail] = await Promise.all([
+                            fetchInBatches(ids, async (chunk) => {
+                                const { data, error } = await supabase.from('profiles').select(select).in('id', chunk);
+                                if (error) throw error;
+                                return data || [];
+                            }),
+                            fetchInBatches(emails, async (chunk) => {
+                                const { data, error } = await supabase.from('profiles').select(select).in('email', chunk);
+                                if (error) throw error;
+                                return data || [];
+                            }),
+                        ]);
+                        return [...byId, ...byEmail];
+                    };
+                    try {
+                        return await run(selectWithLogs);
+                    } catch (err: any) {
+                        const msg = String(err?.message || '');
+                        if (msg.includes('tier_change_logs') || err?.code === '42703') {
+                            return await run(selectWithoutLogs);
+                        }
+                        throw err;
+                    }
+                };
+
                 const [profileData, resumeData, jobRequestData] = await Promise.all([
-                    fetchInBatches(userIds, async (chunk) => {
-                        const { data } = await supabase.from('profiles').select('id, full_name').in('id', chunk);
-                        return data || [];
-                    }),
+                    fetchProfiles(userIds, userEmails),
                     fetchInBatches(userEmails, async (chunk) => {
                         const { data } = await supabase.from('crm_resumes')
                             .select('email, resume_url, resume_name, created_at')
@@ -354,7 +399,12 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                     })
                 ]);
 
-                const profileMap = new Map(profileData?.map(p => [p.id, p.full_name]) || []);
+                const profileById = new Map<string, any>();
+                const profileByEmail = new Map<string, any>();
+                (profileData || []).forEach((p: any) => {
+                    if (p.id) profileById.set(p.id, p);
+                    if (p.email) profileByEmail.set(String(p.email).toLowerCase(), p);
+                });
                 const resumeMap = new Map();
                 const jobRequestMap = new Map();
 
@@ -381,10 +431,15 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                 // Immediately load the dashboard interface with rapid Supabase records!
                 const initialUsersWithDetails = uniqueCrmData.map(user => {
                     const localResume = resumeMap.get(user.email);
+                    const profile = (user.user_id && profileById.get(user.user_id))
+                        || profileByEmail.get(user.email?.toLowerCase())
+                        || (user.company_application_email ? profileByEmail.get(user.company_application_email.toLowerCase()) : null);
+                    const rawTier = profile?.tier;
+                    const resolvedTier: SubscriptionTier = rawTier === 'career_identity' ? 'career_identity' : 'digital_resume';
                     return {
                         ...user,
-                        profiles: profileMap.has(user.user_id) && user.user_id
-                            ? { full_name: profileMap.get(user.user_id) }
+                        profiles: profile?.full_name
+                            ? { full_name: profile.full_name }
                             : null,
                         resume_url: localResume?.url || null,
                         resume_name: localResume ? localResume.name : null,
@@ -392,7 +447,9 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                         lead_name: user.lead_name || null,
                         vercel_portfolio_url: null, // to be populated seamlessly in background
                         current_stage: null,
-                        assigned_to_email: null
+                        assigned_to_email: null,
+                        tier: resolvedTier,
+                        tier_change_logs: Array.isArray(profile?.tier_change_logs) ? profile.tier_change_logs : []
                     };
                 });
                 setUsers(initialUsersWithDetails);
@@ -560,6 +617,67 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
             console.error('Error fetching usage logs:', error);
         } finally {
             setIsUsageLoading(false);
+        }
+    };
+
+    const loadTierLogs = async () => {
+        try {
+            setIsTierLogsLoading(true);
+            const logs = await fetchTierLogs();
+            setTierLogs(logs);
+        } catch (error: any) {
+            console.error('Error fetching tier logs:', error);
+            setMessage({ type: 'error', text: error.message || 'Failed to load tier logs' });
+        } finally {
+            setIsTierLogsLoading(false);
+        }
+    };
+
+    const openTierHistory = async (row: CRMUser) => {
+        setHistoryUser(row);
+        setIsHistoryLoading(true);
+        setHistoryLogs([]);
+        try {
+            const logs = await fetchTierLogs({
+                userId: row.user_id || undefined,
+                email: row.user_id ? undefined : row.email,
+            });
+            setHistoryLogs(logs);
+        } catch (error: any) {
+            setMessage({ type: 'error', text: error.message || 'Failed to load user history' });
+        } finally {
+            setIsHistoryLoading(false);
+        }
+    };
+
+    const confirmSwitchTier = async () => {
+        if (!tierSwitchTarget) return;
+        const current = tierSwitchTarget.tier === 'career_identity' ? 'career_identity' : 'digital_resume';
+        const toTier: SubscriptionTier = current === 'career_identity' ? 'digital_resume' : 'career_identity';
+        try {
+            setSwitchingEmail(tierSwitchTarget.email);
+            const result = await switchUserTier({
+                email: tierSwitchTarget.email,
+                userId: tierSwitchTarget.user_id || undefined,
+                toTier,
+                reason: tierSwitchReason.trim() || undefined,
+            });
+            setUsers(prev => prev.map(u =>
+                u.email === tierSwitchTarget.email
+                    ? { ...u, user_id: u.user_id || result.userId, tier: result.toTier, tier_change_logs: result.logs }
+                    : u
+            ));
+            setMessage({
+                type: 'success',
+                text: `Switched ${tierSwitchTarget.email} from ${result.fromTier} to ${result.toTier}. Log appended.`
+            });
+            setTierSwitchTarget(null);
+            setTierSwitchReason('');
+            if (activeTab === 'tier-logs') loadTierLogs();
+        } catch (error: any) {
+            setMessage({ type: 'error', text: error.message || 'Failed to switch tier' });
+        } finally {
+            setSwitchingEmail(null);
         }
     };
 
@@ -1036,6 +1154,22 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
         ? usageLogs
         : usageLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+    const filteredTierLogs = tierLogs.filter((log) => {
+        if (!searchTerm) return true;
+        const q = searchTerm.toLowerCase();
+        return (
+            log.user_email?.toLowerCase().includes(q) ||
+            log.changed_by_email?.toLowerCase().includes(q) ||
+            log.from_tier?.toLowerCase().includes(q) ||
+            log.to_tier?.toLowerCase().includes(q) ||
+            (log.reason || '').toLowerCase().includes(q)
+        );
+    });
+    const totalTierLogPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredTierLogs.length / itemsPerPage);
+    const paginatedTierLogs = itemsPerPage === 'all'
+        ? filteredTierLogs
+        : filteredTierLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
     const handleItemsPerPageChange = (val: string) => {
         setItemsPerPage(val === 'all' ? 'all' : parseInt(val));
         setCurrentPage(1);
@@ -1074,6 +1208,28 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
             day: 'numeric',
             year: 'numeric'
         });
+
+    const formatDateTime = (date: string) =>
+        new Date(date).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+
+    const renderTierBadge = (value?: string) => {
+        const isCi = value === 'career_identity';
+        return (
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                isCi
+                    ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+            }`}>
+                {isCi ? 'Career Identity' : 'Digital Resume'}
+            </span>
+        );
+    };
 
     const currentUserEmail = sessionStorage.getItem('admin_email') || user?.email;
 
@@ -1175,6 +1331,15 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                             <Sparkles className="w-4 h-4" />
                             Career Identity
                         </button>
+                        <button
+                            onClick={() => setActiveTab('tier-logs')}
+                            className={`flex items-center gap-2 px-4 md:px-6 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'tier-logs'
+                                ? 'bg-white text-[#0B4F6C] shadow-md border border-slate-200'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
+                        >
+                            <History className="w-4 h-4" />
+                            Tier Logs
+                        </button>
                     </div>
 
                     {activeTab === 'users' ? (
@@ -1257,15 +1422,16 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                                             <table className="w-full text-left border-collapse table-fixed hidden lg:table">
                                                 <thead className="sticky top-0 bg-slate-50 z-10">
                                                     <tr className="border-b border-slate-200 bg-[#fbfcfd]">
-                                                        <th className="px-4 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[5%] text-center">S.No</th>
-                                                        <th className="px-4 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-left">Company Application Email</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[20%] text-left">Personal Email</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[18%] text-left">Name</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[12%] text-center">Resume</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Credits</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[10%] text-center">Joined</th>
+                                                        <th className="px-4 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[4%] text-center">S.No</th>
+                                                        <th className="px-4 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[11%] text-left">Company Application Email</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[16%] text-left">Personal Email</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[14%] text-left">Name</th>
+                                                        <th className="px-4 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[14%] text-center">Tier</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[11%] text-center">Resume</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[8%] text-center">Credits</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[8%] text-center">Joined</th>
                                                         <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[8%] text-center">Status</th>
-                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[5%] text-center">Audit</th>
+                                                        <th className="px-6 py-5 text-[12px] font-bold text-slate-600 uppercase tracking-wider w-[6%] text-center">Audit</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100">
@@ -1288,6 +1454,36 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                                                                 <p className="font-bold text-slate-800 text-[13px] truncate">
                                                                     {user_row.lead_name || user_row.profiles?.full_name || user_row.email.split('@')[0]}
                                                                 </p>
+                                                            </td>
+                                                            <td className="px-4 py-5 text-center">
+                                                                <div className="flex flex-col items-center gap-2">
+                                                                    {renderTierBadge(user_row.tier)}
+                                                                    <div className="flex items-center gap-1">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setTierSwitchReason('');
+                                                                                setTierSwitchTarget(user_row);
+                                                                            }}
+                                                                            disabled={switchingEmail === user_row.email}
+                                                                            className="flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg hover:border-[#0B4F6C]/40 hover:text-[#0B4F6C] transition-all text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
+                                                                            title="Switch subscription tier"
+                                                                        >
+                                                                            {switchingEmail === user_row.email ? (
+                                                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                                            ) : (
+                                                                                <ArrowLeftRight className="w-3 h-3" />
+                                                                            )}
+                                                                            Switch
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => openTierHistory(user_row)}
+                                                                            className="p-1.5 text-slate-400 hover:text-[#0B4F6C] hover:bg-[#0B4F6C]/10 rounded-lg transition-colors"
+                                                                            title="View tier change history"
+                                                                        >
+                                                                            <History className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
                                                             </td>
                                                             <td className="px-6 py-5 text-center">
                                                                 <div className="flex flex-col items-center gap-2">
@@ -1466,6 +1662,27 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                                                             </div>
                                                         </div>
 
+                                                        <div className="flex items-center justify-between gap-2 mb-3 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
+                                                            {renderTierBadge(user_row.tier)}
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setTierSwitchReason('');
+                                                                        setTierSwitchTarget(user_row);
+                                                                    }}
+                                                                    className="flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold uppercase"
+                                                                >
+                                                                    <ArrowLeftRight className="w-3 h-3" /> Switch
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => openTierHistory(user_row)}
+                                                                    className="p-1.5 text-slate-400 hover:text-[#0B4F6C] rounded-lg"
+                                                                >
+                                                                    <History className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
                                                         <div className="flex flex-col gap-2.5">
                                                             <div className="flex items-center gap-2">
                                                                 <div className="flex-1 flex gap-2">
@@ -1553,6 +1770,83 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                     ) : activeTab === 'career-identity' ? (
                         <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <CareerIdentityAdminSection />
+                        </div>
+                    ) : activeTab === 'tier-logs' ? (
+                        <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="mb-6 shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full">
+                                <div className="relative flex-1">
+                                    <Search className="w-5 h-5 text-[#0B4F6C]/60 absolute left-4 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search by user, admin, tier, or reason..."
+                                        className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-white border border-[#0B4F6C]/20 focus:ring-4 focus:ring-[#0B4F6C]/10 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-400 text-sm font-medium shadow-sm"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                                <button
+                                    onClick={loadTierLogs}
+                                    disabled={isTierLogsLoading}
+                                    className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                    <RefreshCcw className={`w-4 h-4 ${isTierLogsLoading ? 'animate-spin' : ''}`} />
+                                    Refresh
+                                </button>
+                            </div>
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0 mb-6">
+                                <div className="p-4 border-b border-slate-100 bg-[#fbfcfd] flex justify-between items-center shrink-0">
+                                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                        <History className="w-4 h-4 text-[#0B4F6C]" />
+                                        Appended JSONB logs per user
+                                    </h3>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">{filteredTierLogs.length} entries</span>
+                                </div>
+                                <div className="overflow-y-auto flex-1 hide-scrollbar">
+                                    {isTierLogsLoading && tierLogs.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center h-full py-20">
+                                            <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin mb-3" />
+                                            <p className="text-slate-500 text-sm">Loading tier logs...</p>
+                                        </div>
+                                    ) : filteredTierLogs.length === 0 ? (
+                                        <div className="text-center py-20">
+                                            <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                <History className="w-8 h-8 text-slate-300" />
+                                            </div>
+                                            <h3 className="text-base font-bold text-slate-900">No tier changes yet</h3>
+                                            <p className="text-slate-500 text-xs">Switch a user on the CRM Users tab to append a log entry</p>
+                                        </div>
+                                    ) : (
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="sticky top-0 bg-slate-50 z-10">
+                                                <tr className="border-b border-slate-200">
+                                                    <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Time</th>
+                                                    <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">User</th>
+                                                    <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">From</th>
+                                                    <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">To</th>
+                                                    <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Changed by</th>
+                                                    <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Reason</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {paginatedTierLogs.map((log) => (
+                                                    <tr key={log.id} className="hover:bg-slate-50">
+                                                        <td className="px-4 py-3 text-[11px] font-bold text-slate-500 whitespace-nowrap">{formatDateTime(log.created_at)}</td>
+                                                        <td className="px-4 py-3">
+                                                            <p className="text-xs font-bold text-slate-800 truncate">{log.user_email}</p>
+                                                            {log.full_name && <p className="text-[10px] text-slate-400">{log.full_name}</p>}
+                                                        </td>
+                                                        <td className="px-4 py-3">{renderTierBadge(log.from_tier)}</td>
+                                                        <td className="px-4 py-3">{renderTierBadge(log.to_tier)}</td>
+                                                        <td className="px-4 py-3 text-xs font-medium text-slate-600 truncate">{log.changed_by_email}</td>
+                                                        <td className="px-4 py-3 text-xs text-slate-500">{log.reason || '—'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                                <PaginationControls totalPages={totalTierLogPages} />
+                            </div>
                         </div>
                     ) : (
                         <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1720,6 +2014,117 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                 castId={analyticsId}
                 resumeTitle={analyticsTitle}
             />
+
+            {tierSwitchTarget && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-[#0B4F6C] text-white">
+                            <div>
+                                <h3 className="text-lg font-bold flex items-center gap-2">
+                                    <ArrowLeftRight className="w-5 h-5" />
+                                    Switch subscription tier
+                                </h3>
+                                <p className="text-[11px] text-white/70 mt-1 truncate">{tierSwitchTarget.email}</p>
+                            </div>
+                            <button
+                                onClick={() => !switchingEmail && setTierSwitchTarget(null)}
+                                className="hover:bg-white/10 p-2 rounded-xl"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="flex items-center justify-center gap-3">
+                                {renderTierBadge(tierSwitchTarget.tier)}
+                                <ArrowRight className="w-4 h-4 text-slate-400" />
+                                {renderTierBadge(tierSwitchTarget.tier === 'career_identity' ? 'digital_resume' : 'career_identity')}
+                            </div>
+                            <p className="text-xs text-slate-500 text-center">
+                                This updates <code className="font-mono text-[11px]">profiles.tier</code> and appends one JSONB log entry on that user record.
+                            </p>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Reason (optional)</label>
+                                <textarea
+                                    rows={3}
+                                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-[#0B4F6C] focus:ring-4 focus:ring-[#0B4F6C]/10"
+                                    placeholder="Why is this tier changing?"
+                                    value={tierSwitchReason}
+                                    onChange={(e) => setTierSwitchReason(e.target.value)}
+                                />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setTierSwitchTarget(null)}
+                                    disabled={!!switchingEmail}
+                                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={confirmSwitchTier}
+                                    disabled={!!switchingEmail}
+                                    className="flex-1 py-2.5 rounded-xl bg-[#0B4F6C] text-white text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {switchingEmail ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                    Confirm switch
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {historyUser && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+                    <div className="bg-white w-full max-w-2xl max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
+                            <div>
+                                <h3 className="text-lg font-bold flex items-center gap-2 text-slate-900">
+                                    <History className="w-5 h-5 text-[#0B4F6C]" />
+                                    Tier history
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-1">{historyUser.email}</p>
+                            </div>
+                            <button onClick={() => setHistoryUser(null)} className="p-2 hover:bg-slate-100 rounded-xl">
+                                <X className="w-5 h-5 text-slate-500" />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto flex-1">
+                            {isHistoryLoading ? (
+                                <div className="flex justify-center py-12">
+                                    <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin" />
+                                </div>
+                            ) : historyLogs.length === 0 ? (
+                                <p className="text-sm text-slate-500 text-center py-10">No appended log entries for this user yet.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {historyLogs.map((log) => (
+                                        <div key={log.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/70">
+                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    {renderTierBadge(log.from_tier)}
+                                                    <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                                                    {renderTierBadge(log.to_tier)}
+                                                </div>
+                                                <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">{formatDateTime(log.created_at)}</span>
+                                            </div>
+                                            <p className="text-xs text-slate-600">
+                                                By <span className="font-bold">{log.changed_by_email}</span>
+                                                {log.reason ? ` — ${log.reason}` : ''}
+                                            </p>
+                                            <pre className="mt-3 text-[10px] leading-relaxed text-slate-500 bg-white border border-slate-100 rounded-lg p-3 overflow-x-auto">
+                                                {JSON.stringify(log, null, 2)}
+                                            </pre>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Add User Modal */}
             {

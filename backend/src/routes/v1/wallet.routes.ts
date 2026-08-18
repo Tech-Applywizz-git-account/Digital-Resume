@@ -1,24 +1,16 @@
 import { Router } from 'express';
 import { walletController } from '../../controllers/wallet.controller.js';
-import { authenticate } from '../../middleware/authenticate.js';
+import { authenticateOptional } from '../../middleware/authenticate.js';
 
 const router = Router();
 
-router.get(
-    '/:castId/apple-wallet-pass',
-    authenticate,
-    walletController.getAppleWalletPass,
-);
-
 /**
- * GET /:castId/card
- * Generates a branded PNG wallet card for NeatPass import into Apple Wallet.
- * No Apple PassKit certificates required — free alternative using NeatPass.
+ * Public for published Career Identity profiles.
+ * Drafts remain owner-only (optional Bearer token).
  */
-router.get(
-    '/:castId/card',
-    authenticate,
-    walletController.getWalletCard,
-);
+router.get('/:castId/status', authenticateOptional, walletController.getStatus);
+router.get('/:castId/apple-wallet-pass', authenticateOptional, walletController.getAppleWalletPass);
+router.get('/:castId/google-wallet', authenticateOptional, walletController.getGoogleWalletSaveUrl);
+router.get('/:castId/card', authenticateOptional, walletController.getWalletCard);
 
 export { router as walletRouter };

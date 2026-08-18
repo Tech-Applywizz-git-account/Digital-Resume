@@ -80,15 +80,9 @@ export const fetchMyCareerIdentityProfile = async (
  * The user can then upload this PNG to NeatPass (free) to create a pass.
  */
 export const downloadWalletCard = async (castId: string): Promise<Blob> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    if (!token) {
-        throw new Error('You must be logged in to download a wallet card.');
-    }
-
     const res = await fetch(apiUrl(`/api/v1/wallet/${encodeURIComponent(castId)}/card`), {
         method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { ...(await authHeaders()) },
     });
 
     if (!res.ok) {
@@ -98,6 +92,45 @@ export const downloadWalletCard = async (castId: string): Promise<Blob> => {
 
     return res.blob();
 };
+
+export const fetchWalletStatus = async (castId: string): Promise<{
+    apple: boolean;
+    google: boolean;
+    visualCard: boolean;
+    walletPassUrl: string | null;
+    walletCardUrl: string | null;
+}> => {
+    const res = await fetch(apiUrl(`/api/v1/wallet/${encodeURIComponent(castId)}/status`), {
+        method: 'GET',
+        headers: { ...(await authHeaders()) },
+    });
+
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || `Failed to load wallet status (${res.status})`);
+    }
+
+    const body = await res.json();
+    return body.data;
+};
+
+export const fetchGoogleWalletUrl = async (castId: string): Promise<string> => {
+    const res = await fetch(apiUrl(`/api/v1/wallet/${encodeURIComponent(castId)}/google-wallet`), {
+        method: 'GET',
+        headers: { ...(await authHeaders()) },
+    });
+
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || `Failed to generate Google Wallet link (${res.status})`);
+    }
+
+    const body = await res.json();
+    return body?.data?.saveUrl;
+};
+
+export const getAppleWalletPassUrl = (castId: string): string =>
+    apiUrl(`/api/v1/wallet/${encodeURIComponent(castId)}/apple-wallet-pass`);
 
 export const updateCareerIdentityProfile = async (
     resumeId: string,
