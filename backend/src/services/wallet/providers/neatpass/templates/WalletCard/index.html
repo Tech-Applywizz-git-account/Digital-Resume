@@ -39,7 +39,11 @@
             content: '';
             position: absolute;
             inset: 0;
-            {{heroBackgroundCss}}
+            background-image:
+                var(--hero-image, none),
+                radial-gradient(1200px 420px at 12% -10%, rgba(200, 164, 90, 0.16), transparent 55%),
+                radial-gradient(700px 380px at 100% 120%, rgba(200, 164, 90, 0.10), transparent 50%),
+                linear-gradient(160deg, #121722 0%, #07090D 48%, #0B0E14 100%);
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -243,7 +247,7 @@
     </style>
 </head>
 <body>
-    <div class="card">
+    <div class="card" style="--hero-image: {{heroBackgroundCss}};">
         <div class="frame"></div>
         <div class="corner tl"></div>
         <div class="corner tr"></div>
@@ -272,10 +276,6 @@
                     </div>
                     <div class="qr-caption">Scan to open profile</div>
                 </div>
-            </div>
-            <div class="foot">
-                <span class="url">{{careerIdentityUrl}}</span>
-                <span>Member pass</span>
             </div>
         </div>
     </div>
