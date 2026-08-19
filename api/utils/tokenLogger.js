@@ -163,12 +163,20 @@ export async function logAzureUsage(options) {
     }
   }
 
-  const api_input_tokens_list = input_tokens_list.join(",");
-  const api_output_tokens_list = output_tokens_list.join(",");
-  const api_completion_tokens = completion_tokens_list.join(",");
+  const api_input_tokens_list = input_tokens_list;
+  const api_output_tokens_list = output_tokens_list;
+  const api_completion_tokens = completion_tokens_list;
 
   // ── 4. Insert into azure_token_usage ───────────────────────────────────────
   console.log("========== TOKEN INSERT DATA ==========");
+  console.log("TOKEN DATA BEFORE SUPABASE INSERT:", {
+    inputTokensList: api_input_tokens_list,
+    outputTokensList: api_output_tokens_list,
+    completionTokensList: api_completion_tokens,
+    totalInputTokens: total_input_tokens,
+    totalOutputTokens: total_output_tokens,
+    totalCompletionTokens: total_completion_tokens
+  });
   console.log("user_id:", user_id);
   console.log("email:", email);
   console.log("lead_id:", null);

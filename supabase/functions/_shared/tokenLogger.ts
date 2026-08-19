@@ -15,9 +15,9 @@ export async function logAzureUsage(options: any) {
   const total_output_tokens = api_calls.reduce((sum: number, call: any) => sum + (call.completion_tokens || 0), 0);
   const total_completion_tokens = api_calls.reduce((sum: number, call: any) => sum + (call.total_tokens || 0), 0);
   
-  const api_input_tokens_list = api_calls.map((call: any) => call.prompt_tokens || 0).join(",");
-  const api_output_tokens_list = api_calls.map((call: any) => call.completion_tokens || 0).join(",");
-  const api_completion_tokens = api_calls.map((call: any) => call.total_tokens || 0).join(",");
+  const api_input_tokens_list = api_calls.map((call: any) => call.prompt_tokens || 0);
+  const api_output_tokens_list = api_calls.map((call: any) => call.completion_tokens || 0);
+  const api_completion_tokens = api_calls.map((call: any) => call.total_tokens || 0);
   
   api_calls.forEach((call: any, index: number) => {
     const rTokens = call?.completion_tokens_details?.reasoning_tokens;
@@ -37,6 +37,15 @@ export async function logAzureUsage(options: any) {
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
+    console.log("TOKEN DATA BEFORE SUPABASE INSERT:", {
+      inputTokensList: api_input_tokens_list,
+      outputTokensList: api_output_tokens_list,
+      completionTokensList: api_completion_tokens,
+      totalInputTokens: total_input_tokens,
+      totalOutputTokens: total_output_tokens,
+      totalCompletionTokens: total_completion_tokens
+    });
+    
     const { error } = await supabaseAdmin.from('azure_token_usage').insert({
       lead_id,
       task_date: new Date().toISOString(),

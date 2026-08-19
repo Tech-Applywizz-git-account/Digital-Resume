@@ -80,7 +80,7 @@ export default async function handler(req, res) {
     azureResponse = await openai.chat.completions.create(requestPayload);
     const responseTimeMs = Date.now() - startTime;
 
-    console.log("Azure OpenAI usage:", azureResponse.usage);
+    console.log("AZURE USAGE:", azureResponse.usage);
 
     // Await log success
     await logAzureUsage({
