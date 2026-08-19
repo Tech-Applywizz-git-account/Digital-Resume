@@ -134,20 +134,38 @@ export async function logAzureUsage(options) {
 
   // ── 3. Map Azure token counts ───────────────────────────────────────────────
   // Exact values from completionResponse.usage — never estimated or hardcoded.
-  const total_input_tokens      = usage?.prompt_tokens      ?? 0;
-  const total_output_tokens     = usage?.completion_tokens  ?? 0;
-  const total_completion_tokens = usage?.total_tokens       ?? 0;
+  const usages = Array.isArray(usage) ? usage : (usage ? [usage] : []);
 
-  // Store per-request breakdown in the JSONB arrays.
-  const api_input_tokens_list = usage?.prompt_tokens_details
-    ? [usage.prompt_tokens_details]
-    : [total_input_tokens];
+  let total_input_tokens = 0;
+  let total_output_tokens = 0;
+  let total_completion_tokens = 0;
 
-  const api_output_tokens_list = usage?.completion_tokens_details
-    ? [usage.completion_tokens_details]
-    : [total_output_tokens];
+  const input_tokens_list = [];
+  const output_tokens_list = [];
+  const completion_tokens_list = [];
 
-  const api_completion_tokens = [total_completion_tokens];
+  for (const u of usages) {
+    const pTokens = u?.prompt_tokens ?? 0;
+    const cTokens = u?.completion_tokens ?? 0;
+    const tTokens = u?.total_tokens ?? 0;
+
+    total_input_tokens += pTokens;
+    total_output_tokens += cTokens;
+    total_completion_tokens += tTokens;
+
+    input_tokens_list.push(pTokens);
+    output_tokens_list.push(cTokens);
+    completion_tokens_list.push(tTokens);
+
+    const rTokens = u?.completion_tokens_details?.reasoning_tokens;
+    if (rTokens !== undefined) {
+      console.log("Azure OpenAI reasoning_tokens:", rTokens);
+    }
+  }
+
+  const api_input_tokens_list = input_tokens_list.join(",");
+  const api_output_tokens_list = output_tokens_list.join(",");
+  const api_completion_tokens = completion_tokens_list.join(",");
 
   // ── 4. Insert into azure_token_usage ───────────────────────────────────────
   console.log("========== TOKEN INSERT DATA ==========");

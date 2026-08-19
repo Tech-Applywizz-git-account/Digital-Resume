@@ -165,6 +165,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       const responseTimeMs = Date.now() - startTime;
 
       console.log("Azure Response Body:", JSON.stringify(completionResponse, null, 2));
+      console.log("Azure OpenAI usage:", completionResponse.usage);
 
       // --- Log token usage to azure_token_usage (awaiting) ---
       await logAzureUsage({

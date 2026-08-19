@@ -13,11 +13,18 @@ export async function logAzureUsage(options: any) {
 
   const total_input_tokens = api_calls.reduce((sum: number, call: any) => sum + (call.prompt_tokens || 0), 0);
   const total_output_tokens = api_calls.reduce((sum: number, call: any) => sum + (call.completion_tokens || 0), 0);
-  const total_completion_tokens = total_output_tokens;
+  const total_completion_tokens = api_calls.reduce((sum: number, call: any) => sum + (call.total_tokens || 0), 0);
   
-  const api_input_tokens_list = api_calls.map((call: any) => call.prompt_tokens || 0);
-  const api_output_tokens_list = api_calls.map((call: any) => call.completion_tokens || 0);
-  const api_completion_tokens = api_output_tokens_list;
+  const api_input_tokens_list = api_calls.map((call: any) => call.prompt_tokens || 0).join(",");
+  const api_output_tokens_list = api_calls.map((call: any) => call.completion_tokens || 0).join(",");
+  const api_completion_tokens = api_calls.map((call: any) => call.total_tokens || 0).join(",");
+  
+  api_calls.forEach((call: any, index: number) => {
+    const rTokens = call?.completion_tokens_details?.reasoning_tokens;
+    if (rTokens !== undefined) {
+      console.log(`Azure OpenAI reasoning_tokens (call ${index + 1}):`, rTokens);
+    }
+  });
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || Deno.env.get("NEXT_PUBLIC_SUPABASE_URL");
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
