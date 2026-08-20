@@ -89,7 +89,33 @@ const ChatPage: React.FC = () => {
                         supabase.from("job_requests").select("resume_path, user_id, candidate_email, recordings(storage_path)").eq("id", resumeId).maybeSingle()
                     ]);
                 } else {
-                    console.warn("⚠️ ChatPage loadData: resumeId is not a valid UUID, skipping Supabase queries.", resumeId);
+                    // resumeId is a slug like 'profile' — try to resolve owner via email from query params
+                    console.warn("⚠️ ChatPage loadData: resumeId is not a valid UUID, attempting email-based owner lookup.", resumeId);
+                    const emailParam = params.get("email");
+                    if (emailParam) {
+                        try {
+                            const { data: crmUser } = await supabase
+                                .from('digital_resume_by_crm')
+                                .select('user_id, email, resume_url')
+                                .eq('email', emailParam.trim().toLowerCase())
+                                .maybeSingle();
+
+                            if (crmUser?.user_id) {
+                                foundOwnerId = crmUser.user_id;
+                                setOwnerId(foundOwnerId);
+                                console.log("✅ Resolved owner via email lookup:", foundOwnerId);
+
+                                // Also seed resume URL if not provided via query param
+                                if (!foundResumeUrl && crmUser.resume_url) {
+                                    foundResumeUrl = crmUser.resume_url;
+                                }
+                            } else {
+                                console.warn("⚠️ No digital_resume_by_crm record found for email:", emailParam);
+                            }
+                        } catch (emailLookupErr) {
+                            console.error("❌ Email-based owner lookup failed:", emailLookupErr);
+                        }
+                    }
                 }
 
                 // 2. Resolve URLs & Identity from Supabase
