@@ -55,8 +55,34 @@ export default async function handler(req, res) {
     });
   }
 
-  // --- Resolve authenticated user (for azure_token_usage logging) ---
-  const user_id = ownerId || null;
+  // --- Resolve user_id for token logging ---
+  // Primary:  ownerId sent by frontend
+  // Fallback: look up user_id via ownerEmail in digital_resume_by_crm
+  let user_id = ownerId || null;
+
+  if (!user_id && ownerEmail) {
+    try {
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (supabaseUrl && supabaseServiceKey) {
+        const { createClient } = await import("@supabase/supabase-js");
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: crmUser } = await supabaseAdmin
+          .from('digital_resume_by_crm')
+          .select('user_id')
+          .eq('email', ownerEmail.trim().toLowerCase())
+          .maybeSingle();
+        if (crmUser?.user_id) {
+          user_id = crmUser.user_id;
+          console.log(`✅ generate-introduction: Resolved user_id via ownerEmail fallback: ${user_id}`);
+        } else {
+          console.warn(`⚠️ generate-introduction: No CRM record for ownerEmail="${ownerEmail}". Token usage will NOT be logged.`);
+        }
+      }
+    } catch (lookupErr) {
+      console.error("❌ generate-introduction: Email→user_id fallback lookup failed:", lookupErr?.message);
+    }
+  }
 
   const openai = new AzureOpenAI({
     endpoint: process.env.AZURE_OPENAI_ENDPOINT,

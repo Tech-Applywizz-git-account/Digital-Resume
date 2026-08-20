@@ -12,6 +12,8 @@ const ChatPage: React.FC = () => {
     const openVideo = params.get("openVideo") === "true" || modeParam === 'video';
     const urlFromQuery = params.get("resumeUrl");
 
+    const ownerEmail = params.get("email") || null;
+
     const [resumeUrl, setResumeUrl] = useState<string | null>(urlFromQuery || null);
     const [videoUrl, setVideoUrl] = useState<string | null>(null);
     const [dbPortfolioUrl, setDbPortfolioUrl] = useState<string | null>(null);
@@ -361,6 +363,7 @@ const ChatPage: React.FC = () => {
                             videoUrl={videoUrl}
                             resumeUrl={resumeUrl}
                             ownerId={ownerId}
+                            ownerEmail={ownerEmail}
                             onModeChange={(m) => setPanelMode(m)}
                             isDataLoading={loading}
                             recruiterMode={true}

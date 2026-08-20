@@ -58,12 +58,35 @@ export default async function handler(req, res) {
 
     console.log(`📥 resume-chat: ownerId=${ownerId || 'null'}, ownerEmail=${ownerEmailFromBody || 'null'}, recruiterMode=${!!recruiterMode}`);
 
-    // --- Resolve authenticated user (for azure_token_usage logging) ---
-    const user_id = ownerId || null;
-    
-    // Note: User mapping is now strictly delegated to logAzureUsage
-    // which queries public.digital_resume_by_crm using the user_id.
-    // We no longer resolve auth.users or profiles here.
+    // --- Resolve user_id for token logging ---
+    // Primary:  ownerId sent by frontend (resolved from Supabase DB on UUID-based pages)
+    // Fallback: look up user_id via ownerEmail in digital_resume_by_crm
+    //           (covers slug-based pages like ?resumeId=profile where ownerId is null)
+    let user_id = ownerId || null;
+
+    if (!user_id && ownerEmailFromBody) {
+      try {
+        const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (supabaseUrl && supabaseServiceKey) {
+          const { createClient } = await import("@supabase/supabase-js");
+          const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+          const { data: crmUser } = await supabaseAdmin
+            .from('digital_resume_by_crm')
+            .select('user_id')
+            .eq('email', ownerEmailFromBody.trim().toLowerCase())
+            .maybeSingle();
+          if (crmUser?.user_id) {
+            user_id = crmUser.user_id;
+            console.log(`✅ resume-chat: Resolved user_id via ownerEmail fallback: ${user_id}`);
+          } else {
+            console.warn(`⚠️ resume-chat: No CRM record found for ownerEmail="${ownerEmailFromBody}". Token usage will NOT be logged.`);
+          }
+        }
+      } catch (lookupErr) {
+        console.error("❌ resume-chat: Email→user_id fallback lookup failed:", lookupErr?.message);
+      }
+    }
 
     // Build the system prompt based on mode
     let systemPrompt;
