@@ -8,11 +8,11 @@ Instructions:
 - End with enthusiasm for contributing.
 `;
 
-export const callOpenAI = async (prompt: string, ownerId?: string): Promise<string> => {
+export const callOpenAI = async (prompt: string, ownerId?: string | null, ownerEmail?: string | null): Promise<string> => {
   const response = await fetch("/api/generate-introduction", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, ownerId }),
+    body: JSON.stringify({ prompt, ownerId: ownerId || null, ownerEmail: ownerEmail || null }),
   });
   if (!response.ok) throw new Error("Failed to generate introduction");
   const data = await response.json();
