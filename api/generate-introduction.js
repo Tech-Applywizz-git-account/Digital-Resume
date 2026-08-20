@@ -38,7 +38,11 @@ export default async function handler(req, res) {
     });
   }
 
-  const { prompt, ownerId, ownerEmail } = jsonData || {};
+  const { prompt, ownerId, ownerEmail, taskType } = jsonData || {};
+  // Validate task_type: allow only known safe values to prevent injection
+  const VALID_TASK_TYPES = ['generate_introduction', 'rerecording'];
+  const resolved_task_type = VALID_TASK_TYPES.includes(taskType) ? taskType : 'generate_introduction';
+
   if (!prompt) {
     return res.status(400).json({ error: "Prompt is required" });
   }
@@ -112,7 +116,7 @@ export default async function handler(req, res) {
     await logAzureUsage({
       lead_id: null,
       user_id,
-      task_type: 'generate_introduction',
+      task_type: resolved_task_type,
       model: azureResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
       deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
       azure_request_id: azureResponse.id || null,
@@ -142,7 +146,7 @@ export default async function handler(req, res) {
     await logAzureUsage({
       lead_id: null,
       user_id,
-      task_type: 'generate_introduction',
+      task_type: resolved_task_type,
       model: process.env.AZURE_OPENAI_DEPLOYMENT,
       deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
       azure_request_id: null,

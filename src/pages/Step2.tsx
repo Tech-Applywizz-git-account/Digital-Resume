@@ -64,7 +64,10 @@ const Step2: React.FC = () => {
       const resumeText = localStorage.getItem("resumeFullText");
       if (!resumeText) throw new Error("Resume text not found. Please upload your resume first.");
       const prompt = buildSelectionPrompt(resumeText);
-      const result = await callOpenAI(prompt, user?.id ?? null, user?.email ?? null);
+      // Read task type flag set by Dashboard Re-record button (clears after use)
+      const taskType = localStorage.getItem('recording_task_type') || 'generate_introduction';
+      localStorage.removeItem('recording_task_type');
+      const result = await callOpenAI(prompt, user?.id ?? null, user?.email ?? null, taskType);
       setTeleprompterText(result);
       localStorage.setItem("teleprompterText", result);
 
@@ -153,7 +156,9 @@ const Step2: React.FC = () => {
           
           // Now generate with the extracted text
           const prompt = buildSelectionPrompt(extractedText);
-          const result = await callOpenAI(prompt, user?.id ?? null, user?.email ?? null);
+          const taskType = localStorage.getItem('recording_task_type') || 'generate_introduction';
+          localStorage.removeItem('recording_task_type');
+          const result = await callOpenAI(prompt, user?.id ?? null, user?.email ?? null, taskType);
           setTeleprompterText(result);
           localStorage.setItem("teleprompterText", result);
         } catch (err: any) {

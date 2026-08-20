@@ -559,6 +559,9 @@ export default function Dashboard() {
   const handleReRecord = (cast: any) => {
     const { actualScript } = populateLocalStorage(cast);
     
+    // Mark this session as a re-record so generate-introduction logs task_type='rerecording'
+    localStorage.setItem('recording_task_type', 'rerecording');
+
     // Check if the script is just the placeholder
     const isPlaceholder = actualScript === "Generated from resume analysis";
 
