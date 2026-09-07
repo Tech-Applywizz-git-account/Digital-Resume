@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logAzureUsage } from "../_shared/tokenLogger.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -135,6 +136,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       max_completion_tokens: azureMaxTokens,
     };
 
+    const startTime = Date.now();
     const completionResponse = await fetch(azureUrl, {
       method: "POST",
       headers: {
@@ -155,51 +157,30 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
     const aiResponse = data.choices[0].message.content;
     const usage = data.usage;
 
-    // --- Log Usage to Database ---
-    try {
+    let targetUserId = ownerId;
+    if (!targetUserId) {
       const supabaseUrl = Deno.env.get("SUPABASE_URL");
       const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-      if (supabaseUrl && supabaseServiceKey && usage) {
+      const authHeader = req.headers.get("Authorization");
+      if (supabaseUrl && supabaseServiceKey && authHeader) {
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-        // Identify target user. Prioritize the resume owner (passed in body so anon chats work)
-        let targetUserId = ownerId;
-
-        // Fallback to visitor UID only if ownerId is missing
-        if (!targetUserId) {
-          const authHeader = req.headers.get('Authorization');
-          if (authHeader) {
-            const token = authHeader.replace('Bearer ', '');
-            const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-            targetUserId = user?.id;
-          }
-        }
-
-        // Calculate Cost (GPT-4o Pricing: $2.50/1M input, $10.00/1M output)
-        const inputTokenPrice = 0.0000025;
-        const outputTokenPrice = 0.00001;
-        const cost = (usage.prompt_tokens * inputTokenPrice) + (usage.completion_tokens * outputTokenPrice);
-
-        console.log(`📊 AI Usage [resume_chat] logged to owner [${targetUserId || 'Anon'}]: ${usage.total_tokens} tokens, Cost: $${cost.toFixed(6)}`);
-
-        const { error: logError } = await supabaseAdmin
-          .from('openai_usage_logs')
-          .insert({
-            user_id: targetUserId,
-            feature_name: 'resume_chat',
-            prompt_tokens: usage.prompt_tokens,
-            completion_tokens: usage.completion_tokens,
-            total_tokens: usage.total_tokens,
-            cost: cost
-          });
-
-        if (logError) console.error("❌ Failed to log AI usage:", logError);
+        const token = authHeader.replace("Bearer ", "");
+        const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+        targetUserId = user?.id;
       }
-    } catch (logErr) {
-      console.error("❌ Usage logging error:", logErr);
-      // Don't fail the main request if logging fails
     }
+
+    await logAzureUsage({
+      user_id: targetUserId,
+      task_type: "resume_chat",
+      source: "Azure OpenAI",
+      model: azureOpenAiDeployment,
+      deployment_name: azureOpenAiDeployment,
+      azure_request_id: data.id || null,
+      api_calls: usage,
+      response_time_ms: Date.now() - startTime,
+      is_success: true,
+    });
 
     return new Response(
       JSON.stringify({ answer: aiResponse }),

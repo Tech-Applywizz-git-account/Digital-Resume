@@ -6,12 +6,12 @@ import { createClient } from "@supabase/supabase-js";
  * User resolution strategy (server-side only):
  *   1. Receive `user_id` — the portfolio owner's ID.
  *   2. Query `public.digital_resume_by_crm` by user_id to get the authoritative `email`.
- *   3. If the CRM record is missing or email is NULL → log error, skip insert.
+ *   3. If the CRM record is missing or email is NULL → log error, skip logging.
  *      The Azure response is never blocked by logging failures.
  *
  * @param {Object}       options
  * @param {string}       options.user_id           - Portfolio owner's ID (required)
- * @param {string}       options.task_type         - 'generate_introduction' | 'resume_chat'
+ * @param {string}       options.task_type         - 'generate_introduction' | 'resume_chat' | 'rerecording'
  * @param {string}       options.model             - Model name from Azure response
  * @param {string|null}  [options.deployment_name] - Azure deployment name
  * @param {string|null}  [options.azure_request_id]- Azure response .id field
@@ -144,10 +144,15 @@ export async function logAzureUsage(options) {
   const output_tokens_list = [];
   const completion_tokens_list = [];
 
+  const numericTokenCount = (value) => {
+    const count = Number(value);
+    return Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+  };
+
   for (const u of usages) {
-    const pTokens = u?.prompt_tokens ?? 0;
-    const cTokens = u?.completion_tokens ?? 0;
-    const tTokens = u?.total_tokens ?? 0;
+    const pTokens = numericTokenCount(u?.prompt_tokens);
+    const cTokens = numericTokenCount(u?.completion_tokens);
+    const tTokens = numericTokenCount(u?.total_tokens);
 
     total_input_tokens += pTokens;
     total_output_tokens += cTokens;
@@ -163,11 +168,11 @@ export async function logAzureUsage(options) {
     }
   }
 
-  const api_input_tokens_list = input_tokens_list;
-  const api_output_tokens_list = output_tokens_list;
-  const api_completion_tokens = completion_tokens_list;
+  const api_input_tokens_list = input_tokens_list.join(',');
+  const api_output_tokens_list = output_tokens_list.join(',');
+  const api_completion_tokens = completion_tokens_list.join(',');
 
-  // ── 4. Insert into azure_token_usage ───────────────────────────────────────
+  // ── 4. Atomically aggregate into azure_token_usage ─────────────────────────
   console.log("========== TOKEN INSERT DATA ==========");
   console.log("TOKEN DATA BEFORE SUPABASE INSERT:", {
     inputTokensList: api_input_tokens_list,
@@ -186,32 +191,30 @@ export async function logAzureUsage(options) {
   console.log("total tokens:", total_completion_tokens);
   console.log("=======================================");
 
-  const { error: insertErr } = await supabaseAdmin
-    .from('azure_token_usage')
-    .insert({
-      lead_id: null,
-      user_id,
-      email,
-      task_date:              new Date().toISOString().split('T')[0], // 'YYYY-MM-DD'
-      task_type,
-      source:                 'Azure OpenAI',
-      model,
-      deployment_name,
-      azure_request_id,
-      total_input_tokens,
-      total_output_tokens,
-      total_completion_tokens,
-      api_input_tokens_list,
-      api_output_tokens_list,
-      api_completion_tokens,
-      response_time_ms,
-      is_success,
-      error_message,
-      // created_at → set automatically by Postgres: timezone('utc', now())
-    });
+  const task_date = new Date().toISOString().split('T')[0];
+  const { error: insertErr } = await supabaseAdmin.rpc('upsert_azure_token_usage', {
+    p_lead_id: null,
+    p_user_id: user_id,
+    p_email: email,
+    p_task_date: task_date,
+    p_task_type: task_type,
+    p_source: 'Azure OpenAI',
+    p_model: model,
+    p_deployment_name: deployment_name,
+    p_azure_request_id: azure_request_id,
+    p_total_input_tokens: total_input_tokens,
+    p_total_output_tokens: total_output_tokens,
+    p_total_completion_tokens: total_completion_tokens,
+    p_api_input_tokens_list: api_input_tokens_list,
+    p_api_output_tokens_list: api_output_tokens_list,
+    p_api_completion_tokens: api_completion_tokens,
+    p_response_time_ms: response_time_ms,
+    p_is_success: is_success,
+    p_error_message: error_message,
+  });
 
   if (insertErr) {
-    console.error("❌ SUPABASE TOKEN INSERT FAILED");
+    console.error("❌ SUPABASE TOKEN UPSERT FAILED");
 
     console.error("Code:", insertErr.code);
     console.error("Message:", insertErr.message);
