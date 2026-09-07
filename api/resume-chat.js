@@ -21,18 +21,31 @@ export default async function handler(req, res) {
 
   try {
     const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY;
+    const azureOpenAiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION;
+    const azureOpenAiDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
     const azureMaxTokens = process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800;
 
-    if (!azureOpenAiApiKey) {
-      console.error("Missing AZURE_OPENAI_API_KEY");
-      return res.status(200).json({ answer: "This is a mock response. Please set AZURE_OPENAI_API_KEY in your environment to enable AI chat." });
+    const missingAzureConfig = [
+      !azureOpenAiApiKey && "AZURE_OPENAI_API_KEY",
+      !azureOpenAiEndpoint && "AZURE_OPENAI_ENDPOINT",
+      !azureOpenAiApiVersion && "AZURE_OPENAI_API_VERSION",
+      !azureOpenAiDeployment && "AZURE_OPENAI_DEPLOYMENT",
+    ].filter(Boolean);
+
+    if (missingAzureConfig.length > 0) {
+      console.error("Missing Azure OpenAI configuration:", missingAzureConfig);
+      return res.status(500).json({
+        error: "Azure OpenAI is not configured on the server.",
+        missing: missingAzureConfig,
+      });
     }
 
     const openai = new AzureOpenAI({
-      endpoint: process.env.AZURE_OPENAI_ENDPOINT,
-      apiKey: process.env.AZURE_OPENAI_API_KEY,
-      apiVersion: process.env.AZURE_OPENAI_API_VERSION,
-      deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+      endpoint: azureOpenAiEndpoint,
+      apiKey: azureOpenAiApiKey,
+      apiVersion: azureOpenAiApiVersion,
+      deployment: azureOpenAiDeployment,
     });
 
     // --- Parse JSON body ---
@@ -191,17 +204,21 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       console.log("AZURE USAGE:", completionResponse.usage);
 
       // --- Log token usage to azure_token_usage (awaiting) ---
-      await logAzureUsage({
-        lead_id: null,
-        user_id,
-        task_type: 'resume_chat',
-        model: completionResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
-        deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
-        azure_request_id: completionResponse.id || null,
-        usage: completionResponse.usage,
-        response_time_ms: responseTimeMs,
-        is_success: true,
-      });
+      try {
+        await logAzureUsage({
+          lead_id: null,
+          user_id,
+          task_type: 'resume_chat',
+          model: completionResponse.model || azureOpenAiDeployment,
+          deployment_name: azureOpenAiDeployment,
+          azure_request_id: completionResponse.id || null,
+          usage: completionResponse.usage,
+          response_time_ms: responseTimeMs,
+          is_success: true,
+        });
+      } catch (loggingError) {
+        console.error("Resume chat usage logging failed; returning the AI response:", loggingError);
+      }
 
       const aiResponse = completionResponse.choices[0].message.content;
       return res.status(200).json({ answer: aiResponse });
@@ -211,18 +228,22 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       console.error("Azure OpenAI API Error:", apiError);
 
       // --- Log failure to azure_token_usage (awaiting) ---
-      await logAzureUsage({
-        lead_id: null,
-        user_id,
-        task_type: 'resume_chat',
-        model: process.env.AZURE_OPENAI_DEPLOYMENT,
-        deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
-        azure_request_id: null,
-        usage: null,
-        response_time_ms: responseTimeMs,
-        is_success: false,
-        error_message: apiError.message,
-      });
+      try {
+        await logAzureUsage({
+          lead_id: null,
+          user_id,
+          task_type: 'resume_chat',
+          model: azureOpenAiDeployment,
+          deployment_name: azureOpenAiDeployment,
+          azure_request_id: null,
+          usage: null,
+          response_time_ms: responseTimeMs,
+          is_success: false,
+          error_message: apiError.message,
+        });
+      } catch (loggingError) {
+        console.error("Resume chat failure logging failed:", loggingError);
+      }
 
       return res.status(502).json({
         status: apiError.status || 502,

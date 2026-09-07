@@ -192,41 +192,45 @@ export async function logAzureUsage(options) {
   console.log("=======================================");
 
   const task_date = new Date().toISOString().split('T')[0];
-  const { error: insertErr } = await supabaseAdmin.rpc('upsert_azure_token_usage', {
-    p_lead_id: null,
-    p_user_id: user_id,
-    p_email: email,
-    p_task_date: task_date,
-    p_task_type: task_type,
-    p_source: 'Azure OpenAI',
-    p_model: model,
-    p_deployment_name: deployment_name,
-    p_azure_request_id: azure_request_id,
-    p_total_input_tokens: total_input_tokens,
-    p_total_output_tokens: total_output_tokens,
-    p_total_completion_tokens: total_completion_tokens,
-    p_api_input_tokens_list: api_input_tokens_list,
-    p_api_output_tokens_list: api_output_tokens_list,
-    p_api_completion_tokens: api_completion_tokens,
-    p_response_time_ms: response_time_ms,
-    p_is_success: is_success,
-    p_error_message: error_message,
-  });
 
-  if (insertErr) {
-    console.error("❌ SUPABASE TOKEN UPSERT FAILED");
+  try {
+    const { error: insertErr } = await supabaseAdmin.rpc('upsert_azure_token_usage', {
+      p_lead_id: null,
+      p_user_id: user_id,
+      p_email: email,
+      p_task_date: task_date,
+      p_task_type: task_type,
+      p_source: 'Azure OpenAI',
+      p_model: model,
+      p_deployment_name: deployment_name,
+      p_azure_request_id: azure_request_id,
+      p_total_input_tokens: total_input_tokens,
+      p_total_output_tokens: total_output_tokens,
+      p_total_completion_tokens: total_completion_tokens,
+      p_api_input_tokens_list: api_input_tokens_list,
+      p_api_output_tokens_list: api_output_tokens_list,
+      p_api_completion_tokens: api_completion_tokens,
+      p_response_time_ms: response_time_ms,
+      p_is_success: is_success,
+      p_error_message: error_message,
+    });
 
-    console.error("Code:", insertErr.code);
-    console.error("Message:", insertErr.message);
-    console.error("Details:", insertErr.details);
-    console.error("Hint:", insertErr.hint);
+    if (insertErr) {
+      console.error("❌ SUPABASE TOKEN UPSERT FAILED", {
+        code: insertErr.code,
+        message: insertErr.message,
+        details: insertErr.details,
+        hint: insertErr.hint,
+        user_id,
+        email,
+        task_type,
+      });
+      return;
+    }
 
-    console.error("User ID:", user_id);
-    console.error("Email:", email);
-    console.error("Task Type:", task_type);
-
-    throw insertErr;
+    console.log("✅ SUPABASE TOKEN INSERT SUCCESS");
+  } catch (loggingError) {
+    // Usage logging must never turn a successful AI response into an API error.
+    console.error("❌ Azure token usage logging failed:", loggingError);
   }
-
-  console.log("✅ SUPABASE TOKEN INSERT SUCCESS");
 }
