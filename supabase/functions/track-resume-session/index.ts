@@ -23,6 +23,11 @@ function detectDevice(userAgent: string): string {
     return /Mobile/i.test(userAgent) ? "Mobile" : "Desktop";
 }
 
+function isUUID(str: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return typeof str === 'string' && uuidRegex.test(str.trim());
+}
+
 async function getCountry(req: Request, ip: string): Promise<string> {
     try {
         // 1. Try Supabase/Cloudflare geolocation headers first (fast & reliable)
@@ -191,6 +196,11 @@ serve(async (req: Request) => {
         // 1. page_load — insert new session row (upsert to avoid duplicates)
         // -----------------------------------------------------------------------
         if (event_type === "page_load") {
+            // Skip database tracking for synthetic/non-UUID identifiers
+            if (!isUUID(resume_id)) {
+                return jsonResponse({ success: true, event: "page_load", session_id, note: "skipped db insert for non-UUID" });
+            }
+
             const rawIp =
                 req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
             const ip_address = rawIp.split(",")[0].trim();

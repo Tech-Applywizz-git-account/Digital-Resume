@@ -21,6 +21,7 @@ import {
     Globe
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { isSafeUUID } from '../utils/uuidHelpers';
 
 interface SessionData {
     id: string;
@@ -81,6 +82,12 @@ export default function ResumeAnalytics() {
             setResumeTitle('Overall Performance');
             return;
         }
+        
+        if (!isSafeUUID(castId)) {
+            setResumeTitle('API Resume Analytics');
+            return;
+        }
+
         // Try both tables
         const [crmJob, regularJob] = await Promise.all([
             supabase.from('crm_job_requests').select('job_title').eq('id', castId).maybeSingle(),
@@ -102,6 +109,11 @@ export default function ResumeAnalytics() {
                     .order('created_at', { ascending: false });
                 targetResumeIds = userResumes?.map(r => r.id) || [];
             } else {
+                if (!isSafeUUID(castId)) {
+                    // It's a synthetic API resume, analytics not tracked in Supabase
+                    setLoading(false);
+                    return;
+                }
                 targetResumeIds = [castId!];
             }
 

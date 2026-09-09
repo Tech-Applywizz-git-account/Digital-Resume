@@ -9,6 +9,7 @@ import { showToast } from "../components/ui/toast";
 import { callOpenAI, buildSelectionPrompt } from "../utils/aiHelpers";
 import { supabase } from "../integrations/supabase/client";
 import { extractTextFromBuffer } from "../utils/textExtraction";
+import { isSafeUUID } from "../utils/uuidHelpers";
 
 const Step2: React.FC = () => {
   const navigate = useNavigate();
@@ -37,6 +38,10 @@ const Step2: React.FC = () => {
       const jobRequestId = localStorage.getItem("current_job_request_id");
       if (!jobRequestId || !user) return;
       const isCRM = localStorage.getItem("is_crm_user") === "true";
+      if (!isSafeUUID(jobRequestId)) {
+          console.warn("Skipping recording check for non-UUID jobRequestId:", jobRequestId);
+          return;
+      }
       try {
         if (isCRM) {
           const { data } = await supabase.from('crm_recordings').select('id').eq('job_request_id', jobRequestId).maybeSingle();
@@ -59,7 +64,10 @@ const Step2: React.FC = () => {
       const resumeText = localStorage.getItem("resumeFullText");
       if (!resumeText) throw new Error("Resume text not found. Please upload your resume first.");
       const prompt = buildSelectionPrompt(resumeText);
-      const result = await callOpenAI(prompt);
+      // Read task type flag set by Dashboard Re-record button (clears after use)
+      const taskType = localStorage.getItem('recording_task_type') || 'generate_introduction';
+      localStorage.removeItem('recording_task_type');
+      const result = await callOpenAI(prompt, user?.id ?? null, user?.email ?? null, taskType);
       setTeleprompterText(result);
       localStorage.setItem("teleprompterText", result);
 
@@ -72,14 +80,22 @@ const Step2: React.FC = () => {
           const speedPrefix = `[[SPEED:${teleprompterSpeed.toFixed(1)}]] `;
           const dbContent = speedPrefix + result;
           
-          if (isCRM) {
-            await supabase.from('crm_job_requests')
-              .update({ job_description: dbContent })
-              .eq('id', jobRequestId);
-          } else {
-            await supabase.from('job_requests')
-              .update({ job_description: dbContent })
-              .eq('id', jobRequestId);
+          if (isSafeUUID(jobRequestId)) {
+            const table = isCRM ? 'crm_job_requests' : 'job_requests';
+            
+            // If this is a regeneration, fetch the current count and increment it
+            let newCount = 0;
+            if (rewrite) {
+              const { data } = await supabase.from(table).select('regenerate_count').eq('id', jobRequestId).maybeSingle();
+              newCount = (data?.regenerate_count || 0) + 1;
+            }
+
+            const updatePayload: any = { job_description: dbContent };
+            if (rewrite) {
+              updatePayload.regenerate_count = newCount;
+            }
+
+            await supabase.from(table).update(updatePayload).eq('id', jobRequestId);
           }
           localStorage.setItem("careercast_jobDescription", dbContent);
         } catch (dbErr) {
@@ -146,7 +162,9 @@ const Step2: React.FC = () => {
           
           // Now generate with the extracted text
           const prompt = buildSelectionPrompt(extractedText);
-          const result = await callOpenAI(prompt);
+          const taskType = localStorage.getItem('recording_task_type') || 'generate_introduction';
+          localStorage.removeItem('recording_task_type');
+          const result = await callOpenAI(prompt, user?.id ?? null, user?.email ?? null, taskType);
           setTeleprompterText(result);
           localStorage.setItem("teleprompterText", result);
         } catch (err: any) {
@@ -176,10 +194,12 @@ const Step2: React.FC = () => {
         const speedPrefix = `[[SPEED:${teleprompterSpeed.toFixed(1)}]] `;
         const dbContent = speedPrefix + teleprompterText;
         try {
-            if (isCRM) {
-                await supabase.from('crm_job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
-            } else {
-                await supabase.from('job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
+            if (isSafeUUID(jobRequestId)) {
+                if (isCRM) {
+                    await supabase.from('crm_job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
+                } else {
+                    await supabase.from('job_requests').update({ job_description: dbContent }).eq('id', jobRequestId);
+                }
             }
             localStorage.setItem("careercast_jobDescription", dbContent);
         } catch (e) {

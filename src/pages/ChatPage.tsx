@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "../integrations/supabase/client";
 import ResumeChatPanel from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
+import { isSafeUUID } from "../utils/uuidHelpers";
 
 const ChatPage: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
@@ -10,6 +11,8 @@ const ChatPage: React.FC = () => {
     const modeParam = params.get("mode") as "chat" | "video" | "resume" | null;
     const openVideo = params.get("openVideo") === "true" || modeParam === 'video';
     const urlFromQuery = params.get("resumeUrl");
+
+    const ownerEmail = params.get("email") || null;
 
     const [resumeUrl, setResumeUrl] = useState<string | null>(urlFromQuery || null);
     const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -79,10 +82,43 @@ const ChatPage: React.FC = () => {
 
                 // 1. Initial Fetch from Supabase (Resumes & User Info)
                 // We run these in parallel, but handle their results individually to be robust.
-                const [crmResult, regularResult] = await Promise.all([
-                    supabase.from("crm_job_requests").select("resume_url, user_id, email").eq("id", resumeId).maybeSingle(),
-                    supabase.from("job_requests").select("resume_path, user_id, candidate_email, recordings(storage_path)").eq("id", resumeId).maybeSingle()
-                ]);
+                let crmResult: any = { data: null };
+                let regularResult: any = { data: null };
+                
+                if (isSafeUUID(resumeId)) {
+                    [crmResult, regularResult] = await Promise.all([
+                        supabase.from("crm_job_requests").select("resume_url, user_id, email").eq("id", resumeId).maybeSingle(),
+                        supabase.from("job_requests").select("resume_path, user_id, candidate_email, recordings(storage_path)").eq("id", resumeId).maybeSingle()
+                    ]);
+                } else {
+                    // resumeId is a slug like 'profile' — try to resolve owner via email from query params
+                    console.warn("⚠️ ChatPage loadData: resumeId is not a valid UUID, attempting email-based owner lookup.", resumeId);
+                    const emailParam = params.get("email");
+                    if (emailParam) {
+                        try {
+                            const { data: crmUser } = await supabase
+                                .from('digital_resume_by_crm')
+                                .select('user_id, email, resume_url')
+                                .eq('email', emailParam.trim().toLowerCase())
+                                .maybeSingle();
+
+                            if (crmUser?.user_id) {
+                                foundOwnerId = crmUser.user_id;
+                                setOwnerId(foundOwnerId);
+                                console.log("✅ Resolved owner via email lookup:", foundOwnerId);
+
+                                // Also seed resume URL if not provided via query param
+                                if (!foundResumeUrl && crmUser.resume_url) {
+                                    foundResumeUrl = crmUser.resume_url;
+                                }
+                            } else {
+                                console.warn("⚠️ No digital_resume_by_crm record found for email:", emailParam);
+                            }
+                        } catch (emailLookupErr) {
+                            console.error("❌ Email-based owner lookup failed:", emailLookupErr);
+                        }
+                    }
+                }
 
                 // 2. Resolve URLs & Identity from Supabase
                 const dbData = crmResult.data || regularResult.data;
@@ -129,7 +165,7 @@ const ChatPage: React.FC = () => {
                     if (!foundResumeUrl) foundResumeUrl = rUrl;
 
                     // Resolve Video URL
-                    if (crmResult.data) {
+                    if (crmResult.data && isSafeUUID(resumeId)) {
                         const { data: recs } = await supabase.from("crm_recordings").select("video_url").eq("job_request_id", resumeId).order("created_at", { ascending: false }).limit(1);
                         const rec = recs && recs.length > 0 ? recs[0] : null;
                         if (rec?.video_url) {
@@ -187,7 +223,7 @@ const ChatPage: React.FC = () => {
                                 if (vResumeUrl && !foundResumeUrl) {
                                     foundResumeUrl = vResumeUrl;
                                     // Async sync back to DB
-                                    if (resumeId && resumeId !== 'profile') {
+                                    if (resumeId && isSafeUUID(resumeId)) {
                                         const updateObj = crmResult.data ? { resume_url: vResumeUrl } : { resume_path: vResumeUrl };
                                         const table = crmResult.data ? 'crm_job_requests' : 'job_requests';
                                         supabase.from(table).update(updateObj).eq('id', resumeId).then(() => console.log("✅ Synced resume path"));
@@ -327,6 +363,7 @@ const ChatPage: React.FC = () => {
                             videoUrl={videoUrl}
                             resumeUrl={resumeUrl}
                             ownerId={ownerId}
+                            ownerEmail={ownerEmail}
                             onModeChange={(m) => setPanelMode(m)}
                             isDataLoading={loading}
                             recruiterMode={true}
