@@ -113,17 +113,22 @@ export default async function handler(req, res) {
     console.log("AZURE USAGE:", azureResponse.usage);
 
     // Await log success
+    // model: use value returned by API (e.g. gpt-5-mini-2025-08-07) — it is the actual underlying model identifier
+    // deployment_name: the Azure deployment resource name from env var
     await logAzureUsage({
       lead_id: null,
       user_id,
+      email: ownerEmail || null,
       task_type: resolved_task_type,
-      model: azureResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
+      product: 'digital_resume',
+      model: azureResponse.model || process.env.AZURE_OPENAI_MODEL || process.env.AZURE_OPENAI_DEPLOYMENT,
       deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
       azure_request_id: azureResponse.id || null,
       usage: azureResponse.usage,
       response_time_ms: responseTimeMs,
       is_success: true
     });
+
 
     if (azureResponse.choices && azureResponse.choices[0]) {
       return res.status(200).json({
@@ -143,11 +148,14 @@ export default async function handler(req, res) {
     const responseTimeMs = Date.now() - startTime;
     
     // Await log failure
+    // On error, no model is returned from API — use AZURE_OPENAI_MODEL env if set, else deployment name as best effort
     await logAzureUsage({
       lead_id: null,
       user_id,
+      email: ownerEmail || null,
       task_type: resolved_task_type,
-      model: process.env.AZURE_OPENAI_DEPLOYMENT,
+      product: 'digital_resume',
+      model: process.env.AZURE_OPENAI_MODEL || process.env.AZURE_OPENAI_DEPLOYMENT,
       deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
       azure_request_id: null,
       usage: null,

@@ -64,12 +64,23 @@ interface CRMAdmin {
 interface UsageLog {
     id: string;
     user_id: string | null;
-    email?: string | null; // Added for display
-    feature_name: string;
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-    cost: number;
+    email: string;
+    product: string | null;
+    task_date: string;
+    task_type: string;
+    source: string;
+    model: string;
+    deployment_name: string | null;
+    azure_request_id: string | null;
+    total_input_tokens: number;
+    total_output_tokens: number;
+    total_completion_tokens: number;
+    api_input_tokens_list: string;
+    api_output_tokens_list: string;
+    api_completion_tokens: string;
+    response_time_ms: number | null;
+    is_success: boolean;
+    error_message: string | null;
     created_at: string;
 }
 
@@ -133,8 +144,8 @@ export default function DigitalResumeDashboard() {
     const [usageStats, setUsageStats] = useState(() => {
         try {
             const cached = sessionStorage.getItem('cached_usage_stats');
-            return cached ? JSON.parse(cached) : { totalCalls: 0, totalTokens: 0, totalCost: 0 };
-        } catch (e) { return { totalCalls: 0, totalTokens: 0, totalCost: 0 }; }
+            return cached ? JSON.parse(cached) : { totalCalls: 0, totalTokens: 0 };
+        } catch (e) { return { totalCalls: 0, totalTokens: 0 }; }
     });
     const [isUsageLoading, setIsUsageLoading] = useState(false);
     
@@ -481,51 +492,32 @@ export default function DigitalResumeDashboard() {
     const fetchUsageLogs = async () => {
         try {
             setIsUsageLoading(true);
-            // Step 1: plain select, no join (avoids PostgREST FK issues)
+            // Query azure_token_usage filtered to digital_resume product only
+            // This ensures LinkedIn Optimization usage is never mixed in
             const { data, error } = await supabase
-                .from('openai_usage_logs')
+                .from('azure_token_usage')
                 .select('*')
+                .eq('product', 'digital_resume')
                 .order('created_at', { ascending: false });
 
             if (error) {
                 if (error.code === 'PGRST116' || error.message.includes('not found')) {
-                    console.warn('openai_usage_logs table might not exist yet');
+                    console.warn('azure_token_usage table might not exist yet');
                     return;
                 }
                 throw error;
             }
 
             if (data) {
-                // Step 2: gather unique user_ids
-                const userIds = Array.from(new Set(data.map((l: any) => l.user_id).filter(Boolean))) as string[];
-
-                // Step 3: look up emails from profiles
-                const emailMap: Record<string, string> = {};
-                if (userIds.length > 0) {
-                    const { data: profUsers, error: profError } = await supabase
-                        .from('profiles').select('id, email').in('id', userIds);
-
-                    if (!profError && profUsers) {
-                        profUsers.forEach((u: any) => { if (u.id && u.email) emailMap[u.id] = u.email; });
-                    }
-                }
-
-                // Step 4: map emails onto logs
-                const formattedLogs = data.map((log: any) => ({
-                    ...log,
-                    email: (log.user_id && emailMap[log.user_id]) ? emailMap[log.user_id] : 'Guest / Anonymous'
-                }));
-
-                setUsageLogs(formattedLogs);
-                const totals = formattedLogs.reduce((acc: any, curr: any) => ({
+                setUsageLogs(data as UsageLog[]);
+                const totals = data.reduce((acc: any, curr: any) => ({
                     totalCalls: acc.totalCalls + 1,
-                    totalTokens: acc.totalTokens + (curr.total_tokens || 0),
-                    totalCost: acc.totalCost + (Number(curr.cost) || 0)
-                }), { totalCalls: 0, totalTokens: 0, totalCost: 0 });
+                    totalTokens: acc.totalTokens + (curr.total_completion_tokens || 0),
+                }), { totalCalls: 0, totalTokens: 0 });
                 setUsageStats(totals);
 
-                // Immediate persist
-                sessionStorage.setItem('cached_usage_logs', JSON.stringify(formattedLogs));
+                // Persist to session storage
+                sessionStorage.setItem('cached_usage_logs', JSON.stringify(data));
                 sessionStorage.setItem('cached_usage_stats', JSON.stringify(totals));
             }
         } catch (error: any) {
@@ -1595,7 +1587,7 @@ export default function DigitalResumeDashboard() {
                                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[25%]">Candidate / User</th>
                                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%]">Feature</th>
                                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Tokens</th>
-                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%] text-center">Cost</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[15%]">Model</th>
                                                         <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest w-[25%] text-right">Time</th>
                                                     </tr>
                                                 </thead>
@@ -1615,14 +1607,14 @@ export default function DigitalResumeDashboard() {
                                                             </td>
                                                             <td className="px-6 py-4">
                                                                 <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold uppercase border border-blue-100 leading-none">
-                                                                    {log.feature_name.replace('_', ' ')}
+                                                                    {(log.task_type || '').replace(/_/g, ' ')}
                                                                 </span>
                                                             </td>
                                                             <td className="px-6 py-4 text-center font-medium text-slate-600 text-xs">
-                                                                {log.total_tokens.toLocaleString()}
+                                                                {(log.total_completion_tokens || 0).toLocaleString()}
                                                             </td>
-                                                            <td className="px-6 py-4 text-center">
-                                                                <span className="text-xs font-bold text-emerald-600 tracking-tight">${Number(log.cost).toFixed(5)}</span>
+                                                            <td className="px-6 py-4">
+                                                                <span className="text-[10px] font-mono text-slate-500 truncate block" title={log.model}>{log.model || '—'}</span>
                                                             </td>
                                                             <td className="px-6 py-4 text-right">
                                                                 <span className="text-[10px] font-bold text-slate-400">{new Date(log.created_at).toLocaleString()}</span>
@@ -1643,17 +1635,17 @@ export default function DigitalResumeDashboard() {
                                                                     {log.email || 'Anonymous/Guest'}
                                                                 </span>
                                                             </div>
-                                                            <span className="text-[10px] font-bold text-slate-400 shrink-0">
+                                                                            <span className="text-[10px] font-bold text-slate-400 shrink-0">
                                                                 {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                             </span>
                                                         </div>
                                                         <div className="flex items-center justify-between mt-2">
                                                             <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-bold uppercase border border-blue-100 italic">
-                                                                {log.feature_name.replace('_', ' ')}
+                                                                {(log.task_type || '').replace(/_/g, ' ')}
                                                             </span>
                                                             <div className="flex items-center gap-3">
-                                                                <span className="text-[11px] font-medium text-slate-500">{log.total_tokens.toLocaleString()} tokens</span>
-                                                                <span className="text-[11px] font-bold text-emerald-600">${Number(log.cost).toFixed(4)}</span>
+                                                                <span className="text-[11px] font-medium text-slate-500">{(log.total_completion_tokens || 0).toLocaleString()} tokens</span>
+                                                                <span className="text-[10px] font-mono text-slate-400">{log.model || '—'}</span>
                                                             </div>
                                                         </div>
                                                     </div>

@@ -174,7 +174,10 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       user_id: targetUserId,
       task_type: "resume_chat",
       source: "Azure OpenAI",
-      model: azureOpenAiDeployment,
+      product: "digital_resume",
+      // model: use value returned by Azure OpenAI API (actual model identifier, e.g. gpt-5-mini-2025-08-07)
+      // deployment_name: the Azure deployment resource name configured in AZURE_OPENAI_DEPLOYMENT
+      model: data.model || Deno.env.get("AZURE_OPENAI_MODEL") || azureOpenAiDeployment,
       deployment_name: azureOpenAiDeployment,
       azure_request_id: data.id || null,
       api_calls: usage,

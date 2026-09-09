@@ -1,16 +1,6 @@
 CREATE UNIQUE INDEX IF NOT EXISTS idx_azure_token_usage_user_task_date
 ON public.azure_token_usage (user_id, task_type, task_date);
 
-CREATE TABLE IF NOT EXISTS public.azure_token_usage_requests (
-  user_id uuid NOT NULL,
-  task_type text NOT NULL,
-  task_date date NOT NULL,
-  azure_request_id text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
-  CONSTRAINT azure_token_usage_requests_pkey
-    PRIMARY KEY (user_id, task_type, task_date, azure_request_id)
-);
-
 CREATE OR REPLACE FUNCTION public.upsert_azure_token_usage(
   p_lead_id integer,
   p_user_id uuid,
@@ -36,25 +26,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  request_rows integer;
 BEGIN
-  IF p_azure_request_id IS NOT NULL THEN
-    INSERT INTO public.azure_token_usage_requests (
-      user_id,
-      task_type,
-      task_date,
-      azure_request_id
-    )
-    VALUES (p_user_id, p_task_type, p_task_date, p_azure_request_id)
-    ON CONFLICT DO NOTHING;
-
-    GET DIAGNOSTICS request_rows = ROW_COUNT;
-    IF request_rows = 0 THEN
-      RETURN;
-    END IF;
-  END IF;
-
   INSERT INTO public.azure_token_usage (
     lead_id,
     user_id,

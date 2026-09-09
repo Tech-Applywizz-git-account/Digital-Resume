@@ -176,25 +176,93 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
                     }
                 }
 
-                // Calculate Cost (GPT-4o Pricing: $2.50/1M input, $10.00/1M output)
-                const inputTokenPrice = 0.0000025;
-                const outputTokenPrice = 0.00001;
-                const cost = (usage.prompt_tokens * inputTokenPrice) + (usage.completion_tokens * outputTokenPrice);
+        // --- Log token usage to azure_token_usage ---
+        // model: use value returned by Azure OpenAI API (actual model identifier, e.g. gpt-5-mini-2025-08-07)
+        // deployment_name: the Azure deployment resource name from AZURE_OPENAI_DEPLOYMENT
+        const task_date = new Date().toISOString().split('T')[0];
+        const inputTokens = usage?.prompt_tokens || 0;
+        const outputTokens = usage?.completion_tokens || 0;
+        const totalTokens = usage?.total_tokens || 0;
 
-                console.log(`📊 AI Usage [resume_chat] logged to owner [${targetUserId || 'Anon'}]: ${usage.total_tokens} tokens, Cost: $${cost.toFixed(6)}`);
+        let resolvedEmail: string | null = null;
+        if (targetUserId) {
+            const { data: crmData } = await supabaseAdmin
+                .from('digital_resume_by_crm')
+                .select('email')
+                .eq('user_id', targetUserId)
+                .maybeSingle();
+            resolvedEmail = crmData?.email?.trim().toLowerCase() || null;
 
+            if (!resolvedEmail) {
+                const { data: profData } = await supabaseAdmin
+                    .from('profiles')
+                    .select('email')
+                    .eq('id', targetUserId)
+                    .maybeSingle();
+                resolvedEmail = profData?.email?.trim().toLowerCase() || null;
+            }
+        }
+
+        if (!resolvedEmail) {
+            console.warn(`⚠️ [resume_chat] No email resolved for targetUserId="${targetUserId}". Skipping token log (email column is NOT NULL).`);
+        } else {
+            const modelToLog = data.model || Deno.env.get("AZURE_OPENAI_MODEL") || azureOpenAiDeployment;
+            const { error: rpcErr } = await supabaseAdmin.rpc("upsert_azure_token_usage", {
+                p_lead_id: null,
+                p_user_id: targetUserId,
+                p_email: resolvedEmail,
+                p_task_date: task_date,
+                p_task_type: 'resume_chat',
+                p_source: 'Azure OpenAI',
+                p_model: modelToLog,
+                p_deployment_name: azureOpenAiDeployment,
+                p_azure_request_id: data.id || null,
+                p_total_input_tokens: inputTokens,
+                p_total_output_tokens: outputTokens,
+                p_total_completion_tokens: totalTokens,
+                p_api_input_tokens_list: String(inputTokens),
+                p_api_output_tokens_list: String(outputTokens),
+                p_api_completion_tokens: String(totalTokens),
+                p_response_time_ms: null,
+                p_is_success: true,
+                p_error_message: null,
+                p_product: 'digital_resume',
+            });
+
+            if (rpcErr) {
+                console.warn("⚠️ RPC upsert failed, falling back to direct table upsert:", rpcErr.message);
                 const { error: logError } = await supabaseAdmin
-                    .from('openai_usage_logs')
-                    .insert({
-                        user_id: targetUserId,
-                        feature_name: 'resume_chat',
-                        prompt_tokens: usage.prompt_tokens,
-                        completion_tokens: usage.completion_tokens,
-                        total_tokens: usage.total_tokens,
-                        cost: cost
+                    .from('azure_token_usage')
+                    .upsert({
+                        user_id: targetUserId || null,
+                        email: resolvedEmail,
+                        product: 'digital_resume',
+                        task_date: task_date,
+                        task_type: 'resume_chat',
+                        source: 'Azure OpenAI',
+                        model: modelToLog,
+                        deployment_name: azureOpenAiDeployment,
+                        azure_request_id: data.id || null,
+                        total_input_tokens: inputTokens,
+                        total_output_tokens: outputTokens,
+                        total_completion_tokens: totalTokens,
+                        api_input_tokens_list: String(inputTokens),
+                        api_output_tokens_list: String(outputTokens),
+                        api_completion_tokens: String(totalTokens),
+                        response_time_ms: null,
+                        is_success: true,
+                        error_message: null,
+                    }, {
+                        onConflict: 'user_id,task_type,task_date',
+                        ignoreDuplicates: false,
                     });
+                if (logError) console.error("❌ Failed to log AI usage to azure_token_usage:", logError);
+                else console.log(`📊 AI Usage [resume_chat] logged to azure_token_usage for owner [${targetUserId}]: ${totalTokens} tokens`);
+            } else {
+                console.log(`📊 AI Usage [resume_chat] logged via RPC to azure_token_usage for owner [${targetUserId}]: ${totalTokens} tokens`);
+            }
+        }
 
-                if (logError) console.error("❌ Failed to log AI usage:", logError);
             }
         } catch (logErr) {
             console.error("❌ Usage logging error:", logErr);

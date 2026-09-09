@@ -204,12 +204,16 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       console.log("AZURE USAGE:", completionResponse.usage);
 
       // --- Log token usage to azure_token_usage (awaiting) ---
+      // model: use value returned by Azure OpenAI API (e.g. gpt-5-mini-2025-08-07) — actual model identifier
+      // deployment_name: the Azure deployment resource name from env var
       try {
         await logAzureUsage({
           lead_id: null,
           user_id,
+          email: ownerEmailFromBody || null,
           task_type: 'resume_chat',
-          model: completionResponse.model || azureOpenAiDeployment,
+          product: 'digital_resume',
+          model: completionResponse.model || process.env.AZURE_OPENAI_MODEL || azureOpenAiDeployment,
           deployment_name: azureOpenAiDeployment,
           azure_request_id: completionResponse.id || null,
           usage: completionResponse.usage,
@@ -220,6 +224,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
         console.error("Resume chat usage logging failed; returning the AI response:", loggingError);
       }
 
+
       const aiResponse = completionResponse.choices[0].message.content;
       return res.status(200).json({ answer: aiResponse });
 
@@ -228,12 +233,15 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       console.error("Azure OpenAI API Error:", apiError);
 
       // --- Log failure to azure_token_usage (awaiting) ---
+      // On error, no model is returned from API — use AZURE_OPENAI_MODEL env if set, else deployment name as best effort
       try {
         await logAzureUsage({
           lead_id: null,
           user_id,
+          email: ownerEmailFromBody || null,
           task_type: 'resume_chat',
-          model: azureOpenAiDeployment,
+          product: 'digital_resume',
+          model: process.env.AZURE_OPENAI_MODEL || azureOpenAiDeployment,
           deployment_name: azureOpenAiDeployment,
           azure_request_id: null,
           usage: null,
