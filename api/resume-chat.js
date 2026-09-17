@@ -19,7 +19,18 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY;
+  const azureMaxTokens = process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800;
+
+  if (!azureOpenAiApiKey) {
+    console.error("Missing AZURE_OPENAI_API_KEY");
+    return res.status(200).json({ answer: "This is a mock response. Please set AZURE_OPENAI_API_KEY in your environment to enable AI chat." });
+  }
+
+  let body;
   try {
+<<<<<<< HEAD
+=======
     const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY;
     const azureOpenAiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
     const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION;
@@ -50,9 +61,43 @@ export default async function handler(req, res) {
 
     // --- Parse JSON body ---
     let body;
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
     if (req.body && typeof req.body === 'object') {
       body = req.body;
     } else {
+      const buffers = [];
+      for await (const chunk of req) buffers.push(chunk);
+      const rawBody = Buffer.concat(buffers).toString();
+      body = JSON.parse(rawBody);
+    }
+  } catch (err) {
+    return res.status(400).json({ error: "Invalid request body" });
+  }
+
+  const { resumeText, messages, question, recruiterMode, ownerId } = body;
+
+  if (!resumeText || !question) {
+    return res.status(400).json({ error: "Missing resumeText or question in request body" });
+  }
+
+  // --- Retrieve User Info from Supabase ---
+  let user_id = null;
+  let email = null;
+  let lead_id = ownerId || null;
+
+  try {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (supabaseUrl && supabaseServiceKey) {
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+        if (user) {
+          user_id = user.id;
+          email = user.email;
+        }
       try {
         const buffers = [];
         for await (const chunk of req) buffers.push(chunk);
@@ -62,7 +107,17 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Invalid request body" });
       }
     }
+  } catch (err) {
+    console.error("Auth retrieval error in resume-chat:", err);
+  }
 
+<<<<<<< HEAD
+  console.log("Processing question for owner:", ownerId, "recruiterMode:", !!recruiterMode, "history:", messages?.length || 0);
+
+  let systemPrompt;
+  if (recruiterMode) {
+    systemPrompt = `You ARE the person described in this resume. You are responding to a recruiter or hiring manager who is viewing your portfolio and wants to learn more about you.
+=======
     const { resumeText, messages, question, recruiterMode, ownerId, ownerEmail: ownerEmailFromBody } = body;
 
     if (!resumeText || !question) {
@@ -106,6 +161,7 @@ export default async function handler(req, res) {
 
     if (recruiterMode) {
       systemPrompt = `You ARE the person described in this resume. You are responding to a recruiter or hiring manager who is viewing your portfolio and wants to learn more about you.
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
             
 NAME OF CANDIDATE (You): 
 [Extract the name from the resume text provided below]
@@ -136,6 +192,8 @@ Example responses:
 
 Example end of response:
 SUGGESTED_QUESTIONS: What was your biggest project?|What tech stack do you prefer?|Are you open to relocation?`;
+  } else {
+    systemPrompt = `You are a helpful AI assistant analyzing a resume.
     } else {
       systemPrompt = `You are a helpful AI assistant analyzing a resume.
 
@@ -158,16 +216,36 @@ INSTRUCTIONS:
 Example end of response:
 ...matches your requirements.
 SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of experience?`;
-    }
+  }
 
+  const conversationMessages = [
+    {
+      role: "system",
+      content: systemPrompt
+    }
+  ];
+
+  if (messages && Array.isArray(messages)) {
+    messages.slice(-6).forEach((msg) => {
+      if (msg.role && msg.content) {
+        conversationMessages.push({
+          role: msg.role,
+          content: msg.content
+        });
     // Construct the conversation history
     const conversationMessages = [
       {
         role: "system",
         content: systemPrompt
       }
+    });
+  }
     ];
 
+  conversationMessages.push({
+    role: "user",
+    content: question
+  });
     // Add valid history (limit to last 6 messages to save tokens)
     if (messages && Array.isArray(messages)) {
       messages.slice(-6).forEach((msg) => {
@@ -180,12 +258,23 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       });
     }
 
+<<<<<<< HEAD
+  const openai = new AzureOpenAI({
+    endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+    apiKey: process.env.AZURE_OPENAI_API_KEY,
+    apiVersion: process.env.AZURE_OPENAI_API_VERSION,
+    deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+  });
     // Add current user question
     conversationMessages.push({
       role: "user",
       content: question
     });
 
+  const requestBody = {
+    messages: conversationMessages,
+    max_completion_tokens: azureMaxTokens,
+  };
     console.log("--- AZURE OPENAI REQUEST ---");
     const requestBody = {
       messages: conversationMessages,
@@ -193,6 +282,58 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
     };
     console.log("Request Body:", JSON.stringify(requestBody, null, 2));
 
+  const startTime = Date.now();
+  let completionResponse;
+
+  try {
+    completionResponse = await openai.chat.completions.create(requestBody);
+    const responseTimeMs = Date.now() - startTime;
+    const aiResponse = completionResponse.choices[0].message.content;
+
+    // Async log success
+    logAzureUsage({
+      lead_id,
+      user_id,
+      email,
+      task_type: 'resume_chat',
+      source: 'api_resume_chat',
+      model: completionResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
+      deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
+      azure_request_id: completionResponse.id || null,
+      usage: completionResponse.usage,
+      response_time_ms: responseTimeMs,
+      is_success: true
+    }).catch(e => console.error("Non-blocking log error:", e));
+
+    return res.status(200).json({ answer: aiResponse });
+
+  } catch (apiError) {
+    const responseTimeMs = Date.now() - startTime;
+    console.error("Azure OpenAI API Error:", apiError);
+
+    // Async log failure
+    logAzureUsage({
+      lead_id,
+      user_id,
+      email,
+      task_type: 'resume_chat',
+      source: 'api_resume_chat',
+      model: process.env.AZURE_OPENAI_DEPLOYMENT,
+      deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
+      azure_request_id: null,
+      usage: null,
+      response_time_ms: responseTimeMs,
+      is_success: false,
+      error_message: apiError.message
+    }).catch(e => console.error("Non-blocking log error:", e));
+
+    return res.status(502).json({ 
+      status: apiError.status || 502,
+      code: apiError.code || "unknown_code",
+      message: apiError.message,
+      details: apiError.error || null,
+      stackTrace: apiError.stack || null
+=======
     const startTime = Date.now();
     let completionResponse;
 
@@ -212,6 +353,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
           user_id,
           email: ownerEmailFromBody || null,
           task_type: 'resume_chat',
+          model: completionResponse.model || azureOpenAiDeployment,
           product: 'digital_resume',
           model: completionResponse.model || process.env.AZURE_OPENAI_MODEL || azureOpenAiDeployment,
           deployment_name: azureOpenAiDeployment,
@@ -239,6 +381,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
           user_id,
           email: ownerEmailFromBody || null,
           task_type: 'resume_chat',
+          model: azureOpenAiDeployment,
           product: 'digital_resume',
           model: process.env.AZURE_OPENAI_MODEL || azureOpenAiDeployment,
           deployment_name: azureOpenAiDeployment,
@@ -268,6 +411,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       code: "internal_server_error",
       message: error.message,
       stackTrace: error.stack
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
     });
   }
 }

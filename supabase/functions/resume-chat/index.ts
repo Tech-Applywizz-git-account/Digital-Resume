@@ -174,6 +174,7 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       user_id: targetUserId,
       task_type: "resume_chat",
       source: "Azure OpenAI",
+      model: azureOpenAiDeployment,
       product: "digital_resume",
       model: data.model || Deno.env.get("AZURE_OPENAI_MODEL") || azureOpenAiDeployment,
       deployment_name: azureOpenAiDeployment,

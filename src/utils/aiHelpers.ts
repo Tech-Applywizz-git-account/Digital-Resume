@@ -8,6 +8,8 @@ Instructions:
 - End with enthusiasm for contributing.
 `;
 
+<<<<<<< HEAD
+export const callOpenAI = async (prompt: string, ownerId?: string): Promise<string> => {
 export const callOpenAI = async (
   prompt: string,
   ownerId?: string | null,
@@ -17,6 +19,14 @@ export const callOpenAI = async (
   const response = await fetch("/api/generate-introduction", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, ownerId }),
+=======
+export const callOpenAI = async (prompt: string, ownerId?: string | null, ownerEmail?: string | null, taskType?: string | null): Promise<string> => {
+  const response = await fetch("/api/generate-introduction", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, ownerId: ownerId || null, ownerEmail: ownerEmail || null, taskType: taskType || null }),
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
     body: JSON.stringify({
       prompt,
       ownerId: ownerId || null,

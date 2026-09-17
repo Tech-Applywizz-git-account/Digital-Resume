@@ -38,16 +38,52 @@ export default async function handler(req, res) {
     });
   }
 
+<<<<<<< HEAD
+  const { prompt, ownerId } = jsonData || {};
+=======
   const { prompt, ownerId, ownerEmail, taskType } = jsonData || {};
   // Validate task_type: allow only known safe values to prevent injection
   const VALID_TASK_TYPES = ['generate_introduction', 'rerecording'];
   const resolved_task_type = VALID_TASK_TYPES.includes(taskType) ? taskType : 'generate_introduction';
 
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
   if (!prompt) {
     return res.status(400).json({ error: "Prompt is required" });
   }
 
   const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
+<<<<<<< HEAD
+
+  if (!azureApiKey) {
+    return res.status(200).json({
+      success: true,
+      introduction: "This is a mock introduction. Please set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_DEPLOYMENT in your environment.",
+    });
+  }
+
+  // --- Retrieve User Info from Supabase ---
+  let user_id = null;
+  let email = null;
+  let lead_id = ownerId || null;
+
+  try {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (supabaseUrl && supabaseServiceKey) {
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
+        if (user) {
+          user_id = user.id;
+          email = user.email;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Auth retrieval error in generate-introduction:", err);
+=======
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
@@ -86,6 +122,7 @@ export default async function handler(req, res) {
     } catch (lookupErr) {
       console.error("❌ generate-introduction: Email→user_id fallback lookup failed:", lookupErr?.message);
     }
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
   }
 
   const openai = new AzureOpenAI({
@@ -110,6 +147,15 @@ export default async function handler(req, res) {
     azureResponse = await openai.chat.completions.create(requestPayload);
     const responseTimeMs = Date.now() - startTime;
 
+<<<<<<< HEAD
+    // Async log success
+    logAzureUsage({
+      lead_id,
+      user_id,
+      email,
+      task_type: 'generate_introduction',
+      source: 'api_generate_introduction',
+=======
     console.log("AZURE USAGE:", azureResponse.usage);
 
     // Await log success
@@ -120,6 +166,8 @@ export default async function handler(req, res) {
       user_id,
       email: ownerEmail || null,
       task_type: resolved_task_type,
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
+      model: azureResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
       product: 'digital_resume',
       model: azureResponse.model || process.env.AZURE_OPENAI_MODEL || process.env.AZURE_OPENAI_DEPLOYMENT,
       deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
@@ -127,7 +175,11 @@ export default async function handler(req, res) {
       usage: azureResponse.usage,
       response_time_ms: responseTimeMs,
       is_success: true
+<<<<<<< HEAD
+    }).catch(e => console.error("Non-blocking log error:", e));
+=======
     });
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
 
     if (azureResponse.choices && azureResponse.choices[0]) {
       return res.status(200).json({
@@ -146,6 +198,15 @@ export default async function handler(req, res) {
   } catch (apiError) {
     const responseTimeMs = Date.now() - startTime;
     
+<<<<<<< HEAD
+    // Async log failure
+    logAzureUsage({
+      lead_id,
+      user_id,
+      email,
+      task_type: 'generate_introduction',
+      source: 'api_generate_introduction',
+=======
     // Await log failure
     // On error, no model is returned from API — use AZURE_OPENAI_MODEL env if set, else deployment name as best effort
     await logAzureUsage({
@@ -153,6 +214,8 @@ export default async function handler(req, res) {
       user_id,
       email: ownerEmail || null,
       task_type: resolved_task_type,
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
+      model: process.env.AZURE_OPENAI_DEPLOYMENT,
       product: 'digital_resume',
       model: process.env.AZURE_OPENAI_MODEL || process.env.AZURE_OPENAI_DEPLOYMENT,
       deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
@@ -161,13 +224,22 @@ export default async function handler(req, res) {
       response_time_ms: responseTimeMs,
       is_success: false,
       error_message: apiError.message
+<<<<<<< HEAD
+    }).catch(e => console.error("Non-blocking log error:", e));
+=======
     });
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
 
     return res.status(502).json({ 
       status: apiError.status || 502,
       code: apiError.code || "unknown_code",
       message: apiError.message,
+<<<<<<< HEAD
+      details: apiError.error || null,
+      stackTrace: apiError.stack || null
+=======
       details: apiError.error || null
+>>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
     });
   }
 }

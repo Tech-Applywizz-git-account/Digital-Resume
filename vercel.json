@@ -16,7 +16,7 @@
   "rewrites": [
     {
       "source": "/applywizz-api/:path*",
-      "destination": "https://applywizz-5i8qccsfs-applywizz-tech-vercels-projects.vercel.app/api/:path*"
+      "destination": "https://applywizz-crm-tool.vercel.app/api/:path*"
     },
     {
       "source": "/proxy-s3/:path*",

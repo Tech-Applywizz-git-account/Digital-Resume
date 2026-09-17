@@ -22,7 +22,7 @@ export default defineConfig({
                 return;
               }
               const fetchMethod = globalThis.fetch;
-              const fetchResponse = await fetchMethod(`https://applywizz-5i8qccsfs-applywizz-tech-vercels-projects.vercel.app/api/user-details?email=${encodeURIComponent(email)}`);
+              const fetchResponse = await fetchMethod(`https://applywizz-crm-tool.vercel.app/api/user-details?email=${encodeURIComponent(email)}`);
               if (fetchResponse.status === 404 || !fetchResponse.ok) {
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify(null));
@@ -88,7 +88,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/applywizz-api': {
-        target: 'https://applywizz-5i8qccsfs-applywizz-tech-vercels-projects.vercel.app',
+        target: 'https://applywizz-crm-tool.vercel.app',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/applywizz-api/, ''),
       },
