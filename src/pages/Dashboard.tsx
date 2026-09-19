@@ -243,7 +243,8 @@ export default function Dashboard() {
               job_description,
               resume_url,
               application_status,
-              created_at
+              created_at,
+              vercel_portfolio_url
             `)
             .in('email', emails)
             .order('created_at', { ascending: false }),
@@ -283,7 +284,7 @@ export default function Dashboard() {
         } else {
           const jobsWithDetails = await Promise.all(
             supabaseJobs.map(async (item) => {
-              const [recRes, sessionRes, engagedRes] = await Promise.all([
+              const [recRes, sessionRes, engagedRes, portRes] = await Promise.all([
                 supabase.from('crm_recordings')
                   .select('video_url')
                   .eq('job_request_id', item.id)
@@ -292,7 +293,8 @@ export default function Dashboard() {
                 supabase.from('resume_sessions').select('id', { count: 'exact', head: true }).eq('resume_id', item.id),
                 supabase.from('resume_sessions').select('id', { count: 'exact', head: true })
                   .eq('resume_id', item.id)
-                  .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true')
+                  .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true'),
+                supabase.from('portfolio_settings').select('url').eq('request_id', item.id).maybeSingle()
               ]);
 
               return {
@@ -303,7 +305,7 @@ export default function Dashboard() {
                 recordings: recRes.data?.map(r => ({ storage_path: r.video_url })) || [],
                 view_count: sessionRes.count || 0,
                 engaged_count: engagedRes.count || 0,
-                vercel_portfolio_url: vApiPortfolio
+                vercel_portfolio_url: portRes.data?.url || (item as any).vercel_portfolio_url || vApiPortfolio
               };
             })
           );
@@ -324,7 +326,8 @@ export default function Dashboard() {
             job_description,
             resume_path,
             status,
-            created_at
+            created_at,
+            vercel_portfolio_url
           `)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
@@ -334,7 +337,7 @@ export default function Dashboard() {
         // Fetch session counts and engagement for regular user
         const jobsWithViews = await Promise.all(
             (data || []).map(async (item) => {
-              const [recRes, sessionRes, engagedRes] = await Promise.all([
+              const [recRes, sessionRes, engagedRes, portRes] = await Promise.all([
                 supabase.from('recordings')
                   .select('storage_path')
                   .eq('job_request_id', item.id)
@@ -343,7 +346,8 @@ export default function Dashboard() {
                 supabase.from('resume_sessions').select('id', { count: 'exact', head: true }).eq('resume_id', item.id),
                 supabase.from('resume_sessions').select('id', { count: 'exact', head: true })
                   .eq('resume_id', item.id)
-                  .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true')
+                  .or('video_clicked.eq.true,chat_opened.eq.true,pdf_downloaded.eq.true,portfolio_clicked.eq.true'),
+                supabase.from('portfolio_settings').select('url').eq('request_id', item.id).maybeSingle()
               ]);
 
               return {
@@ -352,7 +356,7 @@ export default function Dashboard() {
                 recordings: recRes.data || [],
                 view_count: sessionRes.count || 0,
                 engaged_count: engagedRes.count || 0,
-                vercel_portfolio_url: null
+                vercel_portfolio_url: portRes.data?.url || (item as any).vercel_portfolio_url || null
               };
             })
         );

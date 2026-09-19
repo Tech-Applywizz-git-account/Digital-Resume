@@ -918,8 +918,8 @@ export default function DigitalResumeDashboard() {
             }
 
             // --- Persist to Supabase ---
-            // 1. Update resume path in crm_job_requests (upsert by email)
-            if (vResumeUrl) {
+            let targetReqId: string | null = targetUser.latest_job_request_id || null;
+            if (!targetReqId) {
                 const { data: existingReq } = await supabase
                     .from('crm_job_requests')
                     .select('id')
@@ -927,30 +927,44 @@ export default function DigitalResumeDashboard() {
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
-
-                if (existingReq) {
-                    await supabase.from('crm_job_requests')
-                        .update({ resume_url: vResumeUrl })
-                        .eq('id', existingReq.id);
+                if (existingReq?.id) {
+                    targetReqId = existingReq.id;
                 }
             }
 
-            // 2. Upsert portfolio by user_id (no duplicates)
-            if (vPortfolioUrl && targetUser.user_id) {
+            // 1. Update resume path in crm_job_requests (upsert by email)
+            if (vResumeUrl && targetReqId) {
+                await supabase.from('crm_job_requests')
+                    .update({ resume_url: vResumeUrl })
+                    .eq('id', targetReqId);
+            }
+
+            // 2. Upsert portfolio by request_id (specific to this job request)
+            if (vPortfolioUrl && targetReqId) {
                 const { data: existingPortfolio } = await supabase
                     .from('portfolio_settings')
-                    .select('id')
-                    .eq('user_id', targetUser.user_id)
+                    .select('request_id')
+                    .eq('request_id', targetReqId)
                     .maybeSingle();
 
                 if (existingPortfolio) {
                     await supabase.from('portfolio_settings')
                         .update({ url: vPortfolioUrl })
-                        .eq('user_id', targetUser.user_id);
+                        .eq('request_id', targetReqId);
                 } else {
                     await supabase.from('portfolio_settings')
-                        .insert({ url: vPortfolioUrl, user_id: targetUser.user_id });
+                        .insert({
+                            request_id: targetReqId,
+                            url: vPortfolioUrl,
+                            user_id: targetUser.user_id || null,
+                            email: email,
+                            company_application_email: targetUser.company_application_email || null
+                        });
                 }
+
+                await supabase.from('crm_job_requests')
+                    .update({ vercel_portfolio_url: vPortfolioUrl })
+                    .eq('id', targetReqId);
             }
 
             // --- Update only this row in local state ---
