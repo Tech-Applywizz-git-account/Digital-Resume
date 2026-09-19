@@ -3,23 +3,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 export async function logAzureUsage(options: any) {
   const {
     lead_id,
-<<<<<<< HEAD
-    task_type,
-    source,
-    model,
-    api_calls
-  } = options;
-
-  if (!api_calls || api_calls.length === 0) return;
-
-  const total_input_tokens = api_calls.reduce((sum: number, call: any) => sum + (call.prompt_tokens || 0), 0);
-  const total_output_tokens = api_calls.reduce((sum: number, call: any) => sum + (call.completion_tokens || 0), 0);
-  const total_completion_tokens = total_output_tokens;
-  
-  const api_input_tokens_list = api_calls.map((call: any) => call.prompt_tokens || 0);
-  const api_output_tokens_list = api_calls.map((call: any) => call.completion_tokens || 0);
-  const api_completion_tokens = api_output_tokens_list;
-=======
     user_id,
     email,
     task_type,
@@ -57,7 +40,6 @@ export async function logAzureUsage(options: any) {
       console.log(`Azure OpenAI reasoning_tokens (call ${index + 1}):`, rTokens);
     }
   });
->>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || Deno.env.get("NEXT_PUBLIC_SUPABASE_URL");
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -70,29 +52,6 @@ export async function logAzureUsage(options: any) {
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-<<<<<<< HEAD
-    const { error } = await supabaseAdmin.from('azure_token_usage').insert({
-      lead_id,
-      task_date: new Date().toISOString(),
-      task_type,
-      source,
-      model,
-      total_input_tokens,
-      total_output_tokens,
-      total_completion_tokens,
-      api_input_tokens_list,
-      api_output_tokens_list,
-      api_completion_tokens
-    });
-
-    if (error) {
-      console.error("❌ Failed to log Azure token usage:", error);
-    } else {
-      console.log(`📊 Token Usage logged for ${task_type}. Total tokens: ${total_input_tokens + total_output_tokens}`);
-    }
-  } catch (err) {
-    console.error("❌ Usage logging error:", err);
-=======
     let resolvedEmail = email;
     if (!resolvedEmail) {
       const { data: crmRecord, error: crmError } = await supabaseAdmin
@@ -145,6 +104,5 @@ export async function logAzureUsage(options: any) {
     }
   } catch (err) {
     console.error("Azure token usage logging error:", err);
->>>>>>> feef1e883ec1c68c2bb1718de9d1ca284e5f8455
   }
 }

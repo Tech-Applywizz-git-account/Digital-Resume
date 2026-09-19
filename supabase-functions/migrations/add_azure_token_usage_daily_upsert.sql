@@ -1,3 +1,41 @@
+-- Consolidate historical duplicates before enforcing one daily row per user/task.
+WITH duplicate_groups AS (
+  SELECT
+    user_id,
+    task_type,
+    task_date,
+    MIN(id::text)::uuid AS keep_id,
+    SUM(COALESCE(total_input_tokens, 0)) AS total_input_tokens,
+    SUM(COALESCE(total_output_tokens, 0)) AS total_output_tokens,
+    SUM(COALESCE(total_completion_tokens, 0)) AS total_completion_tokens,
+    SUM(COALESCE(response_time_ms, 0)) AS response_time_ms,
+    STRING_AGG(NULLIF(api_input_tokens_list, ''), ',' ORDER BY created_at, id) AS api_input_tokens_list,
+    STRING_AGG(NULLIF(api_output_tokens_list, ''), ',' ORDER BY created_at, id) AS api_output_tokens_list,
+    STRING_AGG(NULLIF(api_completion_tokens, ''), ',' ORDER BY created_at, id) AS api_completion_tokens
+  FROM public.azure_token_usage
+  GROUP BY user_id, task_type, task_date
+  HAVING COUNT(*) > 1
+), updated_rows AS (
+  UPDATE public.azure_token_usage AS target
+  SET
+    total_input_tokens = duplicate_groups.total_input_tokens,
+    total_output_tokens = duplicate_groups.total_output_tokens,
+    total_completion_tokens = duplicate_groups.total_completion_tokens,
+    response_time_ms = duplicate_groups.response_time_ms,
+    api_input_tokens_list = COALESCE(duplicate_groups.api_input_tokens_list, ''),
+    api_output_tokens_list = COALESCE(duplicate_groups.api_output_tokens_list, ''),
+    api_completion_tokens = COALESCE(duplicate_groups.api_completion_tokens, '')
+  FROM duplicate_groups
+  WHERE target.id = duplicate_groups.keep_id
+  RETURNING target.user_id, target.task_type, target.task_date, target.id
+)
+DELETE FROM public.azure_token_usage AS duplicate
+USING updated_rows
+WHERE duplicate.user_id = updated_rows.user_id
+  AND duplicate.task_type = updated_rows.task_type
+  AND duplicate.task_date = updated_rows.task_date
+  AND duplicate.id <> updated_rows.id;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_azure_token_usage_user_task_date
 ON public.azure_token_usage (user_id, task_type, task_date);
 
