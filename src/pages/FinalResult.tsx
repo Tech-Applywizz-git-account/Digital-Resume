@@ -411,10 +411,13 @@ const FinalResult: React.FC = () => {
         }
       }
 
-      // ─── STEP 2: Call the Vercel API for resume URL (and portfolio fallback) ───
+      // ─── STEP 2: Call the CRM/Vercel API ───
+      // Resume is ALWAYS fetched from CRM API (it is the source of truth for resume PDFs).
+      // Portfolio from CRM is only applied if Supabase had nothing.
       let foundPortfolio = !!supabasePortfolioUrl; // already satisfied if Supabase had a value
+      let foundResume = !!resumeUrl; // skip CRM resume if we already have one from Supabase
       for (const email of emailsToTry) {
-        if (foundPortfolio) break; // skip API portfolio if Supabase already provided one
+        if (foundPortfolio && foundResume) break; // nothing left to fetch
         const normalizedEmail = email.trim().toLowerCase();
         try {
           const response = await fetch(
@@ -433,14 +436,15 @@ const FinalResult: React.FC = () => {
               setCandidateName(vName);
             }
 
-            // Sync resume URL (Vercel is source for resume)
-            if (vResumeUrl && typeof vResumeUrl === "string") {
+            // Resume: CRM API is the source of truth — set if not already loaded from Supabase
+            if (!foundResume && vResumeUrl && typeof vResumeUrl === "string") {
               setResumeUrl(current => {
                 if (current) return current;
                 const fileNameFromUrl = vResumeUrl.split('?')[0].split('/').pop();
                 setResumeFileName(fileNameFromUrl || "Resume.pdf");
                 return vResumeUrl;
               });
+              foundResume = true;
 
               const currentId = castId || idFromQuery;
               if (user && currentId && isSafeUUID(currentId)) {
@@ -452,7 +456,7 @@ const FinalResult: React.FC = () => {
               }
             }
 
-            // Portfolio: only use Vercel value if Supabase had nothing
+            // Portfolio: only use CRM value if Supabase had nothing
             const isValidVercelUrl =
               typeof vPortfolioUrl === "string" &&
               (vPortfolioUrl.startsWith("http") || vPortfolioUrl.includes("localhost"));
@@ -464,12 +468,40 @@ const FinalResult: React.FC = () => {
               foundPortfolio = true;
 
               // Seed this value into Supabase so future loads are consistent
+              // NOTE: portfolio_settings uses 'request_id' (UUID, NOT NULL) as primary key.
+              // There is no unique constraint on user_id, so we must check first then insert.
               if (user && targetUserId && vPortfolioUrl) {
-                Promise.resolve(
-                  supabase.from('portfolio_settings')
-                    .upsert({ url: vPortfolioUrl, user_id: targetUserId }, { onConflict: 'user_id', ignoreDuplicates: true })
-                ).then(() => console.log("✅ Seeded Vercel portfolio into Supabase"))
-                  .catch((err: unknown) => console.error("❌ Seed failed:", err));
+                (async () => {
+                  try {
+                    const { data: existingSeed } = await supabase
+                      .from('portfolio_settings')
+                      .select('request_id')
+                      .eq('user_id', targetUserId)
+                      .maybeSingle();
+                    if (existingSeed) {
+                      await supabase
+                        .from('portfolio_settings')
+                        .update({ url: vPortfolioUrl })
+                        .eq('request_id', existingSeed.request_id);
+                      console.log("✅ Updated seeded portfolio in Supabase");
+                    } else {
+                      const seedRequestId = castId || localStorage.getItem("current_job_request_id");
+                      if (seedRequestId && isSafeUUID(seedRequestId)) {
+                        await supabase.from('portfolio_settings').insert({
+                          request_id: seedRequestId,
+                          url: vPortfolioUrl,
+                          user_id: targetUserId,
+                          email: targetEmail,
+                        });
+                        console.log("✅ Seeded CRM portfolio into Supabase");
+                      } else {
+                        console.warn("⚠️ Cannot seed portfolio — no valid request_id available");
+                      }
+                    }
+                  } catch (seedErr) {
+                    console.error("❌ Portfolio seed failed:", seedErr);
+                  }
+                })();
               }
             }
           }
@@ -866,38 +898,89 @@ const FinalResult: React.FC = () => {
         return;
       }
 
-      // ✅ Upsert portfolio to Supabase (Source of Truth includes manual overrides)
-      if (targetUserId || resumeOwnerEmail) {
-  console.log("🔄 Saving portfolio to Supabase");
+      // ✅ Save portfolio to Supabase (portfolio_settings uses 'request_id' as primary key)
+      // Strategy:
+      //   1. If currentJobRequestId (UUID) exists — use it as request_id (insert or update)
+      //   2. Else if a row exists by user_id or email — update that row
+      //   3. Else we cannot insert (no valid request_id available)
+      console.log("🔄 Saving portfolio to Supabase");
 
-  // 1️⃣ Check existing record (user_id OR email)
-  const { data: existing } = await supabase
-    .from('portfolio_settings')
-    .select('id')
-    .or(`user_id.eq.${targetUserId},email.eq.${resumeOwnerEmail}`)
-    .maybeSingle();
+      if (currentJobRequestId && isSafeUUID(currentJobRequestId)) {
+        // Check for existing row with this request_id
+        const { data: existingByReqId } = await supabase
+          .from('portfolio_settings')
+          .select('request_id')
+          .eq('request_id', currentJobRequestId)
+          .maybeSingle();
 
-  const payload = {
-    url: trimmedUrl,
-    user_id: targetUserId || null,
-    email: resumeOwnerEmail || null
-  };
+        if (existingByReqId) {
+          // Update the existing row
+          const { error: updateErr } = await supabase
+            .from('portfolio_settings')
+            .update({
+              url: trimmedUrl,
+              user_id: targetUserId || null,
+              email: resumeOwnerEmail || null,
+            })
+            .eq('request_id', currentJobRequestId);
+          if (updateErr) throw updateErr;
+          console.log("✅ Updated portfolio in Supabase by request_id");
+        } else {
+          // Also check if a row exists by user_id or email (to avoid duplicates)
+          const orParts = [
+            targetUserId ? `user_id.eq.${targetUserId}` : null,
+            resumeOwnerEmail ? `email.eq.${resumeOwnerEmail}` : null,
+          ].filter(Boolean).join(',');
 
-  if (existing) {
-    await supabase
-      .from('portfolio_settings')
-      .update(payload)
-      .or(`user_id.eq.${targetUserId},email.eq.${resumeOwnerEmail}`);
+          const existingByIdentity = orParts
+            ? (await supabase.from('portfolio_settings').select('request_id').or(orParts).maybeSingle()).data
+            : null;
 
-    console.log("✅ Updated portfolio in Supabase");
-  } else {
-    await supabase
-      .from('portfolio_settings')
-      .insert(payload);
+          if (existingByIdentity) {
+            // Update the existing row found by identity
+            const { error: updateErr } = await supabase
+              .from('portfolio_settings')
+              .update({ url: trimmedUrl })
+              .eq('request_id', existingByIdentity.request_id);
+            if (updateErr) throw updateErr;
+            console.log("✅ Updated portfolio in Supabase by user_id/email identity");
+          } else {
+            // Insert a new row using currentJobRequestId as the primary key
+            const { error: insertErr } = await supabase.from('portfolio_settings').insert({
+              request_id: currentJobRequestId,
+              url: trimmedUrl,
+              user_id: targetUserId || null,
+              email: resumeOwnerEmail || null,
+            });
+            if (insertErr) throw insertErr;
+            console.log("✅ Inserted new portfolio record in Supabase");
+          }
+        }
+      } else if (targetUserId || resumeOwnerEmail) {
+        // No valid request_id — try to update an existing row by identity only
+        const orParts = [
+          targetUserId ? `user_id.eq.${targetUserId}` : null,
+          resumeOwnerEmail ? `email.eq.${resumeOwnerEmail}` : null,
+        ].filter(Boolean).join(',');
 
-    console.log("✅ Inserted new portfolio record in Supabase");
-  }
-}
+        const { data: existingByIdentity } = await supabase
+          .from('portfolio_settings')
+          .select('request_id')
+          .or(orParts)
+          .maybeSingle();
+
+        if (existingByIdentity) {
+          const { error: updateErr } = await supabase
+            .from('portfolio_settings')
+            .update({ url: trimmedUrl })
+            .eq('request_id', existingByIdentity.request_id);
+          if (updateErr) throw updateErr;
+          console.log("✅ Updated portfolio by identity (no request_id in session)");
+        } else {
+          console.warn("⚠️ Cannot save portfolio — no request_id and no existing record found by user_id/email.");
+          showToast("Portfolio URL saved locally, but could not sync to Supabase (no job request ID)", "error");
+        }
+      }
 
       setPortfolioUrl(trimmedUrl);
       setTempPortfolioUrl(trimmedUrl);
