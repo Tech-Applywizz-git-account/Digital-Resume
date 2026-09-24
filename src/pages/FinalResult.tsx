@@ -11,6 +11,7 @@ import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
 import { extractTextFromBuffer } from "../utils/textExtraction";
 import { isSafeUUID } from "../utils/uuidHelpers";
+import { resolveRecordingUrl } from "../utils/recordingHelpers";
 
 // --- Play Intro Button Canvas Generator ---
 // Layout: inline-flex, h=28px, padding: 6px 8px 5px 8px, align-items: flex-start, gap: 6px
@@ -275,6 +276,16 @@ const FinalResult: React.FC = () => {
                 }
               });
             setJobTitle('Resume');
+            const video = await resolveRecordingUrl({
+              isCRM: true,
+              email: decodedEmail,
+              userId: user?.id,
+            }) || await resolveRecordingUrl({
+              isCRM: false,
+              email: decodedEmail,
+              userId: user?.id,
+            });
+            if (video) setVideoUrl(video);
           } else {
             // No email in URL — fall back to localStorage
             await loadLocalData();
@@ -562,23 +573,13 @@ const FinalResult: React.FC = () => {
                 });
             }
 
-            // Get latest video URL from crm_recordings
-            const { data: recordings } = await supabase
-              .from('crm_recordings')
-              .select('video_url')
-              .eq('job_request_id', currentJobRequestId)
-              .order('created_at', { ascending: false })
-              .limit(1);
-
-            let finalVideoUrl = null;
-            if (recordings && recordings.length > 0 && recordings[0].video_url) {
-              const path = recordings[0].video_url;
-              finalVideoUrl = path.startsWith('http')
-                ? path
-                : supabase.storage.from('CRM_users_recordings').getPublicUrl(path).data.publicUrl;
-            } else {
-              finalVideoUrl = recordedVideoUrl || null;
-            }
+            let finalVideoUrl = await resolveRecordingUrl({
+              isCRM: true,
+              jobRequestId: currentJobRequestId,
+              email: data.email,
+              userId: data.user_id,
+            });
+            if (!finalVideoUrl) finalVideoUrl = recordedVideoUrl || null;
 
             setVideoUrl(finalVideoUrl);
 
@@ -626,23 +627,13 @@ const FinalResult: React.FC = () => {
               finalResumeUrl.split('/').pop() || "Resume.pdf" :
               "Resume.pdf"));
 
-            // Get latest video URL from recordings
-            const { data: recs } = await supabase
-              .from('recordings')
-              .select('storage_path')
-              .eq('job_request_id', currentJobRequestId)
-              .order('created_at', { ascending: false })
-              .limit(1);
-
-            let finalVideoUrl = null;
-            if (recs && recs.length > 0 && recs[0].storage_path) {
-              const path = recs[0].storage_path;
-              finalVideoUrl = path.startsWith('http')
-                ? path
-                : supabase.storage.from('recordings').getPublicUrl(path).data.publicUrl;
-            } else {
-              finalVideoUrl = recordedVideoUrl || null;
-            }
+            let finalVideoUrl = await resolveRecordingUrl({
+              isCRM: false,
+              jobRequestId: currentJobRequestId,
+              email: candidateEmail,
+              userId: data.user_id,
+            });
+            if (!finalVideoUrl) finalVideoUrl = recordedVideoUrl || null;
 
             setVideoUrl(finalVideoUrl);
 
@@ -802,39 +793,20 @@ const FinalResult: React.FC = () => {
           }
         }
 
-        // --- Fetch Video URL (Checking both tables for robustness) ---
-        let finalVideoUrl = null;
-
-        // 1. Try CRM recordings
-        const { data: crmVideo } = await supabase
-          .from('crm_recordings')
-          .select('video_url')
-          .eq('job_request_id', id)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (crmVideo && crmVideo.length > 0 && crmVideo[0].video_url) {
-          const path = crmVideo[0].video_url;
-          finalVideoUrl = path.startsWith('http')
-            ? path
-            : supabase.storage.from('CRM_users_recordings').getPublicUrl(path).data.publicUrl;
-          console.log("🎞️ Found CRM video:", finalVideoUrl);
-        } else {
-          // 2. Try Regular recordings
-          const { data: regVideo } = await supabase
-            .from('recordings')
-            .select('storage_path')
-            .eq('job_request_id', id)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          if (regVideo && regVideo.length > 0 && regVideo[0].storage_path) {
-            const path = regVideo[0].storage_path;
-            finalVideoUrl = path.startsWith('http')
-              ? path
-              : supabase.storage.from('recordings').getPublicUrl(path).data.publicUrl;
-            console.log("🎞️ Found Regular video:", finalVideoUrl);
-          }
+        // --- Fetch Video URL (table row, then the storage bucket) ---
+        let finalVideoUrl = await resolveRecordingUrl({
+          isCRM: !!crmResult.data,
+          jobRequestId: id,
+          email: ownerEmail,
+          userId: data.user_id,
+        });
+        if (!finalVideoUrl) {
+          finalVideoUrl = await resolveRecordingUrl({
+            isCRM: !crmResult.data,
+            jobRequestId: id,
+            email: ownerEmail,
+            userId: data.user_id,
+          });
         }
 
         setVideoUrl(finalVideoUrl);
@@ -925,11 +897,8 @@ const FinalResult: React.FC = () => {
         console.log("✅ Inserted new portfolio record in Supabase for request_id:", currentJobRequestId);
       }
 
-      // Update the specific job request record in Supabase so dashboards and cards show it
-      await Promise.all([
-        supabase.from('crm_job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId),
-        supabase.from('job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId)
-      ]);
+      // Portfolio is stored in portfolio_settings. crm_job_requests has no vercel_portfolio_url column.
+      await supabase.from('job_requests').update({ vercel_portfolio_url: trimmedUrl }).eq('id', currentJobRequestId);
 
       setPortfolioUrl(trimmedUrl);
       setTempPortfolioUrl(trimmedUrl);

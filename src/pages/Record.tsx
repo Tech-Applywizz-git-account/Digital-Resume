@@ -352,10 +352,24 @@ const Record: React.FC = () => {
         const { data: existingRecordings } = await supabase.from("crm_recordings").select("id").eq("job_request_id", activeJobRequestId);
         const existingRecording = existingRecordings && existingRecordings.length > 0 ? existingRecordings[0] : null;
         
-        if (existingRecording) {
-          await supabase.from("crm_recordings").update(insertPayload).eq("job_request_id", activeJobRequestId);
-        } else {
-          await supabase.from("crm_recordings").insert(insertPayload);
+        const writeResult = existingRecording
+          ? await supabase.from("crm_recordings").update(insertPayload).eq("job_request_id", activeJobRequestId)
+          : await supabase.from("crm_recordings").insert(insertPayload);
+
+        if (writeResult.error) {
+          console.error("crm_recordings write failed, retrying with required fields only:", writeResult.error);
+          const minimalPayload = {
+            email: crmEmail,
+            user_id: currentUser.id,
+            job_request_id: activeJobRequestId,
+            video_url: publicUrl,
+          };
+          const retryResult = existingRecording
+            ? await supabase.from("crm_recordings").update(minimalPayload).eq("job_request_id", activeJobRequestId)
+            : await supabase.from("crm_recordings").insert(minimalPayload);
+          if (retryResult.error) {
+            console.error("crm_recordings minimal write failed:", retryResult.error);
+          }
         }
         await supabase.from("crm_job_requests").update({ application_status: "recorded", updated_at: new Date().toISOString() }).eq("id", activeJobRequestId);
 

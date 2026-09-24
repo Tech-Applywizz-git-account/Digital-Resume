@@ -962,9 +962,6 @@ export default function DigitalResumeDashboard() {
                         });
                 }
 
-                await supabase.from('crm_job_requests')
-                    .update({ vercel_portfolio_url: vPortfolioUrl })
-                    .eq('id', targetReqId);
             }
 
             // --- Update only this row in local state ---

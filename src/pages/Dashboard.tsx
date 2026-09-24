@@ -24,6 +24,7 @@ import {
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserInfo } from '../utils/crmHelpers';
+import { resolveRecordingUrl } from '../utils/recordingHelpers';
 import { showToast } from "../components/ui/toast";
 import AnalyticsPanel from '../components/AnalyticsPanel';
 import { viewDocumentSafe } from '../utils/documentUtils';
@@ -219,7 +220,7 @@ export default function Dashboard() {
         const fetchVercelData = async () => {
           for (const email of emails) {
             try {
-              const res = await fetch(`/api/proxy-applywizz?email=${email}`);
+              const res = await fetch(`/api/proxy-applywizz?email=${encodeURIComponent(email.trim().toLowerCase())}`);
               if (res.ok) {
                 const json = await res.json();
                 const d = Array.isArray(json) ? json[0] : json;
@@ -233,32 +234,55 @@ export default function Dashboard() {
         // Fetch Vercel details for the CRM user
         const vercelPromise = fetchVercelData();
 
-        // Fetch from CRM tables with recordings
+        // crm_job_requests has no vercel_portfolio_url column. Portfolio comes from
+        // portfolio_settings and the ApplyWizz CRM API after this query succeeds.
+        const crmPromise = (async () => {
+          const responses = await Promise.all(
+            emails.map((email) =>
+              supabase
+                .from('crm_job_requests')
+                .select(`
+                  id,
+                  job_title,
+                  job_description,
+                  resume_url,
+                  application_status,
+                  created_at
+                `)
+                .eq('email', email)
+                .order('created_at', { ascending: false })
+            )
+          );
+
+          const failed = responses.find((result) => result.error);
+          if (failed?.error) {
+            return { data: null as null, error: failed.error };
+          }
+
+          const merged = responses
+            .flatMap((result) => result.data || [])
+            .filter((row, index, rows) => rows.findIndex((candidate) => candidate.id === row.id) === index)
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+          return { data: merged, error: null };
+        })();
+
         const [crmResult, vercelData] = await Promise.all([
-          supabase
-            .from('crm_job_requests')
-            .select(`
-              id,
-              job_title,
-              job_description,
-              resume_url,
-              application_status,
-              created_at,
-              vercel_portfolio_url
-            `)
-            .in('email', emails)
-            .order('created_at', { ascending: false }),
+          crmPromise,
           vercelPromise
         ]);
 
-        if (crmResult.error) throw crmResult.error;
+        if (crmResult.error) {
+          console.error("Failed to fetch CRM job requests:", crmResult.error);
+          return;
+        }
         const data = crmResult.data;
 
         // Fetch recordings and session details for each job request
         // Correctly extract resume URL and portfolio from the nested API structure
         const vApiResumeUrl = vercelData?.data?.resume?.pdf_path?.[0] || vercelData?.resume?.pdf_path?.[0] || null;
         const vApiPort = vercelData?.data?.portfolio?.link || vercelData?.portfolio?.link || null;
-        const vApiPortfolio = (typeof vApiPort === "string" && vApiPort.toLowerCase().includes('vercel.app')) ? vApiPort : null;
+        const vApiPortfolio = (typeof vApiPort === "string" && /^https?:\/\//i.test(vApiPort)) ? vApiPort : null;
         const vApiName = vercelData?.data?.name || vercelData?.name || null;
 
         const supabaseJobs = data || [];
@@ -266,6 +290,11 @@ export default function Dashboard() {
         // If no Supabase records exist but API has a resume → create a synthetic record
         if (supabaseJobs.length === 0 && vApiResumeUrl) {
           const primaryEmail = emails[0]; // personal email (first priority)
+          const fallbackVideo = await resolveRecordingUrl({
+            isCRM: true,
+            email: primaryEmail,
+            userId: user.id,
+          });
           const syntheticRecord = {
             id: 'api-resume',
             job_title: `${vApiName ? vApiName + "'s" : 'Your'} Resume`,
@@ -273,7 +302,7 @@ export default function Dashboard() {
             resume_path: vApiResumeUrl,
             status: 'ready',
             created_at: new Date().toISOString(),
-            recordings: [],
+            recordings: fallbackVideo ? [{ storage_path: fallbackVideo }] : [],
             view_count: 0,
             engaged_count: 0,
             vercel_portfolio_url: vApiPortfolio,
@@ -297,18 +326,40 @@ export default function Dashboard() {
                 supabase.from('portfolio_settings').select('url').eq('request_id', item.id).maybeSingle()
               ]);
 
+              const linkedVideo = !recRes.error ? recRes.data?.[0]?.video_url : null;
+              const recordingUrl = linkedVideo
+                ? (linkedVideo.startsWith('http')
+                  ? linkedVideo
+                  : supabase.storage.from('CRM_users_recordings').getPublicUrl(linkedVideo).data.publicUrl)
+                : await resolveRecordingUrl({ isCRM: true, jobRequestId: item.id });
+
               return {
                 ...item,
                 // Priority: Supabase resume first, then API resume as fallback
                 resume_path: item.resume_url || vApiResumeUrl || null,
                 status: item.application_status || 'draft',
-                recordings: recRes.data?.map(r => ({ storage_path: r.video_url })) || [],
+                recordings: recordingUrl ? [{ storage_path: recordingUrl }] : [],
                 view_count: sessionRes.count || 0,
                 engaged_count: engagedRes.count || 0,
-                vercel_portfolio_url: portRes.data?.url || (item as any).vercel_portfolio_url || vApiPortfolio
+                vercel_portfolio_url: portRes.data?.url || vApiPortfolio
               };
             })
           );
+
+          if (!jobsWithDetails.some((job) => job.recordings.length > 0)) {
+            const fallbackVideo = await resolveRecordingUrl({
+              isCRM: true,
+              email: emails[0] || user.email,
+              userId: user.id,
+            });
+            if (fallbackVideo && jobsWithDetails[0]) {
+              jobsWithDetails[0] = {
+                ...jobsWithDetails[0],
+                recordings: [{ storage_path: fallbackVideo }],
+              };
+            }
+          }
+
           setcareercasts(jobsWithDetails);
           const emailKey = user.email.replace(/[^a-zA-Z0-9]/g, '_');
           localStorage.setItem(`last_careercasts_${emailKey}`, JSON.stringify(jobsWithDetails));
@@ -350,16 +401,34 @@ export default function Dashboard() {
                 supabase.from('portfolio_settings').select('url').eq('request_id', item.id).maybeSingle()
               ]);
 
+              const linkedVideo = !recRes.error ? recRes.data?.[0]?.storage_path : null;
+              const recordingUrl = linkedVideo
+                || await resolveRecordingUrl({ isCRM: false, jobRequestId: item.id });
+
               return {
                 ...item,
                 resume_path: item.resume_path || null,
-                recordings: recRes.data || [],
+                recordings: recordingUrl ? [{ storage_path: recordingUrl }] : [],
                 view_count: sessionRes.count || 0,
                 engaged_count: engagedRes.count || 0,
                 vercel_portfolio_url: portRes.data?.url || (item as any).vercel_portfolio_url || null
               };
             })
         );
+
+        if (!jobsWithViews.some((job) => job.recordings.length > 0)) {
+          const fallbackVideo = await resolveRecordingUrl({
+            isCRM: false,
+            email: user.email,
+            userId: user.id,
+          });
+          if (fallbackVideo && jobsWithViews[0]) {
+            jobsWithViews[0] = {
+              ...jobsWithViews[0],
+              recordings: [{ storage_path: fallbackVideo }],
+            };
+          }
+        }
 
         setcareercasts(jobsWithViews);
         const emailKey = user.email.replace(/[^a-zA-Z0-9]/g, '_');

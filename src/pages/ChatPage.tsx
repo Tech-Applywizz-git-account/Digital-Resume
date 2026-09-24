@@ -87,7 +87,7 @@ const ChatPage: React.FC = () => {
                 
                 if (isSafeUUID(resumeId)) {
                     [crmResult, regularResult] = await Promise.all([
-                        supabase.from("crm_job_requests").select("resume_url, user_id, email, vercel_portfolio_url").eq("id", resumeId).maybeSingle(),
+                        supabase.from("crm_job_requests").select("resume_url, user_id, email").eq("id", resumeId).maybeSingle(),
                         supabase.from("job_requests").select("resume_path, user_id, candidate_email, vercel_portfolio_url, recordings(storage_path)").eq("id", resumeId).maybeSingle()
                     ]);
                 } else {
@@ -197,8 +197,8 @@ const ChatPage: React.FC = () => {
                     if (portfolioSettings?.url) {
                         foundPortfolioUrl = portfolioSettings.url;
                         setDbPortfolioUrl(foundPortfolioUrl);
-                    } else if (crmResult.data?.vercel_portfolio_url || regularResult.data?.vercel_portfolio_url) {
-                        foundPortfolioUrl = crmResult.data?.vercel_portfolio_url || regularResult.data?.vercel_portfolio_url;
+                    } else if (regularResult.data?.vercel_portfolio_url) {
+                        foundPortfolioUrl = regularResult.data.vercel_portfolio_url;
                         setDbPortfolioUrl(foundPortfolioUrl);
                     }
                 }
