@@ -1,79 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../integrations/supabase/client';
-import {
-    Users,
-    ShieldCheck,
-    User as UserIcon,
-    Plus,
-    Search,
-    Mail,
-    CreditCard,
-    Building2,
-    Calendar,
-    Loader2,
-    CheckCircle,
-    X,
-    AlertCircle,
-    RefreshCcw,
-    ArrowRight,
-    Edit,
-    Save,
-    LogOut,
-    LayoutDashboard,
-    UserPlus,
-    FileUp,
-    Download,
-    FileText,
-    BarChart3,
-    Sparkles,
-    Brain,
-    Coins,
-    Link
-} from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import AnalyticsPanel from '../components/AnalyticsPanel';
-import { viewDocumentSafe } from '../utils/documentUtils';
+import React from 'react';
+import ResumeManagementConsole from '../features/resume-dashboard/components/ResumeManagementConsole';
 
-interface CRMUser {
-    email: string;
-    credits_remaining: number;
-    company_application_email: string | null;
-    user_created_at: string;
-    is_active: boolean;
-    user_id: string | null;
-    added_by: string | null;
-    lead_name?: string | null;
-    resume_url?: string | null;
-    resume_name?: string | null;
-    vercel_portfolio_url?: string | null;
-    latest_job_request_id?: string | null;
-    current_stage?: string | null;
-    assigned_to_email?: string | null;
-    profiles?: {
-        full_name: string | null;
-    } | null;
-}
-
-interface CRMAdmin {
-    email: string;
-    created_at: string;
-}
-
-interface UsageLog {
-    id: string;
-    user_id: string | null;
-    email?: string | null; // Added for display
-    feature_name: string;
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-    cost: number;
-    created_at: string;
-}
-
+/**
+ * Tier 1 — Digital Resume Dashboard.
+ *
+ * Thin wrapper around the shared ResumeManagementConsole (see
+ * src/features/resume-dashboard/components/ResumeManagementConsole.tsx).
+ * Behavior is unchanged from before this file was extracted — this route,
+ * its data, and every handler inside the console are identical to the
+ * original DigitalResumeDashboard implementation.
+ */
 export default function DigitalResumeDashboard() {
+    return <ResumeManagementConsole tier="digital_resume" title="Digital Resume CRM" />;
+}
     const { user } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(() => {

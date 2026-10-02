@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1050">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --w: 1050px;
+            --h: 660px;
+            --ink: #F6E7C1;
+            --ink-soft: #D9C8A0;
+            --muted: #9A8B72;
+            --void: #07090D;
+            --panel: #10141C;
+            --gold: #C8A45A;
+            --gold-2: #E8D5A3;
+        }
+        html, body {
+            width: var(--w);
+            height: var(--h);
+            background: #000;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        .card {
+            width: var(--w);
+            height: var(--h);
+            position: relative;
+            color: var(--ink);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            isolation: isolate;
+        }
+        .card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                var(--hero-image, none),
+                radial-gradient(1200px 420px at 12% -10%, rgba(200, 164, 90, 0.16), transparent 55%),
+                radial-gradient(700px 380px at 100% 120%, rgba(200, 164, 90, 0.10), transparent 50%),
+                linear-gradient(160deg, #121722 0%, #07090D 48%, #0B0E14 100%);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            transform: scale(1.02);
+            z-index: 0;
+        }
+        .card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(135deg, rgba(255,255,255,0.02), transparent 28%),
+                linear-gradient(180deg, rgba(9,11,16,0.08), rgba(9,11,16,0.32));
+            z-index: 1;
+        }
+        .frame {
+            position: absolute;
+            inset: 18px;
+            border: 1px solid rgba(200,164,90,0.38);
+            border-radius: 28px;
+            pointer-events: none;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+        }
+        .corner {
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            border: 1.5px solid var(--gold);
+            z-index: 3;
+        }
+        .corner.tl { top: 28px; left: 28px; border-right: 0; border-bottom: 0; }
+        .corner.tr { top: 28px; right: 28px; border-left: 0; border-bottom: 0; }
+        .corner.bl { bottom: 28px; left: 28px; border-right: 0; border-top: 0; }
+        .corner.br { bottom: 28px; right: 28px; border-left: 0; border-top: 0; }
+        .inner {
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            padding: 48px 52px 40px;
+            display: flex;
+            flex-direction: column;
+        }
+        .top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            letter-spacing: 0.28em;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--gold);
+            text-transform: uppercase;
+        }
+        .brand { color: var(--ink-soft); letter-spacing: 0.32em; font-weight: 400; }
+        .hairline {
+            height: 1px;
+            margin: 22px 0 28px;
+            background: linear-gradient(90deg, transparent, rgba(200,164,90,0.55), transparent);
+        }
+        .main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 220px 1fr 220px;
+            gap: 30px;
+            align-items: center;
+            min-height: 0;
+        }
+        .portrait-wrap {
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            padding: 6px;
+            background: linear-gradient(180deg, rgba(232,213,163,0.95), rgba(200,164,90,0.88) 38%, rgba(118,88,34,0.94));
+            box-shadow: 0 28px 60px rgba(0,0,0,0.44);
+        }
+        .portrait {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #161B24;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .portrait img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .mono {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 72px;
+            color: var(--gold-2);
+            letter-spacing: 0.04em;
+        }
+        .identity {
+            min-width: 0;
+            align-self: stretch;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 34px 38px;
+            border-radius: 28px;
+            background: linear-gradient(180deg, rgba(12,16,24,0.72), rgba(8,10,14,0.82));
+            backdrop-filter: blur(14px);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+        }
+        .name {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 58px;
+            font-weight: 600;
+            line-height: 0.95;
+            letter-spacing: -0.02em;
+            color: #F8EED4;
+            margin-top: 12px;
+        }
+        .title {
+            font-size: 19px;
+            font-weight: 400;
+            color: var(--gold-2);
+            letter-spacing: 0.04em;
+        }
+        .company {
+            margin-top: 4px;
+            font-size: 13px;
+            color: var(--muted);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 22px;
+        }
+        .chip {
+            font-size: 10px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--gold-2);
+            border: 1px solid rgba(200,164,90,0.35);
+            border-radius: 999px;
+            padding: 6px 10px;
+            background: rgba(200,164,90,0.08);
+        }
+        .meta {
+            margin-top: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--ink-soft);
+        }
+        .meta span {
+            letter-spacing: 0.02em;
+            display: block;
+        }
+        .qr-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+        .qr-plate {
+            width: 208px;
+            height: 208px;
+            border-radius: 28px;
+            background: #F7F1E3;
+            padding: 16px;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.35), 0 0 0 1px rgba(200,164,90,0.25);
+        }
+        .qr-plate img { width: 100%; height: 100%; display: block; }
+        .qr-caption {
+            font-size: 10px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+        .foot {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-top: 18px;
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        .url {
+            max-width: 70%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--ink-soft);
+            letter-spacing: 0.02em;
+            text-transform: none;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card" style="--hero-image: {{heroBackgroundCss}};">
+        <div class="frame"></div>
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="inner">
+            <div class="top">
+                <span>Career Identity</span>
+                <span class="brand">ApplyWizz</span>
+            </div>
+            <div class="hairline"></div>
+            <div class="main">
+                <div class="portrait-wrap">
+                    <div class="portrait">{{portraitHtml}}</div>
+                </div>
+                <div class="identity">
+                    <div class="title">{{jobTitle}}</div>
+                    <div class="name">{{fullName}}</div>
+                    {{companyHtml}}
+                    {{chipsHtml}}
+                    <div class="meta">{{contactHtml}}</div>
+                </div>
+                <div class="qr-col">
+                    <div class="qr-plate">
+                        <!-- <img src="{{qrCodeDataUrl}}" alt="QR" /> -->
+                    </div>
+                    <div class="qr-caption">Scan to open profile</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
