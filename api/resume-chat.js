@@ -21,18 +21,35 @@ export default async function handler(req, res) {
 
   try {
     const azureOpenAiApiKey = process.env.AZURE_OPENAI_API_KEY;
+    const azureOpenAiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const azureOpenAiApiVersion = process.env.AZURE_OPENAI_API_VERSION;
+    const azureOpenAiDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
     const azureMaxTokens = process.env.AZURE_MAX_TOKENS ? parseInt(process.env.AZURE_MAX_TOKENS, 10) : 800;
 
     if (!azureOpenAiApiKey) {
-      console.error("Missing AZURE_OPENAI_API_KEY");
+      console.warn("Missing AZURE_OPENAI_API_KEY. Returning mock response.");
       return res.status(200).json({ answer: "This is a mock response. Please set AZURE_OPENAI_API_KEY in your environment to enable AI chat." });
     }
 
+    const missingAzureConfig = [
+      !azureOpenAiEndpoint && "AZURE_OPENAI_ENDPOINT",
+      !azureOpenAiApiVersion && "AZURE_OPENAI_API_VERSION",
+      !azureOpenAiDeployment && "AZURE_OPENAI_DEPLOYMENT",
+    ].filter(Boolean);
+
+    if (missingAzureConfig.length > 0) {
+      console.error("Missing Azure OpenAI configuration:", missingAzureConfig);
+      return res.status(500).json({
+        error: "Azure OpenAI is not configured on the server.",
+        missing: missingAzureConfig,
+      });
+    }
+
     const openai = new AzureOpenAI({
-      endpoint: process.env.AZURE_OPENAI_ENDPOINT,
-      apiKey: process.env.AZURE_OPENAI_API_KEY,
-      apiVersion: process.env.AZURE_OPENAI_API_VERSION,
-      deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+      endpoint: azureOpenAiEndpoint,
+      apiKey: azureOpenAiApiKey,
+      apiVersion: azureOpenAiApiVersion,
+      deployment: azureOpenAiDeployment,
     });
 
     // --- Parse JSON body ---
@@ -50,7 +67,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const { resumeText, messages, question, recruiterMode, ownerId, ownerEmail: ownerEmailFromBody } = body;
+    const { resumeText, messages, question, recruiterMode, ownerId, ownerEmail: ownerEmailFromBody } = body || {};
 
     if (!resumeText || !question) {
       return res.status(400).json({ error: "Missing resumeText or question in request body" });
@@ -58,12 +75,56 @@ export default async function handler(req, res) {
 
     console.log(`📥 resume-chat: ownerId=${ownerId || 'null'}, ownerEmail=${ownerEmailFromBody || 'null'}, recruiterMode=${!!recruiterMode}`);
 
-    // --- Resolve authenticated user (for azure_token_usage logging) ---
-    const user_id = ownerId || null;
-    
-    // Note: User mapping is now strictly delegated to logAzureUsage
-    // which queries public.digital_resume_by_crm using the user_id.
-    // We no longer resolve auth.users or profiles here.
+    // --- Resolve user_id and email for token logging ---
+    // Primary: ownerId / ownerEmailFromBody sent by frontend
+    let user_id = ownerId || null;
+    let email = ownerEmailFromBody || null;
+
+    // Fallback 1: check Auth header if user_id or email is missing
+    if (!user_id || !email) {
+      try {
+        const authHeader = req.headers.authorization || req.headers.Authorization;
+        if (authHeader) {
+          const token = authHeader.replace('Bearer ', '');
+          const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+          if (supabaseUrl && supabaseServiceKey) {
+            const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+            const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+            if (user) {
+              if (!user_id) user_id = user.id;
+              if (!email) email = user.email;
+            }
+          }
+        }
+      } catch (authErr) {
+        console.warn("Auth header lookup warning in resume-chat:", authErr?.message);
+      }
+    }
+
+    // Fallback 2: look up user_id via email in digital_resume_by_crm
+    if (!user_id && email) {
+      try {
+        const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (supabaseUrl && supabaseServiceKey) {
+          const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+          const { data: crmUser } = await supabaseAdmin
+            .from('digital_resume_by_crm')
+            .select('user_id')
+            .eq('email', email.trim().toLowerCase())
+            .maybeSingle();
+          if (crmUser?.user_id) {
+            user_id = crmUser.user_id;
+            console.log(`✅ resume-chat: Resolved user_id via email fallback: ${user_id}`);
+          } else {
+            console.warn(`⚠️ resume-chat: No CRM record found for email="${email}". Token usage will NOT be logged.`);
+          }
+        }
+      } catch (lookupErr) {
+        console.error("❌ resume-chat: Email→user_id fallback lookup failed:", lookupErr?.message);
+      }
+    }
 
     // Build the system prompt based on mode
     let systemPrompt;
@@ -165,19 +226,26 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       const responseTimeMs = Date.now() - startTime;
 
       console.log("Azure Response Body:", JSON.stringify(completionResponse, null, 2));
+      console.log("AZURE USAGE:", completionResponse.usage);
 
       // --- Log token usage to azure_token_usage (awaiting) ---
-      await logAzureUsage({
-        lead_id: null,
-        user_id,
-        task_type: 'resume_chat',
-        model: completionResponse.model || process.env.AZURE_OPENAI_DEPLOYMENT,
-        deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
-        azure_request_id: completionResponse.id || null,
-        usage: completionResponse.usage,
-        response_time_ms: responseTimeMs,
-        is_success: true,
-      });
+      try {
+        await logAzureUsage({
+          lead_id: null,
+          user_id,
+          email: email || null,
+          task_type: 'resume_chat',
+          product: 'digital_resume',
+          model: completionResponse.model || process.env.AZURE_OPENAI_MODEL || azureOpenAiDeployment,
+          deployment_name: azureOpenAiDeployment,
+          azure_request_id: completionResponse.id || null,
+          usage: completionResponse.usage,
+          response_time_ms: responseTimeMs,
+          is_success: true,
+        });
+      } catch (loggingError) {
+        console.error("Resume chat usage logging failed; returning the AI response:", loggingError);
+      }
 
       const aiResponse = completionResponse.choices[0].message.content;
       return res.status(200).json({ answer: aiResponse });
@@ -187,18 +255,24 @@ SUGGESTED_QUESTIONS: What is their education?|Do they know Python?|Years of expe
       console.error("Azure OpenAI API Error:", apiError);
 
       // --- Log failure to azure_token_usage (awaiting) ---
-      await logAzureUsage({
-        lead_id: null,
-        user_id,
-        task_type: 'resume_chat',
-        model: process.env.AZURE_OPENAI_DEPLOYMENT,
-        deployment_name: process.env.AZURE_OPENAI_DEPLOYMENT,
-        azure_request_id: null,
-        usage: null,
-        response_time_ms: responseTimeMs,
-        is_success: false,
-        error_message: apiError.message,
-      });
+      try {
+        await logAzureUsage({
+          lead_id: null,
+          user_id,
+          email: email || null,
+          task_type: 'resume_chat',
+          product: 'digital_resume',
+          model: process.env.AZURE_OPENAI_MODEL || azureOpenAiDeployment,
+          deployment_name: azureOpenAiDeployment,
+          azure_request_id: null,
+          usage: null,
+          response_time_ms: responseTimeMs,
+          is_success: false,
+          error_message: apiError.message,
+        });
+      } catch (loggingError) {
+        console.error("Resume chat failure logging failed:", loggingError);
+      }
 
       return res.status(502).json({
         status: apiError.status || 502,

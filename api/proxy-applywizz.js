@@ -6,7 +6,7 @@ export default async function handler(req, res) {
 
     try {
         const fetch = globalThis.fetch;
-        const response = await fetch(`https://applywizz-5i8qccsfs-applywizz-tech-vercels-projects.vercel.app/api/user-details?email=${encodeURIComponent(email)}`);
+        const response = await fetch(`https://applywizz-crm-tool.vercel.app/api/user-details?email=${encodeURIComponent(email)}`);
 
         // Mask 404s so the browser doesn't log network errors
         if (response.status === 404 || !response.ok) {

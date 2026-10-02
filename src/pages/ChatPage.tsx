@@ -12,6 +12,8 @@ const ChatPage: React.FC = () => {
     const openVideo = params.get("openVideo") === "true" || modeParam === 'video';
     const urlFromQuery = params.get("resumeUrl");
 
+    const ownerEmail = params.get("email") || null;
+
     const [resumeUrl, setResumeUrl] = useState<string | null>(urlFromQuery || null);
     const [videoUrl, setVideoUrl] = useState<string | null>(null);
     const [dbPortfolioUrl, setDbPortfolioUrl] = useState<string | null>(null);
@@ -86,10 +88,36 @@ const ChatPage: React.FC = () => {
                 if (isSafeUUID(resumeId)) {
                     [crmResult, regularResult] = await Promise.all([
                         supabase.from("crm_job_requests").select("resume_url, user_id, email").eq("id", resumeId).maybeSingle(),
-                        supabase.from("job_requests").select("resume_path, user_id, candidate_email, recordings(storage_path)").eq("id", resumeId).maybeSingle()
+                        supabase.from("job_requests").select("resume_path, user_id, candidate_email, vercel_portfolio_url, recordings(storage_path)").eq("id", resumeId).maybeSingle()
                     ]);
                 } else {
-                    console.warn("⚠️ ChatPage loadData: resumeId is not a valid UUID, skipping Supabase queries.", resumeId);
+                    // resumeId is a slug like 'profile' — try to resolve owner via email from query params
+                    console.warn("⚠️ ChatPage loadData: resumeId is not a valid UUID, attempting email-based owner lookup.", resumeId);
+                    const emailParam = params.get("email");
+                    if (emailParam) {
+                        try {
+                            const { data: crmUser } = await supabase
+                                .from('digital_resume_by_crm')
+                                .select('user_id, email, resume_url')
+                                .eq('email', emailParam.trim().toLowerCase())
+                                .maybeSingle();
+
+                            if (crmUser?.user_id) {
+                                foundOwnerId = crmUser.user_id;
+                                setOwnerId(foundOwnerId);
+                                console.log("✅ Resolved owner via email lookup:", foundOwnerId);
+
+                                // Also seed resume URL if not provided via query param
+                                if (!foundResumeUrl && crmUser.resume_url) {
+                                    foundResumeUrl = crmUser.resume_url;
+                                }
+                            } else {
+                                console.warn("⚠️ No digital_resume_by_crm record found for email:", emailParam);
+                            }
+                        } catch (emailLookupErr) {
+                            console.error("❌ Email-based owner lookup failed:", emailLookupErr);
+                        }
+                    }
                 }
 
                 // 2. Resolve URLs & Identity from Supabase
@@ -156,18 +184,21 @@ const ChatPage: React.FC = () => {
                     }
                 }
 
-                // 3. Resolve Portfolio (Using user_id column, correctly)
+                // 3. Resolve Portfolio (strictly per job request / resume)
                 if (foundPortfolioUrl) {
                     setDbPortfolioUrl(foundPortfolioUrl);
-                } else if (foundOwnerId) {
+                } else if (resumeId && isSafeUUID(resumeId)) {
                     const { data: portfolioSettings } = await supabase
                         .from('portfolio_settings')
                         .select('url')
-                        .eq('user_id', foundOwnerId)
+                        .eq('request_id', resumeId)
                         .maybeSingle();
 
                     if (portfolioSettings?.url) {
                         foundPortfolioUrl = portfolioSettings.url;
+                        setDbPortfolioUrl(foundPortfolioUrl);
+                    } else if (regularResult.data?.vercel_portfolio_url) {
+                        foundPortfolioUrl = regularResult.data.vercel_portfolio_url;
                         setDbPortfolioUrl(foundPortfolioUrl);
                     }
                 }
@@ -205,11 +236,11 @@ const ChatPage: React.FC = () => {
                                 if (vPortfolioUrl && !foundPortfolioUrl) {
                                     foundPortfolioUrl = vPortfolioUrl;
                                     setDbPortfolioUrl(vPortfolioUrl);
-                                    // Async sync back to DB if we have an owner
-                                    if (foundOwnerId) {
+                                    // Async sync back to DB specifically for this job request
+                                    if (resumeId && isSafeUUID(resumeId)) {
                                         supabase.from('portfolio_settings')
-                                            .upsert({ user_id: foundOwnerId, url: vPortfolioUrl })
-                                            .then(() => console.log("✅ Synced portfolio URL"));
+                                            .insert({ request_id: resumeId, user_id: foundOwnerId || null, email: dbEmail || null, url: vPortfolioUrl })
+                                            .then(() => console.log("✅ Synced portfolio URL for request_id:", resumeId));
                                     }
                                 }
 
@@ -335,6 +366,7 @@ const ChatPage: React.FC = () => {
                             videoUrl={videoUrl}
                             resumeUrl={resumeUrl}
                             ownerId={ownerId}
+                            ownerEmail={ownerEmail}
                             onModeChange={(m) => setPanelMode(m)}
                             isDataLoading={loading}
                             recruiterMode={true}

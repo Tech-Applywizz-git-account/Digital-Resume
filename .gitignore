@@ -6,11 +6,13 @@
 .pnp.js
 
 # testing
+
 /coverage
 
 # production
 /build
 *.sql
+!supabase-functions/migrations/add_azure_token_usage_daily_upsert.sql
 # misc
 .DS_Store
 .env.local
