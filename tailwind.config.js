@@ -32,6 +32,7 @@ export default {
       fontFamily: {
         'inter': ['Inter', 'sans-serif'],
         'display': ['Plus Jakarta Sans', 'sans-serif'],
+        'serif': ['"Playfair Display"', 'Georgia', 'serif'],
       },
       borderRadius: {
         'sm': '9px',

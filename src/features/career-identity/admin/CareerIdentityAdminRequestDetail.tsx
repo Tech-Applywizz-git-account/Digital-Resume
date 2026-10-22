@@ -393,6 +393,7 @@ export default function CareerIdentityAdminRequestDetail() {
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {editing ? (
                     <CareerIdentityAdminEditor
+                        userId={userId || request.userId}
                         initialContent={request.content as CareerIdentityContent}
                         initialThemeId={request.themeId}
                         initialStatus={request.status as CareerIdentityProfileStatus}
@@ -439,7 +440,14 @@ export default function CareerIdentityAdminRequestDetail() {
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-500 font-medium">Theme</p>
-                                        <p className="text-sm text-slate-900 capitalize">{request.themeId || 'Not assigned'}</p>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                            <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{
+                                                backgroundColor: request.themeId === 'zenith' ? '#0f766e' : request.themeId === 'atlas' ? '#881337' : '#2563eb'
+                                            }} />
+                                            <p className="text-sm font-semibold text-slate-900 capitalize">
+                                                {request.themeId || 'Not assigned'}
+                                            </p>
+                                        </div>
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-500 font-medium">Job Title</p>
@@ -540,9 +548,14 @@ export default function CareerIdentityAdminRequestDetail() {
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-500 font-medium mb-1">Theme</p>
-                                        <p className="text-sm font-semibold text-slate-900 capitalize">
-                                            {request.themeId || 'Not assigned'}
-                                        </p>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{
+                                                backgroundColor: request.themeId === 'zenith' ? '#0f766e' : request.themeId === 'atlas' ? '#881337' : '#2563eb'
+                                            }} />
+                                            <p className="text-sm font-semibold text-slate-900 capitalize">
+                                                {request.themeId || 'Not assigned'}
+                                            </p>
+                                        </div>
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-500 font-medium mb-1">Profile Content</p>

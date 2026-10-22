@@ -6,6 +6,8 @@ import { subscriptionService } from '../subscription/subscription.service.js';
 import { neatpassProvider } from './providers/neatpass/neatpass.service.js';
 import { tap2Provider } from './providers/tap2/tap2.service.js';
 import { googleWalletService } from './providers/google/googleWallet.service.js';
+import { googleBannerService } from './providers/google/googleBanner.service.js';
+import { applePassAssetsService } from './providers/apple/applePassAssets.service.js';
 import {
     assertWalletAccess,
     loadWalletCardData,
@@ -100,6 +102,12 @@ class WalletService {
         return googleWalletService.createSaveUrl(data);
     }
 
+    async generateGoogleBanner(castId: string, authenticatedUserId?: string): Promise<Buffer> {
+        const { record, userId } = await assertWalletAccess(castId, authenticatedUserId);
+        const data = await loadWalletCardData(castId, record, userId);
+        return googleBannerService.generateBanner(data);
+    }
+
     async generatePass(castId: string, authenticatedUserId?: string): Promise<Buffer> {
         const credentials = this.loadCredentials();
         if (!credentials) {
@@ -113,8 +121,52 @@ class WalletService {
         }
 
         const data = await loadWalletCardData(castId, record, userId);
-        const { iconPng } = await neatpassProvider.renderAssets(data);
+        const {
+            stripPng,
+            strip2xPng,
+            iconPng,
+            icon2xPng,
+            logoPng,
+            logo2xPng,
+        } = await applePassAssetsService.generatePassAssets(data);
         const publicUrl = data.careerIdentityUrl || publicCareerIdentityUrl(castId);
+
+        const makeLink = (key: string, label: string, title: string, url?: string | null) => {
+            if (!url) return null;
+            let clean = url.trim();
+            if (!clean) return null;
+            if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+                clean = `https://${clean}`;
+            }
+            return {
+                key,
+                label,
+                value: title,
+                attributedValue: `<a href="${clean.replace(/"/g, '&quot;')}">${title} ↗</a>`,
+            };
+        };
+
+        const makeMailto = (email?: string | null) => {
+            if (!email) return null;
+            const clean = email.trim();
+            if (!clean) return null;
+            return {
+                key: 'email',
+                label: 'CONTACT EMAIL',
+                value: clean,
+            };
+        };
+
+        const makeTel = (phone?: string | null) => {
+            if (!phone) return null;
+            const clean = phone.trim();
+            if (!clean) return null;
+            return {
+                key: 'phone',
+                label: 'PHONE NUMBER',
+                value: clean,
+            };
+        };
 
         const passJson = {
             formatVersion: 1,
@@ -123,26 +175,20 @@ class WalletService {
             organizationName: 'ApplyWizz',
             description: `Career Identity — ${data.fullName || 'Professional'}`,
             serialNumber: `ci-${castId}`.slice(0, 64),
-            logoText: 'CAREER IDENTITY',
-            foregroundColor: 'rgb(246, 231, 193)',
-            backgroundColor: 'rgb(10, 14, 20)',
-            labelColor: 'rgb(200, 164, 90)',
-            generic: {
-                primaryFields: [
-                    { key: 'name', label: 'NAME', value: data.fullName || 'Professional' },
-                ],
-                secondaryFields: [
-                    data.jobTitle ? { key: 'role', label: 'ROLE', value: data.jobTitle } : null,
-                    data.location ? { key: 'location', label: 'BASED IN', value: data.location } : null,
-                ].filter(Boolean),
-                auxiliaryFields: [
-                    data.email ? { key: 'email', label: 'EMAIL', value: data.email } : null,
-                    data.phone ? { key: 'phone', label: 'PHONE', value: data.phone } : null,
-                ].filter(Boolean),
+            foregroundColor: 'rgb(241, 251, 254)', // Ice White #F1FBFE
+            backgroundColor: 'rgb(15, 29, 49)',    // Deep Navy #0F1D31
+            labelColor: 'rgb(122, 250, 86)',       // Vibrant Lime #7AFA56
+            storeCard: {
                 backFields: [
-                    { key: 'profile', label: 'CAREER IDENTITY', value: publicUrl },
-                    data.headline ? { key: 'headline', label: 'HEADLINE', value: data.headline } : null,
-                    data.company ? { key: 'company', label: 'COMPANY', value: data.company } : null,
+                    makeLink('profile', 'CAREER IDENTITY PROFILE', 'View Full Digital Resume', publicUrl),
+                    makeLink('resume', 'RESUME (LATEST PDF)', 'Download Resume (PDF)', data.resumeUrl),
+                    makeLink('video', 'INTRO VIDEO (60 SEC)', 'Watch Intro Video', data.videoUrl),
+                    makeLink('portfolio', 'PORTFOLIO & WORK', 'Open Portfolio & Case Studies', data.portfolioUrl),
+                    makeLink('linkedin', 'LINKEDIN PROFILE', 'Connect on LinkedIn', data.linkedin),
+                    makeMailto(data.email),
+                    makeTel(data.phone),
+                    data.headline ? { key: 'headline', label: 'PROFESSIONAL HEADLINE', value: data.headline } : null,
+                    data.company ? { key: 'company', label: 'CURRENT / TARGET COMPANY', value: data.company } : null,
                 ].filter(Boolean),
             },
             barcodes: [
@@ -150,7 +196,7 @@ class WalletService {
                     format: 'PKBarcodeFormatQR',
                     message: publicUrl,
                     messageEncoding: 'iso-8859-1',
-                    altText: 'Scan Career Identity',
+                    altText: 'View my full digital resume',
                 },
             ],
         };
@@ -159,9 +205,11 @@ class WalletService {
             {
                 'pass.json': Buffer.from(JSON.stringify(passJson)),
                 'icon.png': iconPng,
-                'icon@2x.png': iconPng,
-                'logo.png': iconPng,
-                'logo@2x.png': iconPng,
+                'icon@2x.png': icon2xPng,
+                'logo.png': logoPng,
+                'logo@2x.png': logo2xPng,
+                'strip.png': stripPng,
+                'strip@2x.png': strip2xPng,
             },
             {
                 signerCert: credentials.signerCert,
@@ -175,7 +223,7 @@ class WalletService {
             format: 'PKBarcodeFormatQR',
             message: publicUrl,
             messageEncoding: 'iso-8859-1',
-            altText: 'Scan Career Identity',
+            altText: 'Scan to view verified Career Identity',
         });
 
         return pass.getAsBuffer();

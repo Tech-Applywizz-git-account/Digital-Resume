@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import {
     Mail, Layers, BadgeCheck,
     MapPin, Lightbulb, User,
     Linkedin, Menu, Loader2, AlertCircle,
-    Sparkles, GraduationCap, X, Share2, Download, Play
+    Sparkles, GraduationCap, X, Share2, Download, Play, FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../integrations/supabase/client';
@@ -12,10 +12,16 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { ResumeModals } from '../components/ResumeModals';
 import { ShareModal } from '../components/ShareModal';
-import { Scribble } from '../components/CommonElements';
+import { Scribble, Shimmer } from '../components/CommonElements';
 import { HeroSection } from '../components/HeroSection';
 import { SkillsSection } from '../components/ResumeSections';
+import { ExperienceSection } from '../components/ExperienceSection';
+import { ProjectsSection } from '../components/ProjectsSection';
 import type { CareerIdentityProfileResponse } from '../../../types/careerIdentity';
+import {
+    CareerIdentityThemeKey,
+    getThemeTokens,
+} from '../themes/themeRegistry';
 import {
     downloadWalletCard,
     fetchGoogleWalletUrl,
@@ -32,6 +38,7 @@ const getValidLink = (url?: string | null) => {
 
 const CareerIdentityPage: React.FC = () => {
     const location = useLocation();
+    const { castId: routeCastId } = useParams<{ castId?: string }>();
     const searchParams = new URLSearchParams(location.search);
     const emailParam = searchParams.get('email');
     const userIdParam = searchParams.get('userId');
@@ -39,7 +46,7 @@ const CareerIdentityPage: React.FC = () => {
     const jobTitleParam = searchParams.get('jobTitle') || searchParams.get('title') || searchParams.get('headline');
     const canChangeAvatarParam = searchParams.get('canChangeAvatar') === 'true';
     const candidateNameParam = searchParams.get('candidateName') || searchParams.get('name');
-    const castIdParam = searchParams.get('castId') || location.pathname.split('/').pop() || null;
+    const castIdParam = routeCastId || searchParams.get('castId') || location.pathname.split('/').filter(Boolean).pop() || null;
     const videoUrlParam = searchParams.get('videoUrl');
     const autoPlayVideoParam = searchParams.get('autoPlayVideo') === 'true';
     const sourceParam = (searchParams.get('source') === 'pdf' ? 'pdf' : 'website');
@@ -64,30 +71,49 @@ const CareerIdentityPage: React.FC = () => {
         ? localStorage.getItem('ci_preview_resume_url')
         : null;
 
-    const [profile, setProfile] = useState<CareerIdentityProfileResponse | null>(
-        previewContent ? {
-            tier: 'career_identity',
-            profile: {
-                id: 'preview',
-                resumeId: castIdParam || 'preview',
-                userId: null,
-                themeId: previewTheme || 'aurora',
-                status: 'draft',
-                content: JSON.parse(previewContent),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            },
-            derived: {
-                candidateName: JSON.parse(previewContent).hero?.fullName || null,
-                email: JSON.parse(previewContent).contact?.email || null,
-                jobTitle: JSON.parse(previewContent).hero?.headline || null,
-                resumeUrl: previewResumeUrl,
-                videoUrl: previewVideoUrl,
-                portfolioUrl: null,
-            },
-        } as CareerIdentityProfileResponse : null
-    );
-    const [dataLoading, setDataLoading] = useState(!previewContent);
+    const themeParam = searchParams.get('theme');
+
+    const cachedProfileRaw = (!isPreviewMode && castIdParam) ? localStorage.getItem(`ci_profile_${castIdParam}`) : null;
+    let initialCachedProfile: CareerIdentityProfileResponse | null = null;
+    if (cachedProfileRaw) {
+        try { initialCachedProfile = JSON.parse(cachedProfileRaw); } catch { }
+    }
+    const cachedTheme = (!isPreviewMode && castIdParam)
+        ? (localStorage.getItem(`ci_theme_${castIdParam}`) as CareerIdentityThemeKey | null)
+        : null;
+
+    const [profile, setProfile] = useState<CareerIdentityProfileResponse | null>(() => {
+        if (previewContent) {
+            try {
+                const parsed = JSON.parse(previewContent);
+                return {
+                    tier: 'career_identity',
+                    profile: {
+                        id: 'preview',
+                        resumeId: castIdParam || 'preview',
+                        userId: null,
+                        themeId: previewTheme || 'aurora',
+                        status: 'draft',
+                        content: parsed,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    },
+                    derived: {
+                        candidateName: parsed?.hero?.fullName || null,
+                        email: parsed?.contact?.email || null,
+                        jobTitle: parsed?.hero?.headline || null,
+                        resumeUrl: previewResumeUrl,
+                        videoUrl: previewVideoUrl,
+                        portfolioUrl: null,
+                    },
+                } as CareerIdentityProfileResponse;
+            } catch {
+                return null;
+            }
+        }
+        return initialCachedProfile;
+    });
+    const [dataLoading, setDataLoading] = useState(!previewContent && !initialCachedProfile);
     const [dataError, setDataError] = useState<string | null>(null);
 
     // Primary source: career_identity_data content (what admin edits)
@@ -110,6 +136,14 @@ const CareerIdentityPage: React.FC = () => {
 
     const displaySummary = content?.about || '';
     const linkedinUrl = profile?.profile?.content?.contact?.linkedin ? getValidLink(profile.profile.content.contact.linkedin) : undefined;
+    const activeThemeKey: CareerIdentityThemeKey = (
+        profile?.profile?.themeId || 
+        previewTheme || 
+        themeParam || 
+        cachedTheme || 
+        'zenith'
+    ) as CareerIdentityThemeKey;
+    const themeTokens = getThemeTokens(activeThemeKey);
 
     const [isIntroVideoOpen, setIsIntroVideoOpen] = useState(false);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
@@ -157,7 +191,9 @@ const CareerIdentityPage: React.FC = () => {
         if (isPreviewMode) return;
 
         const loadData = async () => {
-            setDataLoading(true);
+            if (!initialCachedProfile) {
+                setDataLoading(true);
+            }
             try {
                 const castId = castIdParam;
                 if (!castId) { setDataLoading(false); return; }
@@ -171,6 +207,14 @@ const CareerIdentityPage: React.FC = () => {
                 const body = await response.json();
                 if (body?.data) {
                     setProfile(body.data);
+                    if (castId) {
+                        try {
+                            localStorage.setItem(`ci_profile_${castId}`, JSON.stringify(body.data));
+                            if (body.data.profile?.themeId) {
+                                localStorage.setItem(`ci_theme_${castId}`, body.data.profile.themeId);
+                            }
+                        } catch { }
+                    }
                 }
             } catch (err: any) {
                 console.error('[CareerIdentityPage] Failed to load data:', err);
@@ -276,20 +320,34 @@ const CareerIdentityPage: React.FC = () => {
         setIsAvatarModalOpen(false);
     };
 
-    const handleDownloadResume = () => {
+    const handleDownloadResume = async () => {
         if (!resumeUrl) return;
-        const link = document.createElement('a');
-        link.href = resumeUrl; link.setAttribute('download', `${displayName}_resume.pdf`);
-        document.body.appendChild(link); link.click(); document.body.removeChild(link);
-        trackEvent('pdf_download', castIdParam || "profile", { source: sourceParam });
-    };
-
-    const handleDownloadDigitalResume = () => {
-        if (!castIdParam || !resumeUrl) return;
         setIsDownloadingResume(true);
-        window.open(`/final-result/${castIdParam}?autoDownload=true&resumeUrl=${encodeURIComponent(resumeUrl)}&candidateName=${encodeURIComponent(displayName)}&email=${encodeURIComponent(displayEmail)}&source=pdf`, '_blank');
-        trackEvent('pdf_download', castIdParam, { source: sourceParam });
-        setIsDownloadingResume(false);
+        trackEvent('pdf_download', castIdParam || "profile", { source: sourceParam });
+        try {
+            const fileName = `${(displayName || 'Resume').replace(/\s+/g, '_')}_resume.pdf`;
+            const response = await fetch(resumeUrl);
+            if (!response.ok) throw new Error('Fetch failed');
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+        } catch {
+            const link = document.createElement('a');
+            link.href = resumeUrl;
+            link.setAttribute('download', `${(displayName || 'Resume').replace(/\s+/g, '_')}_resume.pdf`);
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } finally {
+            setIsDownloadingResume(false);
+        }
     };
 
     const handleDownloadWalletCard = async () => {
@@ -383,7 +441,7 @@ const CareerIdentityPage: React.FC = () => {
     const getDynamicIcon = () => <BadgeCheck size={20} />;
 
     return (
-        <div className={`min-h-screen transition-all duration-1000 ${isHumanMode ? 'bg-amber-50/30' : 'bg-[#f6f6f8]'} ${isHumanMode ? 'selection:bg-amber-100 selection:text-amber-900' : 'selection:bg-blue-100 selection:text-blue-900'} overflow-x-clip`}>
+        <div className={`min-h-screen transition-all duration-1000 ${isHumanMode ? 'bg-amber-50/30 selection:bg-amber-100 selection:text-amber-900' : `${themeTokens.pageBg} ${themeTokens.selection}`} overflow-x-clip`}>
             {dataError && (
                 <div className="fixed bottom-4 left-4 z-[200] flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-xl shadow-md text-xs">
                     <AlertCircle size={14} /> {dataError}
@@ -391,25 +449,31 @@ const CareerIdentityPage: React.FC = () => {
             )}
 
             {/* Header */}
-            <header className={`sticky top-0 z-50 w-full border-b transition-all duration-300 ${scrolled ? 'bg-white/90 backdrop-blur-md border-slate-200 shadow-sm' : 'bg-white border-transparent'}`}>
+            <header className={`sticky top-0 z-50 w-full border-b transition-all duration-300 ${scrolled ? `${themeTokens.headerBg} ${themeTokens.headerBorder} shadow-sm` : 'bg-transparent border-transparent'}`}>
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16 md:h-20">
                         <div className="flex items-center gap-4 md:gap-8">
-                            <div className={`flex items-center gap-2 transition-all duration-700 ${isHumanMode ? 'text-orange-600' : 'text-amber-600'}`}>
-                                <div className={`p-1.5 rounded-lg text-white shadow-lg ${isHumanMode ? 'bg-orange-600 shadow-orange-200/40' : 'bg-blue-600 shadow-blue-200'}`}><Layers size={20} /></div>
-                                <h2 className={`text-[#0e121b] text-lg md:text-xl font-normal tracking-tighter ${isHumanMode ? 'font-hand text-xl md:text-2xl' : ''}`}>{displayName}<span className={isHumanMode ? 'text-orange-600' : 'text-amber-600'}>.</span></h2>
+                            <div className={`flex items-center gap-2 transition-all duration-700 ${isHumanMode ? 'text-orange-600' : themeTokens.logoAccentText}`}>
+                                <div className={`p-1.5 rounded-lg text-white shadow-lg ${isHumanMode ? 'bg-orange-600 shadow-orange-200/40' : themeTokens.logoIconBg}`}><Layers size={20} /></div>
+                                <h2 className={`text-lg md:text-xl font-normal tracking-tighter ${isHumanMode ? 'font-hand text-xl md:text-2xl text-stone-900' : themeTokens.heading}`}>
+                                    {dataLoading && !content ? (
+                                        <Shimmer className="h-6 w-36 rounded-md inline-block align-middle" />
+                                    ) : (
+                                        <>{displayName}<span className={isHumanMode ? 'text-orange-600' : themeTokens.logoAccentText}>.</span></>
+                                    )}
+                                </h2>
                             </div>
                             <nav className="hidden sm:flex items-center gap-3">
                                 {linkedinUrl && (
                                     <a href={linkedinUrl} target="_blank" rel="noopener noreferrer"
-                                        className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-xl border transition-all ${isHumanMode ? 'bg-amber-100/30 border-amber-200/50 text-amber-800 hover:bg-amber-100' : 'bg-slate-50 border-slate-100 text-[#0e121b] hover:bg-blue-600 hover:text-white hover:border-blue-600'}`}>
+                                        className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-xl border transition-all ${isHumanMode ? 'bg-amber-100/30 border-amber-200/50 text-amber-800 hover:bg-amber-100' : themeTokens.navButton}`}>
                                         <Linkedin size={16} />
                                     </a>
                                 )}
                                 {portfolioUrl && (
                                     <a href={getValidLink(portfolioUrl)} target="_blank" rel="noopener noreferrer"
                                         onClick={() => trackEvent('portfolio_click', castIdParam || "profile", { source: sourceParam })}
-                                        className={`flex items-center gap-2 h-9 md:h-10 px-3 md:px-4 rounded-xl border text-xs font-medium transition-all ${isHumanMode ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : 'bg-slate-50 border-slate-100 text-[#0e121b] hover:bg-blue-600 hover:text-white hover:border-blue-600'}`}>
+                                        className={`flex items-center gap-2 h-9 md:h-10 px-3 md:px-4 rounded-xl border text-xs font-medium transition-all ${isHumanMode ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : themeTokens.navButton}`}>
                                         Portfolio
                                     </a>
                                 )}
@@ -424,12 +488,12 @@ const CareerIdentityPage: React.FC = () => {
                                 className={`hidden sm:inline-flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-xs font-normal uppercase tracking-widest transition-all ${isHumanMode ? 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-50 font-hand text-base tracking-normal' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>
                                 <Share2 size={14} /> Share
                             </button>
-                            <button onClick={handleDownloadDigitalResume} disabled={isDownloadingResume}
-                                className={`hidden sm:inline-flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-xs font-normal uppercase tracking-widest transition-all ${isHumanMode ? 'bg-orange-100 text-orange-800 hover:bg-orange-200 font-hand text-base tracking-normal border border-orange-300' : 'bg-[#0B4F6C]/10 text-[#0B4F6C] hover:bg-[#0B4F6C]/20 border border-[#0B4F6C]/20'}`}>
+                            <button onClick={handleDownloadResume} disabled={isDownloadingResume}
+                                className={`hidden sm:inline-flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-xs font-normal uppercase tracking-widest transition-all ${isHumanMode ? 'bg-orange-100 text-orange-800 hover:bg-orange-200 font-hand text-base tracking-normal border border-orange-300' : `${themeTokens.buttonSecondary} border`}`}>
                                 {isDownloadingResume ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Resume
                             </button>
                             <button onClick={() => setIsContactModalOpen(true)}
-                                className={`px-5 md:px-6 py-2 rounded-xl text-xs font-normal uppercase tracking-widest shadow-lg ${isHumanMode ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-200/40' : 'bg-[#0e121b] text-white hover:bg-blue-600 shadow-slate-200'}`}>Contact</button>
+                                className={`px-5 md:px-6 py-2 rounded-xl text-xs font-normal uppercase tracking-widest shadow-lg ${isHumanMode ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-200/40' : themeTokens.buttonPrimary}`}>Contact</button>
                             <button onClick={() => setIsSidebarOpen(true)} className="sm:hidden p-2 text-slate-600"><Menu size={24} /></button>
                         </div>
                     </div>
@@ -484,16 +548,17 @@ const CareerIdentityPage: React.FC = () => {
                             canChangeAvatar={canChangeAvatarParam}
                             setIsIntroVideoOpen={handlePlayIntroWithAvatarCheck}
                             setIsContactModalOpen={() => { setIsContactModalOpen(true); trackEvent('lets_talk', castIdParam || "profile", { source: sourceParam, type: 'hero_contact' }); }}
+                            themeTokens={themeTokens}
                         />
 
                         {displaySummary && (
-                            <div className={`p-6 md:p-8 rounded-[2rem] border transition-all ${isHumanMode ? 'bg-white border-amber-200 shadow-amber-50' : 'bg-white border-slate-200 shadow-sm'}`}>
-                                <h3 className={`text-lg font-bold flex items-center gap-2 mb-4 ${isHumanMode ? 'text-stone-800 font-hand text-2xl tracking-normal' : 'text-[#0e121b]'}`}>
-                                    <Lightbulb size={20} className={isHumanMode ? 'text-amber-600' : 'text-blue-600'} />
+                            <div className={`transition-all ${isHumanMode ? 'p-6 md:p-8 rounded-[2rem] border bg-white border-amber-200 shadow-amber-50' : `${themeTokens.card} ${themeTokens.cardHover}`}`}>
+                                <h3 className={`text-lg font-bold flex items-center gap-2 mb-4 ${isHumanMode ? 'text-stone-800 font-hand text-2xl tracking-normal' : themeTokens.heading}`}>
+                                    <Lightbulb size={20} className={isHumanMode ? 'text-amber-600' : themeTokens.sectionIcon} />
                                     About Me
                                     {isHumanMode && <Scribble className="-bottom-2 left-0 w-full text-amber-500/40" />}
                                 </h3>
-                                <p className={`text-sm md:text-base leading-relaxed ${isHumanMode ? 'text-stone-700 font-hand text-lg tracking-normal' : 'text-slate-700'}`}>{displaySummary}</p>
+                                <p className={`text-sm md:text-base leading-relaxed whitespace-pre-line ${isHumanMode ? 'text-stone-700 font-hand text-lg tracking-normal' : themeTokens.bodyText}`}>{displaySummary}</p>
                             </div>
                         )}
 
@@ -503,7 +568,24 @@ const CareerIdentityPage: React.FC = () => {
                             parsed={profile?.profile?.content}
                             skillGroups={skillGroups}
                             getDynamicIcon={getDynamicIcon}
+                            themeTokens={themeTokens}
                         />
+
+                        {content?.experience && content.experience.length > 0 && (
+                            <ExperienceSection
+                                isHumanMode={isHumanMode}
+                                experience={content.experience}
+                                themeTokens={themeTokens}
+                            />
+                        )}
+
+                        {content?.projects && content.projects.length > 0 && (
+                            <ProjectsSection
+                                isHumanMode={isHumanMode}
+                                projects={content.projects as any}
+                                themeTokens={themeTokens}
+                            />
+                        )}
                     </div>
 
                     {/* Right Sidebar */}
@@ -511,90 +593,131 @@ const CareerIdentityPage: React.FC = () => {
                         <motion.div
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
-                            className={`rounded-2xl border overflow-hidden ${isHumanMode ? 'bg-white border-amber-300 shadow-amber-200/50 rounded-[3rem]' : 'bg-white border-slate-200 shadow-xl'}`}
+                            className={`rounded-2xl border overflow-hidden ${isHumanMode ? 'bg-white border-amber-300 shadow-amber-200/50 rounded-[3rem]' : themeTokens.sidebarCard}`}
                         >
-                            <div className={`p-5 md:p-6 text-white ${isHumanMode ? 'bg-amber-600' : 'bg-[#0e121b]'}`}>
+                            <div className={`p-5 md:p-6 text-white ${isHumanMode ? 'bg-amber-600' : themeTokens.sidebarHeaderBg}`}>
                                 <h3 className={`font-normal flex items-center gap-2 text-sm uppercase tracking-widest ${isHumanMode ? 'font-hand text-2xl' : ''}`}>
-                                    <User size={18} className={isHumanMode ? 'text-amber-200' : 'text-blue-600'} />Profile Overview
+                                    <User size={18} className={isHumanMode ? 'text-amber-200' : 'opacity-80'} />Profile Overview
                                 </h3>
                             </div>
                             <div className="p-5 md:p-6 space-y-4">
-                                <div className="space-y-4">
-                                    {displayTitle && (
-                                        <div className="flex items-start gap-3 md:gap-4">
-                                            <div className={`p-2.5 rounded-xl shrink-0 ${isHumanMode ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600'}`}><BadgeCheck size={18} /></div>
-                                            <div className="min-w-0">
-                                                <p className={`text-[10px] font-normal uppercase tracking-widest mb-1 ${isHumanMode ? 'text-amber-700 font-hand text-sm' : 'text-slate-500'}`}>Headline</p>
-                                                <p className={`text-sm font-medium break-words ${isHumanMode ? 'text-stone-800 font-hand text-lg' : 'text-[#0e121b]'}`}>{displayTitle}</p>
+                                {dataLoading && !content ? (
+                                    <>
+                                        <div className="space-y-4">
+                                            <div className="flex items-start gap-3 md:gap-4">
+                                                <Shimmer className="h-10 w-10 rounded-xl shrink-0" />
+                                                <div className="space-y-1.5 flex-1">
+                                                    <Shimmer className="h-2.5 w-16" />
+                                                    <Shimmer className="h-4 w-32" />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-start gap-3 md:gap-4">
+                                                <Shimmer className="h-10 w-10 rounded-xl shrink-0" />
+                                                <div className="space-y-1.5 flex-1">
+                                                    <Shimmer className="h-2.5 w-16" />
+                                                    <Shimmer className="h-4 w-28" />
+                                                </div>
                                             </div>
                                         </div>
-                                    )}
-                                    {displayEducation && (
-                                        <div className="flex items-start gap-3 md:gap-4">
-                                            <div className={`p-2.5 rounded-xl shrink-0 ${isHumanMode ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600'}`}><GraduationCap size={18} /></div>
-                                            <div className="min-w-0">
-                                                <p className={`text-[10px] font-normal uppercase tracking-widest mb-1 ${isHumanMode ? 'text-amber-700 font-hand text-sm' : 'text-slate-500'}`}>Education</p>
-                                                <p className={`text-sm font-medium break-words ${isHumanMode ? 'text-stone-800 font-hand text-lg' : 'text-[#0e121b]'}`}>{displayEducation}</p>
-                                            </div>
+                                        <div className="space-y-3 pt-2">
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
                                         </div>
-                                    )}
-                                    {displayLocation && (
-                                        <div className="flex items-start gap-3 md:gap-4">
-                                            <div className={`p-2.5 rounded-xl shrink-0 ${isHumanMode ? 'bg-amber-100 text-amber-600' : 'bg-blue-600 text-white'}`}><MapPin size={18} /></div>
-                                            <div className="min-w-0">
-                                                <p className={`text-[10px] font-normal uppercase tracking-widest mb-1 ${isHumanMode ? 'text-amber-700 font-hand text-sm' : 'text-slate-500'}`}>Location</p>
-                                                <p className={`text-sm font-medium break-words ${isHumanMode ? 'text-amber-700 font-hand text-lg' : 'text-blue-600 font-bold'}`}>{displayLocation}</p>
-                                            </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="space-y-4">
+                                            {displayTitle && (
+                                                <div className="flex items-start gap-3 md:gap-4">
+                                                    <div className={`p-2.5 rounded-xl shrink-0 ${isHumanMode ? 'bg-amber-100 text-amber-600' : themeTokens.secondaryBadge}`}><BadgeCheck size={18} /></div>
+                                                    <div className="min-w-0">
+                                                        <p className={`text-[10px] font-normal uppercase tracking-widest mb-1 ${isHumanMode ? 'text-amber-700 font-hand text-sm' : 'text-slate-500'}`}>Headline</p>
+                                                        <p className={`text-sm font-medium break-words ${isHumanMode ? 'text-stone-800 font-hand text-lg' : themeTokens.statValue}`}>{displayTitle}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {displayEducation && (
+                                                <div className="flex items-start gap-3 md:gap-4">
+                                                    <div className={`p-2.5 rounded-xl shrink-0 ${isHumanMode ? 'bg-amber-100 text-amber-600' : themeTokens.secondaryBadge}`}><GraduationCap size={18} /></div>
+                                                    <div className="min-w-0">
+                                                        <p className={`text-[10px] font-normal uppercase tracking-widest mb-1 ${isHumanMode ? 'text-amber-700 font-hand text-sm' : 'text-slate-500'}`}>Education</p>
+                                                        <p className={`text-sm font-medium break-words ${isHumanMode ? 'text-stone-800 font-hand text-lg' : themeTokens.statValue}`}>{displayEducation}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {displayLocation && (
+                                                <div className="flex items-start gap-3 md:gap-4">
+                                                    <div className={`p-2.5 rounded-xl shrink-0 ${isHumanMode ? 'bg-amber-100 text-amber-600' : themeTokens.accentBg}`}><MapPin size={18} /></div>
+                                                    <div className="min-w-0">
+                                                        <p className={`text-[10px] font-normal uppercase tracking-widest mb-1 ${isHumanMode ? 'text-amber-700 font-hand text-sm' : 'text-slate-500'}`}>Location</p>
+                                                        <p className={`text-sm font-medium break-words ${isHumanMode ? 'text-amber-700 font-hand text-lg' : themeTokens.accentText}`}>{displayLocation}</p>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                                <div className="space-y-3 pt-2">
-                                    {videoUrl && (
-                                        <button onClick={() => { setIsIntroVideoOpen(true); setIsVideoMinimized(false); }}
-                                            className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${isHumanMode ? 'bg-[#0e121b] text-white hover:bg-slate-800' : 'bg-[#0e121b] text-white hover:bg-slate-800'}`}>
-                                            <Play size={18} /> Watch Intro
-                                        </button>
-                                    )}
-                                    <button onClick={() => { setIsContactModalOpen(true); trackEvent('lets_talk', castIdParam || "profile", { source: sourceParam, type: 'contact_modal' }); }}
-                                        className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${isHumanMode ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                                        <Mail size={18} />Contact
-                                    </button>
-                                    <button
-                                        onClick={handleAppleWallet}
-                                        disabled={walletLoading || walletActionLoading === 'apple'}
-                                        className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${
-                                            appleWalletReady || walletPassUrl
-                                                ? 'bg-black text-white hover:bg-slate-900'
-                                                : 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                                        }`}
-                                    >
-                                        {walletActionLoading === 'apple'
-                                            ? <Loader2 size={18} className="animate-spin" />
-                                            : <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" /></svg>}
-                                        {appleWalletReady ? 'Add to Apple Wallet' : walletPassUrl ? 'Open Apple Wallet Link' : 'Add to Apple Wallet'}
-                                    </button>
-                                    <button
-                                        onClick={handleGoogleWallet}
-                                        disabled={!googleWalletReady || walletLoading || walletActionLoading === 'google'}
-                                        className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${googleWalletReady ? 'bg-[#0F9D58] text-white hover:bg-[#0B8043]' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
-                                    >
-                                        {walletActionLoading === 'google' ? <Loader2 size={18} className="animate-spin" /> : <Layers size={18} />}
-                                        Add to Google Wallet
-                                    </button>
-                                    <button
-                                        onClick={handleDownloadWalletCard}
-                                        disabled={walletLoading || walletActionLoading === 'card'}
-                                        className="w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all bg-[#0e121b] text-white hover:bg-slate-800"
-                                    >
-                                        {walletActionLoading === 'card' ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-                                        Download Career Identity Card
-                                    </button>
-                                    {showWalletUnavailable && (
-                                        <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-                                            Wallet option not available yet. Please check the pass configuration.
+                                        <div className="space-y-3 pt-2">
+                                            {videoUrl && (
+                                                <button onClick={() => { setIsIntroVideoOpen(true); setIsVideoMinimized(false); }}
+                                                    className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${isHumanMode ? 'bg-[#0e121b] text-white hover:bg-slate-800' : themeTokens.buttonPrimary}`}>
+                                                    <Play size={18} /> Watch Intro
+                                                </button>
+                                            )}
+                                            <button onClick={() => { setIsContactModalOpen(true); trackEvent('lets_talk', castIdParam || "profile", { source: sourceParam, type: 'contact_modal' }); }}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${isHumanMode ? 'bg-amber-600 text-white hover:bg-amber-700' : themeTokens.actionButton}`}>
+                                                <Mail size={18} />Contact
+                                            </button>
+                                            <button
+                                                onClick={() => window.open(`/final-result/${castIdParam || 'profile'}`, '_blank')}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 border shadow-sm active:scale-[0.98] transition-all ${
+                                                    isHumanMode
+                                                        ? 'bg-white text-stone-800 hover:bg-stone-50 border-amber-300'
+                                                        : `${themeTokens.buttonSecondary}`
+                                                }`}
+                                            >
+                                                <FileText size={18} className={isHumanMode ? 'text-amber-600' : themeTokens.accentText} />
+                                                View Digital Resume
+                                            </button>
+                                            <button
+                                                onClick={handleAppleWallet}
+                                                disabled={walletLoading || walletActionLoading === 'apple'}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${
+                                                    appleWalletReady || walletPassUrl
+                                                        ? 'bg-black text-white hover:bg-slate-900'
+                                                        : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                {walletActionLoading === 'apple'
+                                                    ? <Loader2 size={18} className="animate-spin" />
+                                                    : <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" /></svg>}
+                                                {appleWalletReady ? 'Add to Apple Wallet' : walletPassUrl ? 'Open Apple Wallet Link' : 'Add to Apple Wallet'}
+                                            </button>
+                                            <button
+                                                onClick={handleGoogleWallet}
+                                                disabled={!googleWalletReady || walletLoading || walletActionLoading === 'google'}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${googleWalletReady ? 'bg-[#0F9D58] text-white hover:bg-[#0B8043]' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
+                                            >
+                                                {walletActionLoading === 'google' ? <Loader2 size={18} className="animate-spin" /> : <Layers size={18} />}
+                                                Add to Google Wallet
+                                            </button>
+                                            <button
+                                                onClick={handleDownloadWalletCard}
+                                                disabled={walletLoading || walletActionLoading === 'card'}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${isHumanMode ? 'bg-[#0e121b] text-white hover:bg-slate-800' : themeTokens.buttonPrimary}`}
+                                            >
+                                                {walletActionLoading === 'card' ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                                                Download Career Identity Card
+                                            </button>
+                                            {showWalletUnavailable && (
+                                                <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+                                                    Wallet option not available yet. Please check the pass configuration.
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
+                                    </>
+                                )}
                             </div>
                         </motion.div>
                     </div>
@@ -637,7 +760,7 @@ const CareerIdentityPage: React.FC = () => {
                 formStatus={formStatus} statusMessage={statusMessage}
                 isAvatarModalOpen={isAvatarModalOpen} setIsAvatarModalOpen={setIsAvatarModalOpen}
                 onAvatarSelect={handleAvatarSelect}
-                initialGender={displayName.toLowerCase().endsWith('a') || displayName.toLowerCase().includes('girl') || displayName.toLowerCase().includes('she') ? 'girl' : 'boy'}
+                initialGender={profile?.profile?.content?.hero?.gender || (displayName.toLowerCase().endsWith('a') || displayName.toLowerCase().includes('female') || displayName.toLowerCase().includes('she') ? 'Female' : 'Male')}
             />
         </div>
     );

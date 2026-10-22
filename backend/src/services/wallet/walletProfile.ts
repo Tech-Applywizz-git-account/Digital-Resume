@@ -3,6 +3,7 @@ import { crmJobRequestRepository } from '../../repositories/crmJobRequest.reposi
 import { jobRequestRepository } from '../../repositories/jobRequest.repository.js';
 import { subscriptionService } from '../subscription/subscription.service.js';
 import { ForbiddenError, NotFoundError } from '../../types/errors.js';
+import { getDatabase } from '../../config/database.js';
 import type { WalletCardData } from './wallet.types.js';
 
 const DEFAULT_WALLET_GREETING = "Hi ✋, I'm";
@@ -69,12 +70,103 @@ export async function assertWalletAccess(castId: string, authenticatedUserId?: s
     return { record, userId, published };
 }
 
+function calculateExperienceYears(expList?: any[], fallback?: any): string {
+    if (fallback) {
+        const str = String(fallback).trim();
+        const match = str.match(/\d+/);
+        if (match) return `${match[0]}+`;
+        return str;
+    }
+    if (!Array.isArray(expList) || expList.length === 0) return '3+';
+    let totalMonths = 0;
+    for (const item of expList) {
+        if (!item?.startDate) continue;
+        const start = new Date(item.startDate);
+        const end = item.endDate && item.endDate.toLowerCase() !== 'present' ? new Date(item.endDate) : new Date();
+        if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+            const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+            if (months > 0) totalMonths += months;
+        }
+    }
+    const years = Math.max(1, Math.round(totalMonths / 12));
+    return `${years}`;
+}
+
+async function resolveCandidateAssets(castId: string, record: any, userId: string) {
+    const isCRM = 'company_application_email' in record || 'resume_url' in record;
+    const db = getDatabase();
+
+    // 1. Resume
+    const rawResume = record.resume_url || record.resume_path;
+    let resumeUrl: string | null = null;
+    if (rawResume) {
+        if (rawResume.startsWith('http://') || rawResume.startsWith('https://')) {
+            resumeUrl = rawResume;
+        } else {
+            const bucket = isCRM ? 'CRM_users_resumes' : 'resumes';
+            try {
+                resumeUrl = db.storage.from(bucket).getPublicUrl(rawResume).data?.publicUrl ?? null;
+            } catch { /* ignore */ }
+        }
+    }
+
+    // 2. Video
+    let videoUrl: string | null = null;
+    try {
+        if (isCRM) {
+            const { data: crmVideo } = await db
+                .from('crm_recordings')
+                .select('video_url')
+                .eq('job_request_id', castId)
+                .order('created_at', { ascending: false })
+                .limit(1);
+            if (crmVideo?.[0]?.video_url) {
+                const raw = crmVideo[0].video_url;
+                videoUrl = raw.startsWith('http') ? raw : db.storage.from('CRM_users_recordings').getPublicUrl(raw).data?.publicUrl ?? null;
+            }
+        } else {
+            const { data: regVideo } = await db
+                .from('recordings')
+                .select('storage_path')
+                .eq('job_request_id', castId)
+                .order('created_at', { ascending: false })
+                .limit(1);
+            if (regVideo?.[0]?.storage_path) {
+                const raw = regVideo[0].storage_path;
+                videoUrl = raw.startsWith('http') ? raw : db.storage.from('recordings').getPublicUrl(raw).data?.publicUrl ?? null;
+            }
+        }
+    } catch { /* ignore */ }
+
+    // 3. Portfolio
+    let portfolioUrl: string | null = null;
+    try {
+        const { data: portfolio } = await db
+            .from('portfolio_settings')
+            .select('url')
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (portfolio?.url) portfolioUrl = portfolio.url;
+    } catch { /* ignore */ }
+
+    return { resumeUrl, videoUrl, portfolioUrl };
+}
+
 export async function loadWalletCardData(castId: string, record: any, userId: string): Promise<WalletCardData> {
     const userProfile = await profileRepository.findById(userId);
     const ciData = (userProfile?.career_identity_data || {}) as Record<string, any>;
     const content: Record<string, any> = ciData.content || {};
     const hero: Record<string, any> = content.hero || {};
     const contact: Record<string, any> = content.contact || {};
+
+    const assets = await resolveCandidateAssets(castId, record, userId);
+
+    const skillsCount = Array.isArray(content.skills) && content.skills.length > 0 ? content.skills.length : 12;
+    const projectsCount = Array.isArray(content.projects) && content.projects.length > 0 ? content.projects.length : 8;
+    const experienceYears = calculateExperienceYears(content.experience, hero.experienceYears);
+    const bookingUrl = `${publicCareerIdentityUrl(castId)}?action=schedule`;
+    const openToWork = hero.openToWork !== undefined ? !!hero.openToWork : true;
+    const openToWorkText = hero.openToWorkText || hero.tagline || hero.headline || 'Looking for full-time and contract opportunities in AI/ML, Data Analytics and related roles.';
 
     return {
         fullName: hero.fullName || userProfile?.full_name || userProfile?.first_name || null,
@@ -88,11 +180,19 @@ export async function loadWalletCardData(castId: string, record: any, userId: st
         careerIdentityUrl: publicCareerIdentityUrl(castId),
         castId,
         company: record.company_name || null,
-        verified: !!hero.verified,
-        openToWork: !!hero.openToWork,
+        verified: hero.verified !== undefined ? !!hero.verified : true,
+        openToWork,
         openToRelocate: !!hero.openToRelocate,
         remote: !!hero.remote,
         immediateJoiner: !!hero.immediateJoiner,
+        experienceYears,
+        skillsCount,
+        projectsCount,
+        resumeUrl: assets.resumeUrl,
+        videoUrl: assets.videoUrl,
+        portfolioUrl: contact.website || assets.portfolioUrl,
+        bookingUrl,
+        openToWorkText: openToWork ? openToWorkText : null,
     };
 }
 

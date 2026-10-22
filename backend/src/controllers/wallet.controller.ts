@@ -67,6 +67,25 @@ export const walletController = {
         }
     }),
 
+    getGoogleBanner: asyncHandler(async (req: Request, res: Response) => {
+        const castId = req.params.castId as string;
+        if (!castId) {
+            return res.status(400).json({ success: false, message: 'castId is required' });
+        }
+
+        try {
+            const buffer = await walletService.generateGoogleBanner(castId, req.user?.id);
+            res.set({
+                'Content-Type': 'image/png',
+                'Content-Length': buffer.length.toString(),
+                'Cache-Control': 'public, max-age=300',
+            });
+            return res.status(200).send(buffer);
+        } catch (err: any) {
+            return sendWalletError(res, err);
+        }
+    }),
+
     getWalletCard: asyncHandler(async (req: Request, res: Response) => {
         const castId = req.params.castId as string;
         if (!castId) {

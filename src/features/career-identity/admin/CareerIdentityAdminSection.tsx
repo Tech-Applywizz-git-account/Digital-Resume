@@ -227,7 +227,26 @@ export default function CareerIdentityAdminSection() {
                                         <td className="py-3 px-4 text-slate-600">{req.email}</td>
                                         <td className="py-3 px-4">{getWorkflowBadge(req.workflowStatus)}</td>
                                         <td className="py-3 px-4">{getPublishBadge(req.status)}</td>
-                                        <td className="py-3 px-4 text-slate-600 capitalize">{req.themeId || '—'}</td>
+                                        <td className="py-3 px-4">
+                                            {req.themeId ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border"
+                                                    style={{
+                                                        backgroundColor: req.themeId === 'zenith' ? '#f0fdfa' : req.themeId === 'atlas' ? '#fff1f2' : '#eff6ff',
+                                                        borderColor: req.themeId === 'zenith' ? '#ccfbf1' : req.themeId === 'atlas' ? '#ffe4e6' : '#dbeafe',
+                                                        color: req.themeId === 'zenith' ? '#0f766e' : req.themeId === 'atlas' ? '#881337' : '#1d4ed8'
+                                                    }}
+                                                >
+                                                    <span className="w-1.5 h-1.5 rounded-full"
+                                                        style={{
+                                                            backgroundColor: req.themeId === 'zenith' ? '#0f766e' : req.themeId === 'atlas' ? '#881337' : '#2563eb'
+                                                        }}
+                                                    />
+                                                    <span className="capitalize">{req.themeId}</span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-400">—</span>
+                                            )}
+                                        </td>
                                         <td className="py-3 px-4 text-slate-500 text-xs">{formatDate(req.submissionDate)}</td>
                                         <td className="py-3 px-4 text-slate-500 text-xs">{formatDate(req.updatedAt)}</td>
                                         <td className="py-3 px-4 text-center">

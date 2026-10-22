@@ -11,6 +11,7 @@ const router = Router();
 router.get('/:castId/status', authenticateOptional, walletController.getStatus);
 router.get('/:castId/apple-wallet-pass', authenticateOptional, walletController.getAppleWalletPass);
 router.get('/:castId/google-wallet', authenticateOptional, walletController.getGoogleWalletSaveUrl);
+router.get('/:castId/banner.png', authenticateOptional, walletController.getGoogleBanner);
 router.get('/:castId/card', authenticateOptional, walletController.getWalletCard);
 
 export { router as walletRouter };

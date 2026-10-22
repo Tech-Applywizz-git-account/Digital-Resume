@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button";
-import { Download, Play, ArrowLeft, LogOut, MessageSquare, Link, Copy, CheckCircle, Loader2, X, AlertCircle, Link2, Pencil } from "lucide-react";
+import { Download, Play, ArrowLeft, LogOut, MessageSquare, Link, Copy, CheckCircle, Loader2, X, AlertCircle, Link2, Pencil, Sparkles } from "lucide-react";
 import { useAuthContext } from "../contexts/AuthContext";
 import { PDFDocument, PDFName, PDFNumber, PDFArray, PDFString, rgb } from "pdf-lib";
 import { supabase } from "../integrations/supabase/client";
@@ -975,9 +975,12 @@ const FinalResult: React.FC = () => {
         ? `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}${resumeUrlParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`
         : `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}${resumeUrlParam}&source=pdf&mode=chat`;
 
-      // Play Intro button → this app's final-result page
+      // Play Intro button → Career Identity page if career_identity, else final-result page
+      const isCareerIdentity = tier === 'career_identity';
       const portfolioParam = hasPortfolio ? `&portfolio=${encodeURIComponent(portfolioUrl)}` : '';
-      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}${resumeUrlParam}${portfolioParam}`;
+      const playIntroUrl = isCareerIdentity
+        ? `${window.location.origin}/career-identity/${currentRequestId}?source=pdf&autoPlayVideo=true${emailParam}${resumeUrlParam}`
+        : `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}${resumeUrlParam}${portfolioParam}`;
 
       const hasVideo = !!videoUrl;
 
@@ -1395,15 +1398,7 @@ const FinalResult: React.FC = () => {
                 const currentCastId = castId || idFromQuery || "profile";
                 trackEvent('play_intro', currentCastId);
 
-                // Tier 2 (Career Identity): navigate to the dedicated
-                // profile page instead of opening the inline video panel.
-                if (tier === 'career_identity') {
-                  navigate(`/career-identity/${currentCastId}`);
-                  return;
-                }
-
-                // Tier 1 (Digital Resume): unchanged — play the intro
-                // video in place on this same page.
+                // Play the intro video in place on this same page
                 const params = new URLSearchParams(location.search);
                 params.set('mode', 'video');
                 navigate(`${location.pathname}?${params.toString()}`, { replace: true });
@@ -1426,19 +1421,33 @@ const FinalResult: React.FC = () => {
             </button>
           )}
 
+          {tier === 'career_identity' && (
+            <button
+              onClick={() => {
+                const currentCastId = castId || idFromQuery || "profile";
+                navigate(`/career-identity/${currentCastId}`);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 text-white border-2 border-amber-200 hover:brightness-110 shadow-[2px_2px_4.1px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap text-xs md:text-sm font-semibold"
+            >
+              <Sparkles className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0 text-white" />
+              <span className="hidden min-[450px]:inline">Career Identity</span>
+              <span className="min-[450px]:hidden text-[11px]">CI</span>
+            </button>
+          )}
+
           {!!portfolioUrl && (
             <button
               onClick={() => {
                 const currentCastId = castId || idFromQuery || "profile";
+                trackEvent('lets_talk', currentCastId);
+
                 const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
                 const emailParamForChat = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
                 const resumeUrlParamForChat = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
-                const portfolioParamForChat = portfolioUrl ? `&portfolio=${encodeURIComponent(portfolioUrl)}` : '';
+                const portfolioParamForChat = `&portfolio=${encodeURIComponent(portfolioUrl)}`;
 
                 // Redirect to the dedicated Portfolio + Chat page
                 navigate(`/chat?resumeId=${currentCastId}${emailParamForChat}${resumeUrlParamForChat}${portfolioParamForChat}&mode=chat`);
-
-                trackEvent('lets_talk', currentCastId);
               }}
               className="flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[-1px_1px_4px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
               style={{

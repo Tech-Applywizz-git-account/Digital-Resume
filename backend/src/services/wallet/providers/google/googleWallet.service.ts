@@ -32,60 +32,70 @@ export class GoogleWalletService {
             throw new Error(this.getUnavailableMessage());
         }
 
-        const classSuffix = process.env.GOOGLE_WALLET_CLASS_SUFFIX || 'career_identity';
-        const classId = `${issuerId}.${classSuffix}`;
+        const classId = process.env.GOOGLE_WALLET_CLASS_ID || `${issuerId}.${process.env.GOOGLE_WALLET_CLASS_SUFFIX || 'career_identity'}`;
         const careerIdentityUrl = this.safeUrl(data.careerIdentityUrl);
         const linkedinUrl = this.safeUrl(data.linkedin);
-        const imageUrl = this.safeUrl(data.profileImageUrl);
-        const objectVersion = crypto
-            .createHash('sha1')
-            .update(JSON.stringify({
-                castId: data.castId,
-                careerIdentityUrl,
-                fullName: data.fullName,
-                jobTitle: data.jobTitle,
-                headline: data.headline,
-                company: data.company,
-                email: data.email,
-                phone: data.phone,
-                location: data.location,
-            }))
-            .digest('hex')
-            .slice(0, 10);
-        const objectId = `${issuerId}.ci_${this.safeId(data.castId).slice(0, 40)}_${objectVersion}`;
-        const origins = (process.env.GOOGLE_WALLET_ORIGINS || process.env.CORS_ORIGIN || '')
-            .split(',')
-            .map((o) => o.trim())
-            .filter(Boolean);
+        const resumeUrl = this.safeUrl(data.resumeUrl);
+        const videoUrl = this.safeUrl(data.videoUrl || (careerIdentityUrl ? `${careerIdentityUrl}?mode=video` : null));
+        const portfolioUrl = this.safeUrl(data.portfolioUrl);
+        const bookingUrl = this.safeUrl(data.bookingUrl || (careerIdentityUrl ? `${careerIdentityUrl}?action=schedule` : null));
+        const aiChatUrl = this.safeUrl(careerIdentityUrl ? `${careerIdentityUrl}?mode=chat` : null);
+        const emailActionUrl = data.email
+            ? this.safeUrl(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(data.email)}`)
+            : null;
 
-        const claims = {
+        const baseUrl = (
+            process.env.BACKEND_PUBLIC_URL ||
+            process.env.API_BASE_URL ||
+            process.env.CAREER_IDENTITY_PUBLIC_URL ||
+            'https://applywizz.com'
+        ).replace(/\/$/, '');
+        const bannerUrl = `${baseUrl}/api/v1/wallet/${encodeURIComponent(data.castId)}/banner.png?v=${Date.now()}`;
+        const logoUrl = `${baseUrl}/logo2.jpg?v=1`;
+
+        const objectVersion = Date.now().toString(36);
+        const objectId = `${issuerId}.ci_${this.safeId(data.castId).slice(0, 30)}_${objectVersion}`;
+        const isHttpsPublic = (urlStr: string) => {
+            try {
+                const u = new URL(urlStr);
+                return u.protocol === 'https:' && u.hostname !== 'localhost' && u.hostname !== '127.0.0.1';
+            } catch {
+                return false;
+            }
+        };
+
+        // Only attach the dynamic hero banner if a public backend URL is explicitly configured
+        // (e.g. deployed on Render or an active HTTPS tunnel). Otherwise omit it so local testing
+        // saves cleanly without Google crashing on dead or unreachable image endpoints.
+        const hasPublicBackend = !!process.env.BACKEND_PUBLIC_URL && isHttpsPublic(process.env.BACKEND_PUBLIC_URL);
+
+        const heroImage = hasPublicBackend && isHttpsPublic(bannerUrl)
+            ? {
+                sourceUri: { uri: bannerUrl },
+                contentDescription: this.localized(data.fullName ? `${data.fullName} - Career Identity` : 'Career Identity Banner'),
+            }
+            : undefined;
+
+        const logoImage = hasPublicBackend && isHttpsPublic(logoUrl)
+            ? {
+                sourceUri: { uri: logoUrl },
+                contentDescription: this.localized('Apply Wizz Logo'),
+            }
+            : undefined;
+
+        // Note: For direct window.open() links, omitting origins allows seamless saving
+        // without cross-origin tab restrictions on pay.google.com.
+        const claims: Record<string, any> = {
             iss: account.client_email,
             aud: 'google',
             typ: 'savetowallet',
             iat: Math.floor(Date.now() / 1000),
-            origins,
             payload: {
                 genericClasses: [
                     {
                         id: classId,
-                        issuerName: 'ApplyWizz',
-                        reviewStatus: 'UNDER_REVIEW',
-                        classTemplateInfo: {
-                            cardTemplateOverride: {
-                                cardRowTemplateInfos: [
-                                    {
-                                        twoItems: {
-                                            startItem: {
-                                                firstValue: { fields: [{ fieldPath: "object.textModulesData['email']" }] },
-                                            },
-                                            endItem: {
-                                                firstValue: { fields: [{ fieldPath: "object.textModulesData['location']" }] },
-                                            },
-                                        },
-                                    },
-                                ],
-                            },
-                        },
+                        issuerName: 'Apply Wizz',
+                        reviewStatus: (process.env.GOOGLE_WALLET_REVIEW_STATUS || 'UNDER_REVIEW') as any,
                     },
                 ],
                 genericObjects: [
@@ -93,31 +103,37 @@ export class GoogleWalletService {
                         id: objectId,
                         classId,
                         state: 'ACTIVE',
-                        hexBackgroundColor: '#0A0E14',
-                        heroImage: imageUrl
-                            ? { sourceUri: { uri: imageUrl }, contentDescription: this.localized(data.fullName || 'Portrait') }
-                            : undefined,
-                        cardTitle: this.localized('Career Identity'),
-                        header: this.localized(data.fullName || 'Professional'),
-                        subheader: this.localized(data.jobTitle || data.headline || 'ApplyWizz'),
-                        logo: imageUrl
-                            ? { sourceUri: { uri: imageUrl }, contentDescription: this.localized(data.fullName || 'Portrait') }
-                            : undefined,
+                        hexBackgroundColor: '#0F1D31',
+                        heroImage,
+                        cardTitle: this.localized('Apply Wizz'),
+                        header: this.localized(data.fullName || 'Digital Resume'),
+                        subheader: this.localized(data.jobTitle || 'Digital Resume Card'),
+                        logo: logoImage,
                         barcode: {
                             type: 'QR_CODE',
                             value: careerIdentityUrl || data.castId,
-                            alternateText: 'Scan Career Identity',
+                            alternateText: 'View my full digital resume',
                         },
                         textModulesData: [
+                            // 3-Stat Metric Row
+                            { id: 'experience', header: 'EXPERIENCE', body: `${data.experienceYears || '3'} yrs` },
+                            { id: 'skills', header: 'SKILLS', body: `${data.skillsCount || 12}` },
+                            { id: 'projects', header: 'PROJECTS', body: `${data.projectsCount || 8}` },
+                            // Details Screen Info
+                            data.location ? { id: 'location', header: 'LOCATION', body: data.location } : null,
                             data.email ? { id: 'email', header: 'EMAIL', body: data.email } : null,
                             data.phone ? { id: 'phone', header: 'PHONE', body: data.phone } : null,
-                            data.location ? { id: 'location', header: 'LOCATION', body: data.location } : null,
                             data.company ? { id: 'company', header: 'COMPANY', body: data.company } : null,
                         ].filter(Boolean),
                         linksModuleData: {
                             uris: [
-                                careerIdentityUrl ? { uri: careerIdentityUrl, description: 'Open Career Identity' } : null,
-                                linkedinUrl ? { uri: linkedinUrl, description: 'LinkedIn' } : null,
+                                resumeUrl ? { uri: resumeUrl, description: 'View Resume (Latest PDF)' } : null,
+                                videoUrl ? { uri: videoUrl, description: 'Intro Video (60 sec)' } : null,
+                                portfolioUrl ? { uri: portfolioUrl, description: 'Portfolio & Case Studies' } : null,
+                                aiChatUrl ? { uri: aiChatUrl, description: 'AI Recruiter Q&A' } : null,
+                                careerIdentityUrl ? { uri: careerIdentityUrl, description: 'View Full Profile' } : null,
+                                emailActionUrl ? { uri: emailActionUrl, description: 'Email Me' } : null,
+                                linkedinUrl ? { uri: linkedinUrl, description: 'LinkedIn Profile' } : null,
                             ].filter(Boolean),
                         },
                     },

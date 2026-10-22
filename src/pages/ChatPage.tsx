@@ -255,12 +255,6 @@ const ChatPage: React.FC = () => {
                 // Final updates to state
                 setResumeUrl(foundResumeUrl);
 
-                // 5. Final validation - redirect if we literally have nothing to show for a non-profile request
-                if (!foundPortfolioUrl && resumeId !== 'profile') {
-                    console.warn("⚠️ No portfolio found for ID, redirecting to result page:", resumeId);
-                    window.location.replace(`${window.location.origin}/final-result/${resumeId}?from=pdf&source=pdf&id=${resumeId}`);
-                }
-
             } catch (err) {
                 console.error("ChatPage load error:", err);
             } finally {
@@ -296,13 +290,26 @@ const ChatPage: React.FC = () => {
                     ${isPanelOpen ? 'h-[40vh] md:h-full flex-1' : 'h-full flex-1'}
                 `}
             >
-                <iframe
-                    ref={iframeRef}
-                    src={portfolioUrl || ""}
-                    title="Portfolio"
-                    className="w-full h-full border-0 block"
-                    allow="fullscreen"
-                />
+                {portfolioUrl ? (
+                    <iframe
+                        ref={iframeRef}
+                        src={portfolioUrl}
+                        title="Portfolio"
+                        className="w-full h-full border-0 block"
+                        allow="fullscreen"
+                    />
+                ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+                        <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center mb-4 border border-white/10">
+                            <svg className="w-8 h-8 text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                        </div>
+                        <h2 className="text-xl font-bold mb-2">Interactive Portfolio & AI Chat</h2>
+                        <p className="text-slate-400 text-sm max-w-md mb-6">Ask questions on the right to interact with the candidate's verified background and resume.</p>
+                        <button onClick={() => window.location.href = `/final-result/${resumeId || 'profile'}`} className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-xs font-semibold transition-all">
+                            View Digital Resume
+                        </button>
+                    </div>
+                )}
 
                 {loading && (
                     <div className="absolute inset-0 bg-black/15 flex items-center justify-center pointer-events-none z-10">

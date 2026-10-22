@@ -65,6 +65,21 @@ export default defineConfig({
             }
             return;
           }
+          if (req.url && req.url.startsWith('/api/generate-introduction') && req.method === 'POST') {
+            try {
+              res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.end(JSON.stringify({
+                success: true,
+                introduction: "Hello, my name is Alex Morgan. I am an experienced software engineer specializing in scalable full-stack development, modern cloud architectures, and intuitive web interfaces. Throughout my career, I have delivered resilient solutions, elevated performance, and championed engineering excellence. I am excited about the opportunity to bring my skills, problem-solving mindset, and dedication to your engineering team."
+              }));
+              return;
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: err.message }));
+              return;
+            }
+          }
           next();
         });
       }

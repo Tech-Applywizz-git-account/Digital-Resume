@@ -11,6 +11,7 @@
     "start": "npm run build && node server.js"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.1.0",
     "@paypal/react-paypal-js": "^8.9.2",
     "@pdf-lib/fontkit": "^1.1.1",
     "@supabase/supabase-js": "^2.76.1",
@@ -20,6 +21,7 @@
     "docx": "^9.5.1",
     "dotenv": "^17.2.3",
     "express": "^4.22.2",
+    "fix-webm-duration": "^1.0.6",
     "framer-motion": "^10.16.4",
     "gsap": "^3.12.2",
     "html2pdf.js": "^0.12.1",

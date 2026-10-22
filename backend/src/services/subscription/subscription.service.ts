@@ -1,8 +1,10 @@
 import { profileRepository, type ProfileRecord } from '../../repositories/profile.repository.js';
+import { userRepository } from '../../repositories/user.repository.js';
 import { jobRequestRepository } from '../../repositories/jobRequest.repository.js';
 import { crmJobRequestRepository } from '../../repositories/crmJobRequest.repository.js';
 import { crmUserRepository, type CrmUserRecord } from '../../repositories/crmUser.repository.js';
 import { getDatabase } from '../../config/database.js';
+import { environment } from '../../config/environment.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../types/errors.js';
 import { logger } from '../../logger/index.js';
 import { randomUUID } from 'node:crypto';
@@ -47,11 +49,15 @@ function asLogArray(raw: unknown): TierChangeLogEntry[] {
 }
 
 async function verifyAdmin(email: string): Promise<void> {
+    const normalized = email.toLowerCase().trim();
+    if (!normalized) {
+        throw new ForbiddenError('Admin access required');
+    }
     const db = getDatabase();
     const { data } = await db
         .from('crm_admins')
         .select('email')
-        .eq('email', email)
+        .ilike('email', normalized)
         .maybeSingle();
 
     if (!data) {
@@ -152,6 +158,13 @@ export class SubscriptionService {
         };
 
         const logs = await this.appendLog(profile.id, params.toTier, entry);
+
+        // Sync tier update to public.users table as well
+        try {
+            await userRepository.updateTier(profile.id, params.toTier);
+        } catch (userTierErr) {
+            logger.warn({ err: userTierErr, userId: profile.id }, 'Could not sync tier to users table');
+        }
 
         logger.info({
             event: 'admin_tier_switch',

@@ -1,14 +1,19 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../integrations/supabase/client";
 import { useAuth } from "../contexts/AuthContext";
 import { showToast } from "../components/ui/toast";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, RotateCcw, Check, Video } from "lucide-react";
 import { isSafeUUID } from "../utils/uuidHelpers";
+import { useFaceDetection } from "../hooks/useFaceDetection";
+import { FaceGuideOverlay } from "../components/recording/FaceGuideOverlay";
+import { injectWebmDuration } from "../utils/fixWebmDuration";
+
 
 /**
  * Enhanced Camera/Recorder Page
  * Ensures hardware is released properly upon completion or navigation.
+ * Features Face-Gated Recording: recording automatically pauses when no face is visible.
  */
 const Record: React.FC = () => {
   const navigate = useNavigate();
@@ -18,24 +23,46 @@ const Record: React.FC = () => {
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
+  const guideRef = useRef<HTMLDivElement>(null);
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<HTMLSpanElement>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const elapsedSecondsRef = useRef<number>(0);
+  const scrollOffsetYRef = useRef<number>(0);
 
   // State
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recorderReady, setRecorderReady] = useState(false);
-  const [state, setState] = useState<"idle" | "recording">("idle");
+  const [state, setState] = useState<"idle" | "recording" | "preview">("idle");
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [recordedDuration, setRecordedDuration] = useState<number>(0);
+  const [isAutoPaused, setIsAutoPaused] = useState(false);
+  const [resumeCountdown, setResumeCountdown] = useState<number | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [timer, setTimer] = useState("0:00");
-  const [startTime, setStartTime] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
   const [teleprompterText, setTeleprompterText] = useState("");
   const [teleprompterSpeed, setTeleprompterSpeed] = useState(1.0);
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
   const [checkingCredits, setCheckingCredits] = useState(false);
+  const [startAttemptWarning, setStartAttemptWarning] = useState<string | null>(null);
+  const [shakeButton, setShakeButton] = useState(false);
+  const warningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 🔹 Real-time client-side face detection & outline framing
+  const { isFaceDetected, isFaceAligned, alignmentStatus, isModelLoading } = useFaceDetection({
+    videoRef,
+    guideRef,
+    enabled: recorderReady && state !== "preview",
+  });
+
+
+
+
 
   // ------------------------------------------
   // Core Logic Helpers
@@ -69,19 +96,70 @@ const Record: React.FC = () => {
     console.log("📷 Camera hardware completely released");
   };
 
-  const resetTimer = () => {
+  const formatTime = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
+
+  const startTimer = () => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    timerIntervalRef.current = setInterval(() => {
+      elapsedSecondsRef.current += 1;
+      setTimer(formatTime(elapsedSecondsRef.current));
+    }, 1000);
+  };
+
+  const pauseTimer = () => {
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
+  };
+
+  const resumeTimer = () => {
+    startTimer();
+  };
+
+  const resetTimer = () => {
+    pauseTimer();
+    elapsedSecondsRef.current = 0;
     setTimer("0:00");
   };
 
+  const startTeleprompterScroll = () => {
+    if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
+    const speed = parseFloat(localStorage.getItem("teleprompterSpeed") || "1");
+    scrollIntervalRef.current = setInterval(() => {
+      scrollOffsetYRef.current -= 0.08 * speed;
+      if (teleprompterRef.current) {
+        teleprompterRef.current.style.transform = `translate(-50%, ${scrollOffsetYRef.current}%)`;
+      }
+      if (scrollOffsetYRef.current < -200) {
+        if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
+      }
+    }, 40);
+  };
+
+  const pauseTeleprompterScroll = () => {
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+  };
+
+  const resumeTeleprompterScroll = () => {
+    startTeleprompterScroll();
+  };
+
   const resetTeleprompterPosition = () => {
+    pauseTeleprompterScroll();
+    scrollOffsetYRef.current = 0;
     if (teleprompterRef.current) {
       teleprompterRef.current.style.transform = "translate(-50%, 0%)";
     }
   };
+
 
   // 🔹 Load teleprompter text
   useEffect(() => {
@@ -141,81 +219,164 @@ const Record: React.FC = () => {
     checkCredits();
   }, [user]);
 
-  // 🔹 Camera + Recorder Initialization
-  useEffect(() => {
-    let isMounted = true;
-    
-    const setupCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            aspectRatio: 16 / 9,
-            frameRate: { ideal: 30, max: 60 },
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-          },
-        });
+  // 🔹 Camera + Recorder Setup
+  const handleRecordingStopRef = useRef<() => void>(() => {});
 
-        if (!isMounted) {
-          stream.getTracks().forEach(track => track.stop());
-          return;
-        }
+  const setupCamera = useCallback(async () => {
+    try {
+      setRecorderReady(false);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          aspectRatio: 16 / 9,
+          frameRate: { ideal: 30, max: 60 },
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => videoRef.current?.play();
-          streamRef.current = stream;
-          stream.getVideoTracks().forEach((track) => (track.enabled = true));
-        }
-
-        await new Promise((r) => setTimeout(r, 800)); // small wait for tracks
-        if (!isMounted) return;
-
-        const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
-          ? "video/webm;codecs=vp8,opus"
-          : "video/webm";
-
-        let recorder: MediaRecorder;
-        try {
-          recorder = new MediaRecorder(stream, {
-            mimeType,
-            videoBitsPerSecond: 5000000,
-            audioBitsPerSecond: 128_000,
-          });
-        } catch {
-          recorder = new MediaRecorder(stream, { mimeType });
-        }
-
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) chunksRef.current.push(event.data);
-        };
-        recorder.onstop = handleRecordingStop;
-        recorder.onerror = (err) => console.error("⚠️ Recorder error:", err);
-
-        setMediaRecorder(recorder);
-        setRecorderReady(true);
-      } catch (err) {
-        console.error("🚫 Camera/Mic access failed:", err);
-        if (isMounted) {
-          showToast("Please allow camera and microphone access, then reload the page.", "error");
-          setRecorderReady(false);
-        }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => videoRef.current?.play();
+        streamRef.current = stream;
+        stream.getVideoTracks().forEach((track) => (track.enabled = true));
       }
-    };
 
+      await new Promise((r) => setTimeout(r, 600));
+
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+        ? "video/webm;codecs=vp8,opus"
+        : "video/webm";
+
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 5000000,
+          audioBitsPerSecond: 128_000,
+        });
+      } catch {
+        recorder = new MediaRecorder(stream, { mimeType });
+      }
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        handleRecordingStopRef.current();
+      };
+      recorder.onerror = (err) => console.error("⚠️ Recorder error:", err);
+
+      setMediaRecorder(recorder);
+      setRecorderReady(true);
+    } catch (err) {
+      console.error("🚫 Camera/Mic access failed:", err);
+      showToast("Please allow camera and microphone access, then reload the page.", "error");
+      setRecorderReady(false);
+    }
+  }, []);
+
+  useEffect(() => {
     setupCamera();
-    
+
     return () => {
-      isMounted = false;
       if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       stopCamera();
     };
+  }, [setupCamera]);
+
+  // Clean up preview object URL on unmount
+  const previewUrlRef = useRef<string | null>(null);
+  previewUrlRef.current = previewUrl;
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+    };
   }, []);
+
+  // 🔹 Auto-pause & Safe Cancellable Countdown Resume
+  useEffect(() => {
+    if (state !== "recording" || !mediaRecorder) {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      setResumeCountdown(null);
+      return;
+    }
+
+    // 1. IF FACE IS NOT ALIGNED (OR LOST)
+    if (!isFaceAligned) {
+      // Abort any pending countdown immediately
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      setResumeCountdown(null);
+
+      // Pause recording if active
+      if (!isAutoPaused) {
+        if (mediaRecorder.state === "recording") {
+          try {
+            mediaRecorder.pause();
+            console.log("⏸️ Recording auto-paused: Face left outline");
+          } catch (e) {
+            console.error("Error pausing recorder:", e);
+          }
+        }
+        pauseTimer();
+        pauseTeleprompterScroll();
+        setIsAutoPaused(true);
+      }
+      return;
+    }
+
+    // 2. IF FACE IS PROPERLY ALIGNED AND RECORDING IS CURRENTLY PAUSED
+    if (isFaceAligned && isAutoPaused) {
+      // If countdown is already ticking, let it continue
+      if (countdownTimerRef.current) {
+        return;
+      }
+
+      // Start 2-second countdown: 2 -> 1 -> Resume!
+      let count = 2;
+      setResumeCountdown(count);
+
+      countdownTimerRef.current = setInterval(() => {
+        count -= 1;
+        if (count > 0) {
+          setResumeCountdown(count);
+        } else {
+          // Timer finished! Complete resume
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          setResumeCountdown(null);
+
+          if (mediaRecorder.state === "paused") {
+            try {
+              mediaRecorder.resume();
+              console.log("▶️ Recording auto-resumed: Face confirmed aligned");
+            } catch (e) {
+              console.error("Error resuming recorder:", e);
+            }
+          }
+          resumeTimer();
+          resumeTeleprompterScroll();
+          setIsAutoPaused(false);
+          showToast("Face aligned. Recording resumed.", "success");
+        }
+      }, 1000);
+    }
+  }, [isFaceAligned, state, mediaRecorder, isAutoPaused]);
 
   // ------------------------------------------
   // Recording Handlers
@@ -225,16 +386,35 @@ const Record: React.FC = () => {
     if (!mediaRecorder) return;
 
     if (state === "idle") {
+      if (!isFaceAligned) {
+        setShakeButton(true);
+        setTimeout(() => setShakeButton(false), 500);
+
+        const msg = alignmentStatus === "not_centered"
+          ? "Please center your face inside the oval to start recording"
+          : "Please look into the camera to start recording";
+
+        setStartAttemptWarning(msg);
+        if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
+        warningTimeoutRef.current = setTimeout(() => setStartAttemptWarning(null), 3500);
+
+        showToast(msg, "warning");
+        return;
+      }
       if (creditsRemaining !== null && creditsRemaining <= 0) {
         showToast("No recording credits. Please purchase more credits.", "error");
         setTimeout(() => navigate('/billing'), 2000);
         return;
       }
+
       try {
         chunksRef.current = [];
-        setStartTime(Date.now());
+        resetTimer();
+        resetTeleprompterPosition();
         mediaRecorder.start(250);
         setState("recording");
+        setIsAutoPaused(false);
+        setResumeCountdown(null);
         startTeleprompterScroll();
         startTimer();
       } catch (err) {
@@ -245,10 +425,15 @@ const Record: React.FC = () => {
 
     if (state === "recording") {
       try {
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+        setResumeCountdown(null);
         if (mediaRecorder.state !== "inactive") {
           mediaRecorder.stop();
         }
-        setState("idle");
+        setIsAutoPaused(false);
       } catch (err) {
         console.error("Error stopping recording:", err);
       }
@@ -256,37 +441,93 @@ const Record: React.FC = () => {
   };
 
   const handleCancel = () => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setResumeCountdown(null);
     if (state === "recording") {
       if (!window.confirm("Stop recording and discard video?")) return;
       if (mediaRecorder && mediaRecorder.state !== "inactive") {
-        mediaRecorder.onstop = null; // Prevent upload
+        mediaRecorder.onstop = null; // Prevent upload or preview
         mediaRecorder.stop();
       }
+    } else if (state === "preview") {
+      if (!window.confirm("Discard recorded video and return to script?")) return;
     }
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    setRecordedBlob(null);
+    setIsAutoPaused(false);
     stopCamera();
     navigate(`/step2${mode ? `?mode=${mode}` : ''}`);
   };
 
   const handleRecordingStop = async () => {
-    if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setResumeCountdown(null);
+    pauseTeleprompterScroll();
+    pauseTimer();
+    const durationSeconds = Math.max(1, elapsedSecondsRef.current);
     resetTimer();
     resetTeleprompterPosition();
     stopCamera();
+    setIsAutoPaused(false);
 
-    console.log("📹 Finalizing recording...");
+    console.log("📹 Finalizing recording... Duration:", durationSeconds, "s");
     await new Promise((res) => setTimeout(res, 300));
 
-    const blob = new Blob(chunksRef.current, { type: "video/webm" });
+    const rawBlob = new Blob(chunksRef.current, { type: "video/webm" });
     chunksRef.current = [];
 
-    const durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
-    if (blob.size === 0) {
-      showToast("No video data captured.", "error");
+    if (rawBlob.size === 0) {
+      showToast("No video data captured. Please try recording again.", "error");
+      setState("idle");
+      setupCamera();
       return;
     }
-    await uploadVideo(blob, durationSeconds);
+
+    // ⏱️ Inject accurate duration metadata into WebM header for YouTube-style scrubbing
+    const blob = await injectWebmDuration(rawBlob, durationSeconds);
+
+    const url = URL.createObjectURL(blob);
+    setRecordedBlob(blob);
+    setPreviewUrl(url);
+    setRecordedDuration(durationSeconds);
+    setState("preview");
+    showToast("Recording finished! Preview your video before uploading.", "info");
   };
+
+  handleRecordingStopRef.current = handleRecordingStop;
+
+  const handleRetake = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+    setRecordedBlob(null);
+    setRecordedDuration(0);
+    resetTimer();
+    resetTeleprompterPosition();
+    setState("idle");
+    setupCamera();
+    showToast("Ready to re-record. Align your face to begin.", "info");
+  };
+
+  const handleApproveAndUpload = async () => {
+    if (!recordedBlob) {
+      showToast("No recorded video found to upload.", "error");
+      return;
+    }
+    await uploadVideo(recordedBlob, recordedDuration);
+  };
+
 
   const uploadVideo = async (blob: Blob, durationSeconds: number) => {
     setIsUploading(true);
@@ -424,69 +665,315 @@ const Record: React.FC = () => {
     }
   };
 
-  const startTimer = () => {
-    const start = Date.now();
-    setStartTime(start);
-    timerIntervalRef.current = setInterval(() => {
-      const seconds = Math.floor((Date.now() - start) / 1000);
-      const m = Math.floor(seconds / 60);
-      setTimer(`${m}:${String(seconds % 60).padStart(2, "0")}`);
-    }, 1000);
-  };
-
-  const startTeleprompterScroll = () => {
-    let y = 0;
-    const speed = parseFloat(localStorage.getItem("teleprompterSpeed") || "1");
-    scrollIntervalRef.current = setInterval(() => {
-      y -= 0.08 * speed;
-      if (teleprompterRef.current) teleprompterRef.current.style.transform = `translate(-50%, ${y}%)`;
-      if (y < -200) clearInterval(scrollIntervalRef.current!);
-    }, 40);
-  };
-
   const recordingDisabled = !recorderReady || isUploading;
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-0 sm:p-4">
       <div className="relative w-full max-w-[480px] h-screen sm:h-[640px] sm:max-h-[90vh] bg-black sm:rounded-2xl overflow-hidden shadow-2xl">
-        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-        <div className="absolute top-[44%] left-0 right-0 h-0.5 bg-blue-400 bg-opacity-60" />
+        {/* Live Camera Feed (Hidden during preview to free hardware, preserved in DOM for instant retake) */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={state === "preview" ? "hidden" : "w-full h-full object-cover"}
+        />
 
-        {creditsRemaining !== null && (
-          <div className="absolute top-3 left-4 bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20">
-            <span className="text-white text-sm font-medium">
-              <span className={creditsRemaining > 0 ? "text-green-400" : "text-red-400"}>●</span> {creditsRemaining} credits
-            </span>
+        {/* ============================================================ */}
+        {/* 🎬 PREVIEW & REVIEW STATE                                     */}
+        {/* ============================================================ */}
+        {state === "preview" && previewUrl ? (
+          <div className="absolute inset-0 w-full h-full flex flex-col bg-black z-30">
+            {/* Top Review Header Bar */}
+            <div className="px-4 py-3 bg-black/85 backdrop-blur-md flex items-center justify-between border-b border-white/10 z-40 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-white text-xs font-semibold">Video Review</span>
+                <span className="text-white/40 text-xs">|</span>
+                <span className="text-emerald-300 text-xs font-medium">{formatTime(recordedDuration)}</span>
+              </div>
+
+              <button
+                onClick={handleCancel}
+                disabled={isUploading}
+                className="p-1.5 bg-white/10 hover:bg-white/20 active:scale-95 rounded-full border border-white/20 text-white shadow-md transition-all"
+                title="Discard & Exit"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Video Viewport: Dedicated area where the video and its native scrubber bar sit cleanly */}
+            <div className="flex-1 min-h-0 relative bg-black flex items-center justify-center overflow-hidden">
+              <video
+                src={previewUrl}
+                controls
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+                onLoadedMetadata={(e) => {
+                  const video = e.currentTarget;
+                  if (!isFinite(video.duration) || isNaN(video.duration)) {
+                    video.currentTime = 1e10;
+                    const onTimeUpdate = () => {
+                      video.removeEventListener('timeupdate', onTimeUpdate);
+                      video.currentTime = 0;
+                    };
+                    video.addEventListener('timeupdate', onTimeUpdate);
+                  } else {
+                    video.currentTime = 0;
+                  }
+                }}
+              />
+            </div>
+
+            {/* Bottom Action Footer: Completely separated below the video controls (Zero collision) */}
+            <div className="p-3.5 sm:p-4 bg-slate-950/95 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-3 shrink-0 z-40">
+              {/* Retake Button */}
+              <button
+                onClick={handleRetake}
+                disabled={isUploading}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-medium text-xs sm:text-sm rounded-xl border border-white/20 shadow-lg transition-all disabled:opacity-50"
+              >
+                <RotateCcw className="w-4 h-4 text-slate-300" />
+                <span>Retake</span>
+              </button>
+
+              {/* Approve & Upload Button */}
+              <button
+                onClick={handleApproveAndUpload}
+                disabled={isUploading}
+                className="flex-[1.6] flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all disabled:opacity-50"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 text-white" />
+                    <span>Looks Good — Save & Upload</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Uploading Fullscreen Modal Overlay */}
+            {isUploading && (
+              <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center mb-4 shadow-[0_0_25px_rgba(16,185,129,0.4)]">
+                  <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-1">Saving Your Recording</h3>
+                <p className="text-slate-300 text-xs max-w-xs">
+                  Uploading video to cloud storage and generating your digital resume...
+                </p>
+              </div>
+            )}
           </div>
+        ) : (
+          /* ============================================================ */
+          /* 🔴 LIVE RECORDING / IDLE STATE                                */
+          /* ============================================================ */
+          <>
+            {/* Eye-level camera alignment reference - softened so it does not visually strike through text */}
+            <div className="absolute top-[44%] left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-blue-400/25 to-transparent pointer-events-none z-10" />
+
+            {/* Unified Top Control Bar */}
+            <div className="absolute top-4 inset-x-4 z-40 flex items-center justify-between gap-2 pointer-events-auto">
+              {/* Left: Credits & Face Status Indicator */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {creditsRemaining !== null && (
+                  <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 shadow-md">
+                    <span className="text-white text-xs font-medium">
+                      <span className={creditsRemaining > 0 ? "text-green-400" : "text-red-400"}>●</span> {creditsRemaining} credits
+                    </span>
+                  </div>
+                )}
+
+                {/* Live Face Status Pill */}
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md transition-all duration-300 border ${
+                    isModelLoading
+                      ? "bg-slate-900/70 text-slate-300 border-slate-600/30"
+                      : alignmentStatus === "aligned"
+                      ? "bg-emerald-950/70 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
+                      : alignmentStatus === "not_centered"
+                      ? "bg-amber-950/80 text-amber-300 border-amber-500/50 animate-pulse shadow-[0_0_14px_rgba(245,158,11,0.35)]"
+                      : "bg-rose-950/80 text-rose-300 border-rose-500/50 animate-pulse shadow-[0_0_16px_rgba(244,63,94,0.4)]"
+                  }`}
+                >
+                  {isModelLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Checking Camera...</span>
+                    </>
+                  ) : alignmentStatus === "aligned" ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>Face Aligned</span>
+                    </>
+                  ) : alignmentStatus === "not_centered" ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                      <span>Center Face in Oval</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
+                      <span>Face Not Visible</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: Speed, Timer & Cancel */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Speed Badge (Cleanly at the top so it never blocks script text) */}
+                <div className="bg-black/60 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-white/20 text-white text-[11px] font-bold uppercase tracking-wider shadow-md">
+                  <span>{teleprompterSpeed.toFixed(1)}x</span>
+                </div>
+
+                {/* Timer Badge */}
+                <div className="flex items-center bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 text-white font-semibold text-xs shadow-md">
+                  <span
+                    className={`w-2 h-2 rounded-full mr-2 ${
+                      state === "recording"
+                        ? isAutoPaused
+                          ? "bg-amber-400 animate-pulse"
+                          : "bg-red-500 animate-pulse"
+                        : "bg-gray-400"
+                    }`}
+                  />
+                  <span ref={timerRef}>
+                    {isUploading
+                      ? "Uploading..."
+                      : resumeCountdown !== null
+                      ? `Resume ${resumeCountdown}s`
+                      : isAutoPaused
+                      ? `${timer} (Paused)`
+                      : timer}
+                  </span>
+                </div>
+
+                {/* Cancel Button */}
+                <button
+                  onClick={handleCancel}
+                  className="p-1.5 bg-black/60 hover:bg-black/80 rounded-full border border-white/20 text-white shadow-md transition-colors"
+                  title="Cancel recording"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Face Guide & Centered Paused / Countdown Modal */}
+            <FaceGuideOverlay
+              guideRef={guideRef}
+              isFaceDetected={isFaceDetected}
+              isFaceAligned={isFaceAligned}
+              alignmentStatus={alignmentStatus}
+              isAutoPaused={isAutoPaused}
+              resumeCountdown={resumeCountdown}
+            />
+
+            {/* Clean Teleprompter: Appears in the last second of countdown so user can prepare without clashing with initial countdown */}
+            <div
+              ref={teleprompterRef}
+              className={`absolute top-[44%] left-1/2 -translate-x-1/2 w-[94%] max-w-[450px] text-center px-4 py-8 pointer-events-none z-20 transition-opacity duration-300 ${
+                isAutoPaused && resumeCountdown !== 1 ? "opacity-0" : "opacity-100"
+              }`}
+            >
+              <div className="flex flex-col gap-6 pb-16">
+                {teleprompterText.split(/\n\s*\n/).map((para, i) => (
+                  <p
+                    key={i}
+                    className="text-white text-lg sm:text-2xl font-bold leading-relaxed tracking-wide"
+                    style={{
+                      textShadow:
+                        "0 1px 3px rgba(0,0,0,0.95), 0 2px 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.85)",
+                      WebkitTextStroke: "0.5px rgba(0,0,0,0.8)",
+                    }}
+                  >
+                    {para}
+                  </p>
+                ))}
+              </div>
+            </div>
+
+            {/* Friendly In-View Helper Feedback Pill directly above Record Button */}
+            {state === "idle" && (
+              <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-40 pointer-events-none transition-all duration-300">
+                {alignmentStatus === "aligned" ? (
+                  <div className="bg-emerald-950/90 backdrop-blur-md border border-emerald-500/50 text-emerald-300 text-xs font-semibold px-4 py-1.5 rounded-full shadow-[0_4px_16px_rgba(16,185,129,0.35)] flex items-center gap-1.5 whitespace-nowrap animate-in fade-in duration-200">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Ready — Tap button to start recording</span>
+                  </div>
+                ) : alignmentStatus === "not_centered" ? (
+                  <div
+                    className={`backdrop-blur-md border text-xs font-semibold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 whitespace-nowrap transition-colors duration-200 ${
+                      startAttemptWarning
+                        ? "bg-amber-950/95 border-amber-400 text-amber-200 shadow-[0_0_20px_rgba(245,158,11,0.6)]"
+                        : "bg-black/80 border-amber-500/60 text-amber-300 shadow-[0_4px_16px_rgba(0,0,0,0.6)]"
+                    }`}
+                  >
+                    <span className="text-amber-400 text-sm">⚠️</span>
+                    <span>{startAttemptWarning || "Center face in oval to start recording"}</span>
+                  </div>
+                ) : (
+                  <div
+                    className={`backdrop-blur-md border text-xs font-semibold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 whitespace-nowrap transition-colors duration-200 ${
+                      startAttemptWarning
+                        ? "bg-rose-950/95 border-rose-400 text-rose-200 shadow-[0_0_20px_rgba(244,63,94,0.6)]"
+                        : "bg-black/80 border-rose-500/60 text-rose-300 shadow-[0_4px_16px_rgba(0,0,0,0.6)]"
+                    }`}
+                  >
+                    <span className="text-rose-400 text-sm">⚠️</span>
+                    <span>{startAttemptWarning || "Look into camera to start recording"}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={handleRecordClick}
+              disabled={recordingDisabled}
+              className={`absolute bottom-6 left-1/2 -translate-x-1/2 w-20 h-20 rounded-full border-4 flex items-center justify-center transition-colors z-40 ${
+                shakeButton ? "ring-4 ring-amber-400/80" : ""
+              } ${
+                recordingDisabled
+                  ? "opacity-40 border-white/40"
+                  : state === "recording"
+                  ? isAutoPaused
+                    ? "bg-amber-500/30 border-amber-400 animate-pulse"
+                    : "bg-white/10 border-white/85"
+                  : alignmentStatus === "aligned"
+                  ? "bg-red-500 border-white shadow-[0_0_25px_rgba(239,68,68,0.5)] cursor-pointer"
+                  : alignmentStatus === "not_centered"
+                  ? "bg-amber-500/80 border-amber-400/80 shadow-lg cursor-pointer"
+                  : "bg-rose-500/70 border-rose-400/80 shadow-lg cursor-pointer"
+              }`}
+              title={
+                state === "idle" && !isFaceAligned
+                  ? alignmentStatus === "not_centered"
+                    ? "Center face in oval to start recording"
+                    : "Look into camera to start recording"
+                  : ""
+              }
+            >
+              {state === "recording" ? (
+                <div className={`w-8 h-8 rounded-sm ${isAutoPaused ? "bg-amber-400" : "bg-red-600 animate-pulse"}`} />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-white" />
+              )}
+            </button>
+          </>
         )}
-
-        {/* Speed Indicator */}
-        <div className="absolute top-[35%] right-4 z-40">
-           <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
-              <span className="text-white text-[10px] font-bold uppercase tracking-wider">Speed: {teleprompterSpeed.toFixed(1)}x</span>
-           </div>
-        </div>
-
-        <div className="absolute top-3 right-4 text-white font-semibold flex items-center gap-3">
-          <div className="flex items-center">
-            <span className={`w-2 h-2 rounded-full mr-2 ${state === "recording" ? "bg-red-500 animate-pulse" : "bg-gray-400"}`} />
-            <span ref={timerRef}>{isUploading ? "Uploading..." : timer}</span>
-          </div>
-          <button onClick={handleCancel} className="p-1.5 bg-black/40 hover:bg-black/60 rounded-full border border-white/20"><X className="w-5 h-5 text-white" /></button>
-        </div>
-
-        <div ref={teleprompterRef} className="absolute top-[44%] left-1/2 transform -translate-x-1/2 w-[100%] text-white text-lg sm:text-2xl font-medium text-center px-6 py-8 pointer-events-none">
-          <div className="flex flex-col gap-6 pb-10">
-            {teleprompterText.split(/\n\s*\n/).map((para, i) => <p key={i}>{para}</p>)}
-          </div>
-        </div>
-
-        <button onClick={handleRecordClick} disabled={recordingDisabled} className={`absolute bottom-6 left-1/2 -translate-x-1/2 w-20 h-20 rounded-full border-4 border-white/85 flex items-center justify-center transition-all ${recordingDisabled ? "opacity-40" : state === "recording" ? "bg-white/10" : "bg-red-500 shadow-lg"}`}>
-          {state === "recording" ? <div className="w-8 h-8 bg-red-600 rounded-sm animate-pulse" /> : <div className="w-8 h-8 rounded-full bg-white" />}
-        </button>
       </div>
     </div>
   );
 };
 
 export default Record;
+

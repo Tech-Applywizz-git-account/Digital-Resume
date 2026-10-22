@@ -66,7 +66,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const handleTimeUpdate = () => {
         if (videoRef.current) {
             setVideoCurrentTime(videoRef.current.currentTime);
-            setVideoDuration(videoRef.current.duration || 0);
+            const d = videoRef.current.duration;
+            if (isFinite(d) && !isNaN(d) && d > 0) {
+                setVideoDuration(d);
+            }
         }
     };
 
@@ -210,7 +213,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             onPause={() => setIsVideoPlaying(false)}
                             onTimeUpdate={handleTimeUpdate}
                             onLoadedMetadata={() => {
-                                setVideoDuration(videoRef.current?.duration || 0);
+                                const vid = videoRef.current;
+                                if (vid) {
+                                    if (!isFinite(vid.duration) || isNaN(vid.duration)) {
+                                        vid.currentTime = 1e10;
+                                        const onTimeUpdate = () => {
+                                            vid.removeEventListener('timeupdate', onTimeUpdate);
+                                            if (isFinite(vid.duration)) {
+                                                setVideoDuration(vid.duration);
+                                            }
+                                            vid.currentTime = 0;
+                                        };
+                                        vid.addEventListener('timeupdate', onTimeUpdate);
+                                    } else {
+                                        setVideoDuration(vid.duration);
+                                    }
+                                }
                             }}
                         />
 
@@ -231,10 +249,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             </div>
 
                             <div className="space-y-3 pointer-events-auto">
-                                <div className="relative h-1 w-full bg-white/20 rounded-full overflow-hidden group/progress cursor-pointer">
+                                <div 
+                                    className="relative h-2 w-full bg-white/20 rounded-full overflow-hidden group/progress cursor-pointer"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (videoRef.current && videoDuration > 0) {
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const clickRatio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                                            const newTime = clickRatio * videoDuration;
+                                            videoRef.current.currentTime = newTime;
+                                            setVideoCurrentTime(newTime);
+                                        }
+                                    }}
+                                >
                                     <div
-                                        className={`absolute top-0 left-0 h-full transition-all duration-300 ${isHumanMode ? 'bg-amber-500' : 'bg-blue-500'}`}
-                                        style={{ width: `${videoDuration > 0 ? (videoCurrentTime / videoDuration) * 100 : 0}%` }}
+                                        className={`absolute top-0 left-0 h-full transition-all duration-100 ${isHumanMode ? 'bg-amber-500' : 'bg-blue-500'}`}
+                                        style={{ width: `${videoDuration > 0 ? Math.min(100, (videoCurrentTime / videoDuration) * 100) : 0}%` }}
                                     ></div>
                                 </div>
 

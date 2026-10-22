@@ -4,6 +4,8 @@
  * Creates and configures the Express app with all middleware.
  * Does NOT start listening — that's the responsibility of index.ts.
  */
+import path from 'node:path';
+import fs from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -31,7 +33,7 @@ export function createApp(): express.Application {
             callback(null, false);
         },
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'x-admin-email', 'X-Admin-Email'],
         exposedHeaders: ['X-Request-Id'],
         credentials: true,
     }));
@@ -55,6 +57,23 @@ export function createApp(): express.Application {
                 uptime: process.uptime(),
             },
         });
+    });
+
+    // ── Static Assets (Logo, Branding) ────────────────────────────
+    const logoCandidatePaths = [
+        path.resolve(process.cwd(), '../public/logo2.jpg'),
+        path.resolve(process.cwd(), '../logo2.jpg'),
+        path.resolve(process.cwd(), 'public/logo2.jpg'),
+    ];
+    app.get('/logo2.jpg', (_req, res) => {
+        for (const candidate of logoCandidatePaths) {
+            if (fs.existsSync(candidate)) {
+                res.setHeader('Content-Type', 'image/jpeg');
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return res.sendFile(candidate);
+            }
+        }
+        res.status(404).end();
     });
 
     // ── API Routes ─────────────────────────────────────────────────

@@ -18,6 +18,14 @@ export interface WalletCardData {
     openToRelocate?: boolean;
     remote?: boolean;
     immediateJoiner?: boolean;
+    experienceYears?: string | number | null;
+    skillsCount?: number | null;
+    projectsCount?: number | null;
+    resumeUrl?: string | null;
+    videoUrl?: string | null;
+    portfolioUrl?: string | null;
+    bookingUrl?: string | null;
+    openToWorkText?: string | null;
 }
 
 export type WalletProviderType = 'native' | 'neatpass' | 'tap2';

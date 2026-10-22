@@ -27,4 +27,8 @@ copyFileSync(
     path.join(root, 'dist/services/wallet/walletCard.template.html'),
 );
 
+try {
+    copyDir(path.join(root, 'src/assets'), path.join(root, 'dist/assets'));
+} catch {}
+
 console.log('Copied wallet card templates into dist/');

@@ -27,6 +27,12 @@ export interface Environment {
     clientId: string;
     clientSecret: string;
     senderEmail: string;
+
+    // Resume Parser Service
+    resumeParserApiUrl: string;
+
+    // CRM Tool Service
+    crmBaseUrl: string;
 }
 
 function requireEnv(key: string): string {
@@ -72,4 +78,7 @@ export const environment: Environment = {
     clientId: optionalEnv('CLIENT_ID', ''),
     clientSecret: optionalEnv('CLIENT_SECRET', ''),
     senderEmail: optionalEnv('SENDER_EMAIL', ''),
+
+    resumeParserApiUrl: optionalEnv('RESUME_PARSER_API_URL', 'https://resumeparser.applywizard.ai/api/parse'),
+    crmBaseUrl: optionalEnv('CRM_BASE_URL', optionalEnv('crm_base_url', 'https://applywizz-crm-tool.vercel.app')),
 };

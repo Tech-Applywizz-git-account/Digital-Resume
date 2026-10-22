@@ -397,7 +397,17 @@ const ResumeChatPanel = ({
                                 className="w-full h-auto max-h-[85vh] block"
                                 src={videoUrl}
                                 onLoadedMetadata={(e) => {
-                                    e.currentTarget.currentTime = 0;
+                                    const video = e.currentTarget;
+                                    if (!isFinite(video.duration) || isNaN(video.duration)) {
+                                        video.currentTime = 1e10;
+                                        const onTimeUpdate = () => {
+                                            video.removeEventListener('timeupdate', onTimeUpdate);
+                                            video.currentTime = 0;
+                                        };
+                                        video.addEventListener('timeupdate', onTimeUpdate);
+                                    } else {
+                                        video.currentTime = 0;
+                                    }
                                 }}
                             >
                                 <source src={videoUrl} type="video/webm" />

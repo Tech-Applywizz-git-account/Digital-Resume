@@ -63,6 +63,7 @@ export interface HeroContent {
     headline?: string;
     tagline?: string;
     profileImageUrl?: string;
+    gender?: 'Male' | 'Female' | null;
     /** Recruiter-facing credibility badges/chips shown under the name. */
     verified?: boolean;
     openToWork?: boolean;

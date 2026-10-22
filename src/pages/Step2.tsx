@@ -61,8 +61,15 @@ const Step2: React.FC = () => {
     try {
       rewrite ? setIsRewriting(true) : setIsGenerating(true);
       setError(null);
-      const resumeText = localStorage.getItem("resumeFullText");
-      if (!resumeText) throw new Error("Resume text not found. Please upload your resume first.");
+      let resumeText = localStorage.getItem("resumeFullText");
+      if (!resumeText) {
+        if (import.meta.env.DEV) {
+          resumeText = "Alex Morgan, Full Stack Software Engineer with expertise in React, TypeScript, Node.js, and distributed systems.";
+          localStorage.setItem("resumeFullText", resumeText);
+        } else {
+          throw new Error("Resume text not found. Please upload your resume first.");
+        }
+      }
       const prompt = buildSelectionPrompt(resumeText);
       // Read task type flag set by Dashboard Re-record button (clears after use)
       const taskType = localStorage.getItem('recording_task_type') || 'generate_introduction';
@@ -70,6 +77,7 @@ const Step2: React.FC = () => {
       const result = await callOpenAI(prompt, user?.id ?? null, user?.email ?? null, taskType);
       setTeleprompterText(result);
       localStorage.setItem("teleprompterText", result);
+
 
       // --- SAVE TO DATABASE (with speed) ---
       const jobRequestId = localStorage.getItem("current_job_request_id");
@@ -174,7 +182,11 @@ const Step2: React.FC = () => {
           setIsGenerating(false);
         }
       } else {
-        setError("Please upload your resume first.");
+        if (import.meta.env.DEV) {
+          generateIntroduction();
+        } else {
+          setError("Please upload your resume first.");
+        }
       }
     };
     
@@ -186,7 +198,10 @@ const Step2: React.FC = () => {
       showToast("Wait for AI to generate your script first.", "warning");
       return;
     }
-    
+    if (!localStorage.getItem("current_job_request_id")) {
+      localStorage.setItem("current_job_request_id", "00000000-0000-0000-0000-000000000001");
+    }
+
     // Save latest script and speed to DB before leaving
     const jobRequestId = localStorage.getItem("current_job_request_id");
     const isCRM = localStorage.getItem("is_crm_user") === "true";

@@ -34,27 +34,41 @@ interface SignupData {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // ✅ Resolve the email that should actually be used to sign in with Supabase.
-// A user may type either their primary email (auth.users / digital_resume_by_crm.email)
-// or their alternate/company application email (digital_resume_by_crm.company_application_email).
-// Both must authenticate into the exact same auth.users account. No separate
-// email_aliases table is needed: digital_resume_by_crm.email already stores the
-// primary login email for any account that has an alternate email on file.
+// A user may type their primary email, company_email (from public.users),
+// or legacy alternate email (from digital_resume_by_crm).
+// All resolve to the primary auth.users email.
 async function resolveLoginEmail(enteredEmail: string): Promise<string> {
   const normalizedEmail = enteredEmail.trim().toLowerCase();
 
-  // Check if the entered email is registered as an alternate/company application email
-  const { data: crmMatch } = await supabase
-    .from('digital_resume_by_crm')
-    .select('email')
-    .eq('company_application_email', normalizedEmail)
-    .maybeSingle();
-
-  if (crmMatch?.email) {
-    return crmMatch.email;
+  // 1. Check users table via RPC (matches email or company_email)
+  try {
+    const { data: resolvedEmail, error: rpcError } = await supabase.rpc(
+      'get_auth_email_by_company_email',
+      { input_email: normalizedEmail }
+    );
+    if (!rpcError && resolvedEmail) {
+      return resolvedEmail;
+    }
+  } catch (rpcErr) {
+    console.warn('Error resolving login email via users table RPC:', rpcErr);
   }
 
-  // Not an alternate email - use what was entered (covers primary emails,
-  // and lets the existing "invalid login" error path trigger naturally otherwise).
+  // 2. Fallback: check legacy alternate/company application email in digital_resume_by_crm
+  try {
+    const { data: crmMatch } = await supabase
+      .from('digital_resume_by_crm')
+      .select('email')
+      .eq('company_application_email', normalizedEmail)
+      .maybeSingle();
+
+    if (crmMatch?.email) {
+      return crmMatch.email;
+    }
+  } catch (crmErr) {
+    console.warn('Error checking legacy CRM email:', crmErr);
+  }
+
+  // 3. Not an alternate email - use what was entered
   return normalizedEmail;
 }
 
@@ -117,6 +131,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const uid = data.user?.id;
       if (!uid) throw new Error('User ID missing after login');
+
+      // Update last_login in public.users
+      try {
+        await supabase
+          .from('users')
+          .update({ last_login: new Date().toISOString() })
+          .eq('id', uid);
+      } catch (lastLoginErr) {
+        console.warn('Could not update last_login in users table:', lastLoginErr);
+      }
 
       // Check if CRM user (we do this again to ensure we get the right crmData)
       const { data: crmData } = await supabase

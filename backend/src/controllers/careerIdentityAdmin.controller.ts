@@ -3,6 +3,7 @@ import { careerIdentityService } from '../services/careerIdentity/careerIdentity
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ForbiddenError } from '../types/errors.js';
 import { getDatabase } from '../config/database.js';
+import { environment } from '../config/environment.js';
 
 /**
  * Career Identity Admin Controller
@@ -13,11 +14,15 @@ import { getDatabase } from '../config/database.js';
  * controller performs the admin check.
  */
 async function verifyAdmin(email: string): Promise<void> {
+    const normalized = email.toLowerCase().trim();
+    if (!normalized) {
+        throw new ForbiddenError('Admin access required');
+    }
     const db = getDatabase();
     const { data } = await db
         .from('crm_admins')
         .select('email')
-        .eq('email', email)
+        .ilike('email', normalized)
         .maybeSingle();
 
     if (!data) {
@@ -100,6 +105,28 @@ export const careerIdentityAdminController = {
             walletPassUrl,
         });
 
+        return res.status(200).json({ success: true, data: result });
+    }),
+
+    /**
+     * POST /api/v1/career-identity/admin/requests/:userId/auto-fill
+     * Parses the user's latest resume and returns candidate content.
+     * NOTE: Does NOT mutate the database.
+     */
+    autoFillRequest: asyncHandler(async (req: Request, res: Response) => {
+        const adminEmail = req.user?.email;
+        if (!adminEmail) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+
+        await verifyAdmin(adminEmail);
+
+        const targetUserId = req.params.userId as string;
+        if (!targetUserId) {
+            return res.status(400).json({ success: false, message: 'userId is required' });
+        }
+
+        const result = await careerIdentityService.autoFillFromResume(targetUserId);
         return res.status(200).json({ success: true, data: result });
     }),
 };

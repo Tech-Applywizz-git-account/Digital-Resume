@@ -4,7 +4,7 @@ import { supabase } from '../../../integrations/supabase/client';
 import { useAuthContext } from '../../../contexts/AuthContext';
 import { useCareerIdentityProfile } from '../hooks/useCareerIdentityProfile';
 import { updateCareerIdentityProfile } from '../services/careerIdentityService';
-import { Loader2, Eye, Sparkles, Send, AlertCircle, RefreshCw, Clock, CheckCircle } from 'lucide-react';
+import { Loader2, Eye, Sparkles, Send, AlertCircle, RefreshCw, Clock, CheckCircle, FileText } from 'lucide-react';
 import ResumeWorkspace from '../../resume-dashboard/components/ResumeWorkspace';
 import type { CareerIdentityWorkflowStatus } from '../../../types/careerIdentity';
 import { apiUrl } from '../../../lib/apiBase';
@@ -230,7 +230,25 @@ export default function CareerIdentityDashboard() {
 
                             {derived && (
                                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                                    <h3 className="text-sm font-semibold text-slate-900 mb-4">Profile Summary</h3>
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                                        <h3 className="text-sm font-semibold text-slate-900">Profile Summary</h3>
+                                        {resumeId && (
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <button
+                                                    onClick={() => navigate(`/final-result/${resumeId}`)}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B4F6C] text-white rounded-lg text-xs font-semibold hover:bg-[#0B4F6C]/90 transition-all shadow-sm"
+                                                >
+                                                    <FileText className="w-3.5 h-3.5" /> View Digital Resume
+                                                </button>
+                                                <button
+                                                    onClick={() => navigate(`/career-identity/${resumeId}`)}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-xs font-semibold hover:brightness-105 transition-all shadow-sm"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" /> View Career Identity
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                     <div className="space-y-2 text-sm">
                                         {derived.candidateName && <p><span className="text-slate-500">Name:</span> <span className="font-medium text-slate-900">{derived.candidateName}</span></p>}
                                         {derived.jobTitle && <p><span className="text-slate-500">Title:</span> <span className="font-medium text-slate-900">{derived.jobTitle}</span></p>}

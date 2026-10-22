@@ -16,4 +16,5 @@ router.patch('/profile', authenticate, careerIdentityController.updateProfile);
 router.get('/admin/requests', authenticate, careerIdentityAdminController.listRequests);
 router.get('/admin/requests/:userId', authenticate, careerIdentityAdminController.getRequest);
 router.patch('/admin/requests/:userId', authenticate, careerIdentityAdminController.updateRequest);
+router.post('/admin/requests/:userId/auto-fill', authenticate, careerIdentityAdminController.autoFillRequest);
 export default router;

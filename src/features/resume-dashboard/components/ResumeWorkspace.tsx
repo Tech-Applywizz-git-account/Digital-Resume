@@ -22,6 +22,8 @@ import {
     ExternalLink,
     Sparkles,
     Coins,
+    ChevronDown,
+    ChevronUp,
 } from 'lucide-react';
 
 interface ResumeWorkspaceProps {
@@ -94,6 +96,7 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
     const [isReplacing, setIsReplacing] = useState(false);
     const [showReplaceModal, setShowReplaceModal] = useState(false);
     const [selectedReplaceFile, setSelectedReplaceFile] = useState<File | null>(null);
+    const [showAllResumes, setShowAllResumes] = useState(false);
 
     // ── Initialize user-specific data ──────────────────────────────────
     useEffect(() => {
@@ -648,185 +651,224 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
                             <p className="text-gray-600 font-medium italic">Setting up your profile...</p>
                         </div>
                     ) : careercasts.length > 0 ? (
-                        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
-                            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-                                <h3 className="font-bold text-[#0B4F6C]">All Digital Resumes</h3>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-50/50 text-[#0B4F6C] uppercase tracking-wide font-bold text-xs hidden md:table-header-group">
-                                        <tr>
-                                            <th className="py-4 px-6 text-center w-16">S.No</th>
-                                            <th className="py-4 px-6 text-left w-48">Recordings</th>
-                                            <th className="py-4 px-6 text-left w-32">Resume</th>
-                                            <th className="py-4 px-6 text-left w-32">Video</th>
-                                            <th className="py-4 px-6 text-left w-40">Status</th>
-                                            <th className="py-4 px-6 text-left w-32">Created</th>
-                                            <th className="py-4 px-6 text-center">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {careercasts.map((cast, index) => {
-                                            const videoPath = cast.recordings?.[0]?.storage_path || null;
-                                            let video = null;
-                                            if (videoPath) {
-                                                if (videoPath.startsWith('http')) video = videoPath;
-                                                else {
-                                                    const bucket = isCRM ? 'CRM_users_recordings' : 'recordings';
-                                                    video = supabase.storage.from(bucket).getPublicUrl(videoPath).data.publicUrl;
-                                                }
-                                            }
-                                            const both = cast.resume_path && video;
-                                            return (
-                                                <React.Fragment key={cast.id}>
-                                                    {/* Desktop */}
-                                                    <tr className="border-b hover:bg-gray-50/80 transition-colors hidden md:table-row">
-                                                        <td className="py-4 px-6 text-center font-bold text-gray-400">{careercasts.length - index}</td>
-                                                        <td className="py-4 px-6 text-left font-bold text-[#0B4F6C]">Recording-{careercasts.length - index}</td>
-                                                        <td className="py-4 px-6 text-left">
-                                                            {cast.resume_path ? (
-                                                                <div className="flex flex-col gap-1.5">
-                                                                    <button onClick={() => viewDocumentSafe(cast.resume_path)}
-                                                                        className="text-[#01796F] hover:text-[#016761] font-bold flex items-center gap-1.5 transition-colors cursor-pointer">
-                                                                        <FileText className="w-4 h-4" /> View
-                                                                    </button>
-                                                                    {cast.vercel_portfolio_url && (
-                                                                        <a href={cast.vercel_portfolio_url} target="_blank" rel="noreferrer"
-                                                                            className="text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1.5 mt-0.5 text-xs transition-colors">
-                                                                            <Link className="w-3.5 h-3.5" /> Portfolio
-                                                                        </a>
-                                                                    )}
-                                                                </div>
-                                                            ) : (
-                                                                <span className="text-gray-400 text-xs italic text-left font-medium">No resume</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="py-4 px-6 text-left">
-                                                            {video ? (
-                                                                <button onClick={() => setSelectedVideo(video)}
-                                                                    className="text-[#01796F] hover:text-[#016761] font-bold flex items-center gap-1.5 transition-colors">
-                                                                    <Play className="w-4 h-4 fill-current" /> Play
-                                                                </button>
-                                                            ) : (
-                                                                <span className="text-gray-400 text-xs italic text-left font-medium">No video</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="py-4 px-6 text-left">{getBadge(cast.status)}</td>
-                                                        <td className="py-4 px-6 text-left font-bold text-gray-500 whitespace-nowrap">{formatDate(cast.created_at)}</td>
-                                                        <td className="py-4 px-6 text-center">
-                                                            <div className="flex justify-center gap-2">
-                                                                <button onClick={() => {
-                                                                    if (!cast.resume_path) return;
-                                                                    if (cast.is_api_resume) {
-                                                                        const email = cast.owner_email || crmEmail || user?.email || '';
-                                                                        navigate(`/final-result/profile?email=${encodeURIComponent(email)}`);
-                                                                    } else {
-                                                                        handleViewDetails(cast.id, cast.resume_path);
-                                                                    }
-                                                                }} disabled={!cast.resume_path}
-                                                                    className={`${cast.resume_path ? 'bg-[#01796F] hover:bg-[#016761] text-white' : 'bg-gray-200 text-gray-400'} px-3 py-1.5 rounded-md font-semibold text-xs transition-colors`}>
-                                                                    View
-                                                                </button>
-                                                                {cast.resume_path && (
-                                                                    <button onClick={() => handleReplaceClick(cast.id)}
-                                                                        disabled={isReplacing && replacingId === cast.id}
-                                                                        className="border-2 border-emerald-500 text-emerald-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-emerald-500 hover:text-white transition-colors flex items-center gap-1">
-                                                                        {isReplacing && replacingId === cast.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-                                                                        Replace
-                                                                    </button>
-                                                                )}
-                                                                {both ? (
-                                                                    <button onClick={() => handleReRecord(cast)}
-                                                                        className="border-2 border-[#0B4F6C] text-[#0B4F6C] px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white transition-colors">
-                                                                        Re-record
-                                                                    </button>
-                                                                ) : (
-                                                                    <button onClick={() => handleContinue(cast)}
-                                                                        className="border-2 border-orange-500 text-orange-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-orange-500 hover:text-white transition-colors">
-                                                                        Continue
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-
-                                                    {/* Mobile */}
-                                                    <tr key={`mobile-${cast.id}`} className="border-b border-gray-100 hover:bg-gray-50 md:hidden">
-                                                        <td className="py-6 px-4" colSpan={6}>
-                                                            <div className="flex flex-col gap-5">
-                                                                <div className="flex justify-between items-start">
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <h3 className="font-bold text-[#0B4F6C] text-lg leading-tight mb-1">Recording-{careercasts.length - index}</h3>
-                                                                        <p className="text-xs text-gray-400 font-medium flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(cast.created_at)}</p>
-                                                                    </div>
-                                                                    <div className="flex-shrink-0">{getBadge(cast.status)}</div>
-                                                                </div>
-                                                                <div className="bg-gray-50/80 rounded-xl p-4 flex justify-around border border-gray-100">
-                                                                    <div className="flex flex-col items-center gap-2">
-                                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Resume</span>
-                                                                        {cast.resume_path ? (
-                                                                            <button onClick={() => viewDocumentSafe(cast.resume_path)} className="bg-emerald-50 text-emerald-700 p-2.5 rounded-full hover:bg-emerald-100 transition-colors"><FileText className="w-5 h-5" /></button>
-                                                                        ) : (
-                                                                            <div className="bg-gray-100 text-gray-400 p-2.5 rounded-full cursor-not-allowed"><FileText className="w-5 h-5" /></div>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="flex flex-col items-center gap-2">
-                                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Video</span>
-                                                                        {video ? (
-                                                                            <button onClick={() => setSelectedVideo(video)} className="bg-blue-50 text-blue-700 p-2.5 rounded-full hover:bg-blue-100 transition-colors"><Play className="w-5 h-5 fill-current" /></button>
-                                                                        ) : (
-                                                                            <div className="bg-gray-100 text-gray-400 p-2.5 rounded-full cursor-not-allowed"><Play className="w-5 h-5" /></div>
-                                                                        )}
-                                                                    </div>
-                                                                    {cast.vercel_portfolio_url && (
-                                                                        <div className="flex flex-col items-center gap-2">
-                                                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Portfolio</span>
-                                                                            <a href={cast.vercel_portfolio_url} target="_blank" rel="noreferrer" className="bg-purple-50 text-purple-700 p-2.5 rounded-full hover:bg-purple-100 transition-colors"><Link className="w-5 h-5" /></a>
+                        (() => {
+                            const displayedCasts = showAllResumes ? careercasts : careercasts.slice(0, 3);
+                            return (
+                                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+                                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <h3 className="font-bold text-[#0B4F6C]">All Digital Resumes</h3>
+                                            {careercasts.length > 3 && (
+                                                <span className="text-xs font-semibold text-gray-500 bg-gray-200/70 px-2.5 py-0.5 rounded-full">
+                                                    {showAllResumes ? `Showing all ${careercasts.length}` : `Showing 3 of ${careercasts.length}`}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {careercasts.length > 3 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAllResumes(prev => !prev)}
+                                                className="text-xs font-bold text-[#0B4F6C] hover:text-[#01796F] flex items-center gap-1.5 transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-200/50 cursor-pointer"
+                                            >
+                                                <span>{showAllResumes ? 'Show Less' : 'See More'}</span>
+                                                {showAllResumes ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-gray-50/50 text-[#0B4F6C] uppercase tracking-wide font-bold text-xs hidden md:table-header-group">
+                                                <tr>
+                                                    <th className="py-4 px-6 text-center w-16">S.No</th>
+                                                    <th className="py-4 px-6 text-left w-48">Recordings</th>
+                                                    <th className="py-4 px-6 text-left w-32">Resume</th>
+                                                    <th className="py-4 px-6 text-left w-32">Video</th>
+                                                    <th className="py-4 px-6 text-left w-40">Status</th>
+                                                    <th className="py-4 px-6 text-left w-32">Created</th>
+                                                    <th className="py-4 px-6 text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {displayedCasts.map((cast, index) => {
+                                                    const videoPath = cast.recordings?.[0]?.storage_path || null;
+                                                    let video = null;
+                                                    if (videoPath) {
+                                                        if (videoPath.startsWith('http')) video = videoPath;
+                                                        else {
+                                                            const bucket = isCRM ? 'CRM_users_recordings' : 'recordings';
+                                                            video = supabase.storage.from(bucket).getPublicUrl(videoPath).data.publicUrl;
+                                                        }
+                                                    }
+                                                    const both = cast.resume_path && video;
+                                                    const castNumber = careercasts.length - index;
+                                                    return (
+                                                        <React.Fragment key={cast.id}>
+                                                            {/* Desktop */}
+                                                            <tr className="border-b hover:bg-gray-50/80 transition-colors hidden md:table-row">
+                                                                <td className="py-4 px-6 text-center font-bold text-gray-400">{castNumber}</td>
+                                                                <td className="py-4 px-6 text-left font-bold text-[#0B4F6C]">Recording-{castNumber}</td>
+                                                                <td className="py-4 px-6 text-left">
+                                                                    {cast.resume_path ? (
+                                                                        <div className="flex flex-col gap-1.5">
+                                                                            <button onClick={() => viewDocumentSafe(cast.resume_path)}
+                                                                                className="text-[#01796F] hover:text-[#016761] font-bold flex items-center gap-1.5 transition-colors cursor-pointer">
+                                                                                <FileText className="w-4 h-4" /> View
+                                                                            </button>
+                                                                            {cast.vercel_portfolio_url && (
+                                                                                <a href={cast.vercel_portfolio_url} target="_blank" rel="noreferrer"
+                                                                                    className="text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1.5 mt-0.5 text-xs transition-colors">
+                                                                                    <Link className="w-3.5 h-3.5" /> Portfolio
+                                                                                </a>
+                                                                            )}
                                                                         </div>
+                                                                    ) : (
+                                                                        <span className="text-gray-400 text-xs italic text-left font-medium">No resume</span>
                                                                     )}
-                                                                </div>
-                                                                <div className="grid grid-cols-1 gap-3">
-                                                                    <button onClick={() => {
-                                                                        if (!cast.resume_path) return;
-                                                                        if (cast.is_api_resume) {
-                                                                            const email = cast.owner_email || crmEmail || user?.email || '';
-                                                                            navigate(`/final-result/profile?email=${encodeURIComponent(email)}&resumeUrl=${encodeURIComponent(cast.resume_path || '')}`);
-                                                                        } else { handleViewDetails(cast.id, cast.resume_path); }
-                                                                    }} disabled={!cast.resume_path}
-                                                                        className={`w-full ${cast.resume_path ? 'bg-[#0B4F6C] text-white shadow-md' : 'bg-gray-100 text-gray-400'} py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transform active:scale-95 transition-all`}>
-                                                                        <ExternalLink className="w-4 h-4" /> View Details
-                                                                    </button>
-                                                                    <div className="flex gap-3">
+                                                                </td>
+                                                                <td className="py-4 px-6 text-left">
+                                                                    {video ? (
+                                                                        <button onClick={() => setSelectedVideo(video)}
+                                                                            className="text-[#01796F] hover:text-[#016761] font-bold flex items-center gap-1.5 transition-colors">
+                                                                            <Play className="w-4 h-4 fill-current" /> Play
+                                                                        </button>
+                                                                    ) : (
+                                                                        <span className="text-gray-400 text-xs italic text-left font-medium">No video</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-4 px-6 text-left">{getBadge(cast.status)}</td>
+                                                                <td className="py-4 px-6 text-left font-bold text-gray-500 whitespace-nowrap">{formatDate(cast.created_at)}</td>
+                                                                <td className="py-4 px-6 text-center">
+                                                                    <div className="flex justify-center gap-2">
+                                                                        <button onClick={() => {
+                                                                            if (!cast.resume_path) return;
+                                                                            if (cast.is_api_resume) {
+                                                                                const email = cast.owner_email || crmEmail || user?.email || '';
+                                                                                navigate(`/final-result/profile?email=${encodeURIComponent(email)}`);
+                                                                            } else {
+                                                                                handleViewDetails(cast.id, cast.resume_path);
+                                                                            }
+                                                                        }} disabled={!cast.resume_path}
+                                                                            className={`${cast.resume_path ? 'bg-[#01796F] hover:bg-[#016761] text-white' : 'bg-gray-200 text-gray-400'} px-3 py-1.5 rounded-md font-semibold text-xs transition-colors`}>
+                                                                            View
+                                                                        </button>
                                                                         {cast.resume_path && (
-                                                                            <button onClick={() => handleReplaceClick(cast.id)} disabled={isReplacing && replacingId === cast.id}
-                                                                                className="flex-1 border-2 border-emerald-500 text-emerald-600 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-50 transition-colors">
-                                                                                {isReplacing && replacingId === cast.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
+                                                                            <button onClick={() => handleReplaceClick(cast.id)}
+                                                                                disabled={isReplacing && replacingId === cast.id}
+                                                                                className="border-2 border-emerald-500 text-emerald-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-emerald-500 hover:text-white transition-colors flex items-center gap-1">
+                                                                                {isReplacing && replacingId === cast.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
                                                                                 Replace
                                                                             </button>
                                                                         )}
                                                                         {both ? (
                                                                             <button onClick={() => handleReRecord(cast)}
-                                                                                className="flex-1 border-2 border-[#0B4F6C] text-[#0B4F6C] py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-50 transition-colors">
-                                                                                <Redo className="w-4 h-4" /> Re-record
+                                                                                className="border-2 border-[#0B4F6C] text-[#0B4F6C] px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-[#0B4F6C] hover:text-white transition-colors">
+                                                                                Re-record
                                                                             </button>
                                                                         ) : (
                                                                             <button onClick={() => handleContinue(cast)}
-                                                                                className="flex-1 border-2 border-orange-500 text-orange-600 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-orange-50 transition-colors">
-                                                                                <Play className="w-4 h-4" /> Continue
+                                                                                className="border-2 border-orange-500 text-orange-600 px-3 py-1.5 rounded-md font-semibold text-xs hover:bg-orange-500 hover:text-white transition-colors">
+                                                                                Continue
                                                                             </button>
                                                                         )}
                                                                     </div>
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                </React.Fragment>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                                                                </td>
+                                                            </tr>
+
+                                                            {/* Mobile */}
+                                                            <tr key={`mobile-${cast.id}`} className="border-b border-gray-100 hover:bg-gray-50 md:hidden">
+                                                                <td className="py-6 px-4" colSpan={6}>
+                                                                    <div className="flex flex-col gap-5">
+                                                                        <div className="flex justify-between items-start">
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <h3 className="font-bold text-[#0B4F6C] text-lg leading-tight mb-1">Recording-{castNumber}</h3>
+                                                                                <p className="text-xs text-gray-400 font-medium flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(cast.created_at)}</p>
+                                                                            </div>
+                                                                            <div className="flex-shrink-0">{getBadge(cast.status)}</div>
+                                                                        </div>
+                                                                        <div className="bg-gray-50/80 rounded-xl p-4 flex justify-around border border-gray-100">
+                                                                            <div className="flex flex-col items-center gap-2">
+                                                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Resume</span>
+                                                                                {cast.resume_path ? (
+                                                                                    <button onClick={() => viewDocumentSafe(cast.resume_path)} className="bg-emerald-50 text-emerald-700 p-2.5 rounded-full hover:bg-emerald-100 transition-colors"><FileText className="w-5 h-5" /></button>
+                                                                                ) : (
+                                                                                    <div className="bg-gray-100 text-gray-400 p-2.5 rounded-full cursor-not-allowed"><FileText className="w-5 h-5" /></div>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="flex flex-col items-center gap-2">
+                                                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Video</span>
+                                                                                {video ? (
+                                                                                    <button onClick={() => setSelectedVideo(video)} className="bg-blue-50 text-blue-700 p-2.5 rounded-full hover:bg-blue-100 transition-colors"><Play className="w-5 h-5 fill-current" /></button>
+                                                                                ) : (
+                                                                                    <div className="bg-gray-100 text-gray-400 p-2.5 rounded-full cursor-not-allowed"><Play className="w-5 h-5" /></div>
+                                                                                )}
+                                                                            </div>
+                                                                            {cast.vercel_portfolio_url && (
+                                                                                <div className="flex flex-col items-center gap-2">
+                                                                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Portfolio</span>
+                                                                                    <a href={cast.vercel_portfolio_url} target="_blank" rel="noreferrer" className="bg-purple-50 text-purple-700 p-2.5 rounded-full hover:bg-purple-100 transition-colors"><Link className="w-5 h-5" /></a>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="grid grid-cols-1 gap-3">
+                                                                            <button onClick={() => {
+                                                                                if (!cast.resume_path) return;
+                                                                                if (cast.is_api_resume) {
+                                                                                    const email = cast.owner_email || crmEmail || user?.email || '';
+                                                                                    navigate(`/final-result/profile?email=${encodeURIComponent(email)}&resumeUrl=${encodeURIComponent(cast.resume_path || '')}`);
+                                                                                } else { handleViewDetails(cast.id, cast.resume_path); }
+                                                                            }} disabled={!cast.resume_path}
+                                                                                className={`w-full ${cast.resume_path ? 'bg-[#0B4F6C] text-white shadow-md' : 'bg-gray-100 text-gray-400'} py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transform active:scale-95 transition-all`}>
+                                                                                <ExternalLink className="w-4 h-4" /> View Details
+                                                                            </button>
+                                                                            <div className="flex gap-3">
+                                                                                {cast.resume_path && (
+                                                                                    <button onClick={() => handleReplaceClick(cast.id)} disabled={isReplacing && replacingId === cast.id}
+                                                                                        className="flex-1 border-2 border-emerald-500 text-emerald-600 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-50 transition-colors">
+                                                                                        {isReplacing && replacingId === cast.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
+                                                                                        Replace
+                                                                                    </button>
+                                                                                )}
+                                                                                {both ? (
+                                                                                    <button onClick={() => handleReRecord(cast)}
+                                                                                        className="flex-1 border-2 border-[#0B4F6C] text-[#0B4F6C] py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-50 transition-colors">
+                                                                                        <Redo className="w-4 h-4" /> Re-record
+                                                                                    </button>
+                                                                                ) : (
+                                                                                    <button onClick={() => handleContinue(cast)}
+                                                                                        className="flex-1 border-2 border-orange-500 text-orange-600 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-orange-50 transition-colors">
+                                                                                        <Play className="w-4 h-4" /> Continue
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        </React.Fragment>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {careercasts.length > 3 && (
+                                        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-center">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAllResumes(prev => !prev)}
+                                                className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-[#0B4F6C] hover:text-[#01796F] bg-white hover:bg-gray-100/80 rounded-xl border border-gray-200/80 shadow-xs transition-all cursor-pointer group"
+                                            >
+                                                <span>{showAllResumes ? 'Show Less' : 'See More'}</span>
+                                                {showAllResumes ? (
+                                                    <ChevronUp className="w-4 h-4 text-[#0B4F6C] group-hover:text-[#01796F] transition-transform group-hover:-translate-y-0.5" />
+                                                ) : (
+                                                    <ChevronDown className="w-4 h-4 text-[#0B4F6C] group-hover:text-[#01796F] transition-transform group-hover:translate-y-0.5" />
+                                                )}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()
                     ) : null}
                 </div>
             </main>

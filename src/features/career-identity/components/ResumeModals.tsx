@@ -30,7 +30,7 @@ interface ResumeModalsProps {
     isAvatarModalOpen: boolean;
     setIsAvatarModalOpen: (open: boolean) => void;
     onAvatarSelect: (path: string) => void;
-    initialGender?: 'boy' | 'girl';
+    initialGender?: 'Male' | 'Female';
 }
 
 const Scribble = ({ className }: { className?: string }) => (
@@ -48,9 +48,9 @@ export const ResumeModals: React.FC<ResumeModalsProps> = ({
     isHumanMode, handleDownloadResume, handleEmailCandidate, handleWhatsAppCandidate,
     handleScheduleSubmit, formData, setFormData, scheduleStep, setScheduleStep,
     formStatus, statusMessage, isAvatarModalOpen, setIsAvatarModalOpen,
-    onAvatarSelect, initialGender = 'boy'
+    onAvatarSelect, initialGender = 'Male'
 }) => {
-    const [avatarGender, setAvatarGender] = React.useState<'boy' | 'girl'>(initialGender);
+    const [avatarGender, setAvatarGender] = React.useState<'Male' | 'Female'>(initialGender);
 
     React.useEffect(() => {
         if (initialGender) setAvatarGender(initialGender);
@@ -66,7 +66,7 @@ export const ResumeModals: React.FC<ResumeModalsProps> = ({
         });
     }, []);
 
-    const avatars = avatarGender === 'boy'
+    const avatars = avatarGender === 'Male'
         ? [1, 2, 3, 4, 5, 6, 7, 8].map(n => `/Avatar_profile/${n}.jpg`)
         : [9, 10, 11, 12, 13, 14, 15, 16].map(n => `/Avatar_profile/${n}.jpg`);
 
@@ -201,16 +201,16 @@ export const ResumeModals: React.FC<ResumeModalsProps> = ({
                                 <div className="flex justify-center">
                                     <div className="flex p-1.5 bg-slate-100 rounded-2xl gap-1">
                                         <button
-                                            onClick={() => setAvatarGender('boy')}
-                                            className={`px-8 py-2.5 rounded-xl text-sm font-black transition-all ${avatarGender === 'boy' ? 'bg-white text-blue-600 shadow-sm scale-105' : 'text-slate-500 hover:text-slate-700'}`}
+                                            onClick={() => setAvatarGender('Male')}
+                                            className={`px-8 py-2.5 rounded-xl text-sm font-black transition-all ${avatarGender === 'Male' ? 'bg-white text-blue-600 shadow-sm scale-105' : 'text-slate-500 hover:text-slate-700'}`}
                                         >
-                                            BOYS
+                                            MALE
                                         </button>
                                         <button
-                                            onClick={() => setAvatarGender('girl')}
-                                            className={`px-8 py-2.5 rounded-xl text-sm font-black transition-all ${avatarGender === 'girl' ? 'bg-white text-pink-600 shadow-sm scale-105' : 'text-slate-500 hover:text-slate-700'}`}
+                                            onClick={() => setAvatarGender('Female')}
+                                            className={`px-8 py-2.5 rounded-xl text-sm font-black transition-all ${avatarGender === 'Female' ? 'bg-white text-pink-600 shadow-sm scale-105' : 'text-slate-500 hover:text-slate-700'}`}
                                         >
-                                            GIRLS
+                                            FEMALE
                                         </button>
                                     </div>
                                 </div>

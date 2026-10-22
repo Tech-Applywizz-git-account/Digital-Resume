@@ -1,9 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { ResumeModals } from '../components/ResumeModals';
 import type { CareerIdentityContent, CareerIdentityProfileStatus } from '../../../types/careerIdentity';
-import { Save, Eye, CheckCircle, RefreshCw, Plus, X, Camera, AlertCircle } from 'lucide-react';
+import { CAREER_IDENTITY_THEMES, CareerIdentityThemeKey } from '../themes/themeRegistry';
+import { Save, Eye, CheckCircle, RefreshCw, Plus, X, Camera, AlertCircle, Sparkles, Palette } from 'lucide-react';
+import { apiUrl } from '../../../lib/apiBase';
+import { supabase } from '../../../integrations/supabase/client';
 
 interface EditorProps {
+    userId?: string;
     initialContent: CareerIdentityContent;
     initialThemeId: string | null;
     initialStatus: CareerIdentityProfileStatus;
@@ -19,6 +23,7 @@ function createId(): string {
 }
 
 export default function CareerIdentityAdminEditor({
+    userId,
     initialContent,
     initialThemeId,
     initialStatus,
@@ -28,6 +33,19 @@ export default function CareerIdentityAdminEditor({
     saving,
     saveError: externalSaveError,
 }: EditorProps) {
+    const [selectedThemeId, setSelectedThemeId] = useState<CareerIdentityThemeKey>(() => {
+        if (initialThemeId && ['aurora', 'zenith', 'atlas'].includes(initialThemeId)) {
+            return initialThemeId as CareerIdentityThemeKey;
+        }
+        return 'aurora';
+    });
+
+    useEffect(() => {
+        if (initialThemeId && ['aurora', 'zenith', 'atlas'].includes(initialThemeId)) {
+            setSelectedThemeId(initialThemeId as CareerIdentityThemeKey);
+        }
+    }, [initialThemeId]);
+
     const [content, setContent] = useState<CareerIdentityContent>(() => ({
         hero: initialContent.hero ?? {},
         about: initialContent.about ?? '',
@@ -40,8 +58,95 @@ export default function CareerIdentityAdminEditor({
     const [skillInput, setSkillInput] = useState('');
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     const [localSaveError, setLocalSaveError] = useState<string | null>(null);
+    const [autoFilling, setAutoFilling] = useState(false);
+    const [autoFillFeedback, setAutoFillFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     const saveError = externalSaveError || localSaveError;
+
+    const handleAutoFill = async () => {
+        if (!userId) {
+            setLocalSaveError('User ID is missing for auto-fill');
+            return;
+        }
+        setAutoFilling(true);
+        setAutoFillFeedback(null);
+        setLocalSaveError(null);
+        try {
+            let { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) {
+                const refreshed = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } }));
+                session = refreshed.data.session;
+            }
+            const adminEmail =
+                sessionStorage.getItem('admin_email') ||
+                session?.user?.email ||
+                localStorage.getItem('admin_email') ||
+                localStorage.getItem('user_email');
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+            };
+            if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+            if (adminEmail) headers['x-admin-email'] = adminEmail;
+
+            if (!session?.access_token && !adminEmail) throw new Error('Not authenticated');
+
+            const res = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}/auto-fill`), {
+                method: 'POST',
+                headers,
+            });
+
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body?.error?.message || body?.message || `Auto-fill failed (${res.status})`);
+            }
+
+            const body = await res.json();
+            const autoContent = body?.data?.content as CareerIdentityContent;
+            const newThemeId = body?.data?.themeId as CareerIdentityThemeKey | undefined;
+            if (!autoContent) throw new Error('No content returned from resume parser');
+
+            // If an avatar was assigned and none is currently selected, select it
+            const assignedAvatar = autoContent.hero?.profileImageUrl;
+            if (assignedAvatar && !selectedAvatar) {
+                setSelectedAvatar(assignedAvatar);
+            }
+
+            if (newThemeId && !selectedThemeId) {
+                setSelectedThemeId(newThemeId);
+            }
+
+            // Populate React form state in-memory (DB is NOT touched)
+            setContent(prev => ({
+                ...prev,
+                hero: {
+                    ...(prev.hero || {}),
+                    ...(autoContent.hero || {}),
+                    profileImageUrl: selectedAvatar || assignedAvatar || prev.hero?.profileImageUrl,
+                },
+                about: autoContent.about || prev.about || '',
+                skills: (autoContent.skills && autoContent.skills.length > 0) ? autoContent.skills : (prev.skills || []),
+                education: (autoContent.education && autoContent.education.length > 0) ? autoContent.education : (prev.education || []),
+                contact: {
+                    ...(prev.contact || {}),
+                    ...(autoContent.contact || {}),
+                },
+            }));
+
+            setAutoFillFeedback({
+                type: 'success',
+                message: 'Auto-filled from latest resume! Review the fields and click "Save Draft" when ready.',
+            });
+            setValidationErrors([]);
+        } catch (err: any) {
+            console.error('[AutoFill] Failed to auto-fill:', err);
+            setAutoFillFeedback({
+                type: 'error',
+                message: err?.message || 'Failed to auto-fill from resume',
+            });
+        } finally {
+            setAutoFilling(false);
+        }
+    };
 
     const updateContent = useCallback((patch: Partial<CareerIdentityContent>) => {
         setContent(prev => ({ ...prev, ...patch }));
@@ -89,14 +194,14 @@ export default function CareerIdentityAdminEditor({
                 contentToSave.hero = rest;
             }
         }
-        // Always use the fixed theme
-        await onSave({ content: contentToSave, themeId: initialThemeId || 'aurora', workflowStatus, status });
+        // Save candidate's selected theme
+        await onSave({ content: contentToSave, themeId: selectedThemeId, workflowStatus, status });
     };
 
     const handlePreview = () => {
         // Store the latest unsaved edits in localStorage before previewing
         localStorage.setItem('ci_preview_content', JSON.stringify(content));
-        localStorage.setItem('ci_preview_theme', initialThemeId || 'aurora');
+        localStorage.setItem('ci_preview_theme', selectedThemeId);
         localStorage.setItem('ci_preview_avatar', selectedAvatar || '');
         window.open(`/career-identity/${resumeId}?preview=true`, '_blank', 'noopener,noreferrer');
     };
@@ -141,35 +246,149 @@ export default function CareerIdentityAdminEditor({
                 </div>
             )}
 
+            {autoFillFeedback && (
+                <div className={`p-4 rounded-lg text-sm flex items-center justify-between gap-3 ${
+                    autoFillFeedback.type === 'success'
+                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                        : 'bg-red-50 border border-red-200 text-red-700'
+                }`}>
+                    <div className="flex items-center gap-2">
+                        {autoFillFeedback.type === 'success' ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                        ) : (
+                            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                        )}
+                        <span>{autoFillFeedback.message}</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setAutoFillFeedback(null)}
+                        className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex items-center gap-3 flex-wrap">
-                <button onClick={() => handleAction()} disabled={saving}
+                <button
+                    type="button"
+                    onClick={handleAutoFill}
+                    disabled={saving || autoFilling}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg text-sm font-semibold hover:from-emerald-700 hover:to-teal-700 transition-all shadow-sm disabled:opacity-50"
+                    title="Extract fields from candidate's latest resume into the form (does not save to DB until you Save Draft)"
+                >
+                    {autoFilling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-emerald-100" />}
+                    ⚡ Auto-Fill from Resume
+                </button>
+                <button onClick={() => handleAction()} disabled={saving || autoFilling}
                     className="flex items-center gap-2 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg text-sm font-medium hover:bg-[#0a3d54] transition-colors disabled:opacity-50">
                     {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Save Draft
                 </button>
-                <button onClick={handlePreview}
+                <button onClick={handlePreview} disabled={saving || autoFilling}
                     className="flex items-center gap-2 px-4 py-2 border-2 border-[#0B4F6C] text-[#0B4F6C] rounded-lg text-sm font-medium hover:bg-[#0B4F6C]/5 transition-colors">
                     <Eye className="w-4 h-4" /> Preview
                 </button>
                 {initialStatus === 'draft' && (
-                    <button onClick={() => handleAction('ready_for_review')} disabled={saving}
+                    <button onClick={() => handleAction('ready_for_review')} disabled={saving || autoFilling}
                         className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50">
                         {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
                         Mark Ready
                     </button>
                 )}
                 {initialStatus === 'draft' && (
-                    <button onClick={() => handleAction(undefined, 'published')} disabled={saving}
+                    <button onClick={() => handleAction(undefined, 'published')} disabled={saving || autoFilling}
                         className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50">
                         {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                         Publish
                     </button>
                 )}
-                <button onClick={onCancel} disabled={saving}
+                <button onClick={onCancel} disabled={saving || autoFilling}
                     className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50">
                     Cancel
                 </button>
+            </div>
+
+            {/* Theme Selector Section */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-slate-100 text-slate-700 rounded-lg">
+                            <Palette size={18} />
+                        </div>
+                        <div>
+                            <h2 className="text-sm font-semibold text-slate-900">Career Identity Theme</h2>
+                            <p className="text-xs text-slate-500">Select the visual aesthetic and typography system for this profile</p>
+                        </div>
+                    </div>
+                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 text-slate-700 capitalize self-start sm:self-auto">
+                        Active: {CAREER_IDENTITY_THEMES.find(t => t.key === selectedThemeId)?.name || selectedThemeId}
+                    </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {CAREER_IDENTITY_THEMES.map((theme) => {
+                        const isSelected = selectedThemeId === theme.key;
+                        return (
+                            <div
+                                key={theme.key}
+                                onClick={() => setSelectedThemeId(theme.key)}
+                                className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative flex flex-col justify-between ${
+                                    isSelected
+                                        ? 'border-[#0B4F6C] bg-sky-50/20 shadow-md ring-2 ring-[#0B4F6C]/15'
+                                        : 'border-slate-200 hover:border-slate-300 hover:shadow-sm bg-white'
+                                }`}
+                            >
+                                <div>
+                                    <div className="flex items-center justify-between mb-2.5">
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                                            isSelected ? 'bg-[#0B4F6C] text-white' : 'bg-slate-100 text-slate-600'
+                                        }`}>
+                                            {theme.badgeLabel}
+                                        </span>
+                                        <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-full border border-slate-100">
+                                            <span
+                                                className="w-3.5 h-3.5 rounded-full border border-black/10 inline-block shadow-xs"
+                                                style={{ backgroundColor: theme.swatch.primary }}
+                                                title="Primary"
+                                            />
+                                            <span
+                                                className="w-3.5 h-3.5 rounded-full border border-black/10 inline-block shadow-xs"
+                                                style={{ backgroundColor: theme.swatch.accent }}
+                                                title="Accent"
+                                            />
+                                            <span
+                                                className="w-3.5 h-3.5 rounded-full border border-black/10 inline-block shadow-xs"
+                                                style={{ backgroundColor: theme.swatch.bg }}
+                                                title="Background"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <h3 className={`text-sm font-bold mb-1.5 ${isSelected ? 'text-[#0B4F6C]' : 'text-slate-900'}`}>
+                                        {theme.name}
+                                    </h3>
+                                    <p className="text-xs text-slate-600 leading-relaxed mb-3">
+                                        {theme.description}
+                                    </p>
+                                </div>
+
+                                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                                    <span className="text-[11px] font-medium text-slate-500">
+                                        {theme.key === 'atlas' ? 'Serif Headings' : theme.key === 'zenith' ? 'Glassmorphic' : 'Modern Corporate'}
+                                    </span>
+                                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
+                                        isSelected ? 'border-[#0B4F6C] bg-[#0B4F6C] text-white' : 'border-slate-300'
+                                    }`}>
+                                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* 1. Identity Section */}
@@ -367,19 +586,29 @@ export default function CareerIdentityAdminEditor({
 
             {/* Bottom Actions */}
             <div className="flex items-center gap-3 flex-wrap pt-2 pb-8">
-                <button onClick={() => handleAction()} disabled={saving}
+                <button
+                    type="button"
+                    onClick={handleAutoFill}
+                    disabled={saving || autoFilling}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg text-sm font-semibold hover:from-emerald-700 hover:to-teal-700 transition-all shadow-sm disabled:opacity-50"
+                    title="Extract fields from candidate's latest resume into the form (does not save to DB until you Save Draft)"
+                >
+                    {autoFilling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-emerald-100" />}
+                    ⚡ Auto-Fill from Resume
+                </button>
+                <button onClick={() => handleAction()} disabled={saving || autoFilling}
                     className="flex items-center gap-2 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg text-sm font-medium hover:bg-[#0a3d54] transition-colors disabled:opacity-50">
                     {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Save Draft
                 </button>
                 {initialStatus === 'draft' && (
-                    <button onClick={() => handleAction('ready_for_review')} disabled={saving}
+                    <button onClick={() => handleAction('ready_for_review')} disabled={saving || autoFilling}
                         className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50">
                         {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
                         Mark Ready
                     </button>
                 )}
-                <button onClick={onCancel} disabled={saving}
+                <button onClick={onCancel} disabled={saving || autoFilling}
                     className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50">
                     Cancel
                 </button>
@@ -398,7 +627,7 @@ export default function CareerIdentityAdminEditor({
                 isAvatarModalOpen={isAvatarModalOpen}
                 setIsAvatarModalOpen={setIsAvatarModalOpen}
                 onAvatarSelect={handleAvatarSelect}
-                initialGender={displayName.toLowerCase().endsWith('a') || displayName.toLowerCase().includes('girl') ? 'girl' : 'boy'}
+                initialGender={content.hero?.gender || (displayName.toLowerCase().endsWith('a') || displayName.toLowerCase().includes('female') ? 'Female' : 'Male')}
             />
         </div>
     );

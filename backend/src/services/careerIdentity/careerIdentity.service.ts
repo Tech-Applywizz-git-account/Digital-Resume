@@ -7,6 +7,17 @@ import { getDatabase } from '../../config/database.js';
 import { neatpassProvider } from '../wallet/providers/neatpass/neatpass.service.js';
 import { storageService } from '../storage/storage.service.js';
 import type { WalletCardData } from '../wallet/wallet.types.js';
+import {
+    callApplyWizardParser,
+    adaptParserResponse,
+    type AutoFillContext,
+} from './resumeParser.service.js';
+import { crmUserRepository } from '../../repositories/crmUser.repository.js';
+import {
+    fetchClientGender,
+    assignRandomAvatar,
+    assignRandomTheme,
+} from './clientOnboarding.service.js';
 
 export interface CareerIdentityDerivedData {
     candidateName: string | null;
@@ -24,32 +35,10 @@ export interface CareerIdentityProfileResponse {
 }
 
 /**
- * Default theme assignment — deterministic round-robin based on the
- * career_identity_theme_assignment_seq sequence (mirrors the old DB trigger).
+ * Default theme assignment — randomly selects among the 3 active themes: aurora, zenith, atlas.
  */
 async function assignTheme(): Promise<string> {
-    const db = getDatabase();
-    const { data: themes } = await db
-        .from('career_identity_themes')
-        .select('id')
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-        .order('id', { ascending: true });
-
-    if (!themes || themes.length === 0) {
-        return 'aurora';
-    }
-
-    const { data: seqResult } = await db.rpc('nextval', {
-        sequence_name: 'public.career_identity_theme_assignment_seq',
-    } as any);
-
-    const ticket = seqResult
-        ? Number(seqResult)
-        : Math.floor(Math.random() * 1000000);
-
-    const targetOffset = (ticket - 1) % themes.length;
-    return themes[targetOffset].id;
+    return assignRandomTheme();
 }
 
 /**
@@ -240,6 +229,76 @@ export class CareerIdentityService {
         };
     }
 
+    /**
+     * Ensures Career Identity data has a random theme and gender-matched avatar assigned.
+     * - Random Theme: picked from 'aurora' | 'zenith' | 'atlas' if not set.
+     * - Gender Avatar: queries CRM onboarding API if avatar is not set.
+     * - If API is down / gender unknown: avatar is left null.
+     * - If theme/avatar already exist: preserved (never overwritten).
+     */
+    async ensureInitializedCareerIdentity(
+        userId: string,
+        email: string,
+        existingCiData: Record<string, any> | null
+    ): Promise<Record<string, any>> {
+        let ciData: Record<string, any> = existingCiData ? { ...existingCiData } : {
+            themeId: assignRandomTheme(),
+            status: 'draft',
+            workflowStatus: 'not_submitted',
+            content: {},
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
+        let needsDbUpdate = !existingCiData;
+
+        // 1. Ensure themeId is set (random assign if missing)
+        if (!ciData.themeId) {
+            ciData.themeId = assignRandomTheme();
+            needsDbUpdate = true;
+        }
+
+        // 2. Ensure content.hero exists
+        const content = (ciData.content as Record<string, any>) || {};
+        const hero = (content.hero as Record<string, any>) || {};
+
+        // 3. If avatar is missing, query gender and assign
+        if (!hero.profileImageUrl) {
+            try {
+                const crm = await crmUserRepository.findByEmailOrAppEmail(email);
+                const companyEmail = crm?.company_application_email;
+                const { gender } = await fetchClientGender(email, companyEmail);
+                if (gender) {
+                    hero.gender = gender;
+                    const avatar = assignRandomAvatar(gender);
+                    if (avatar) {
+                        hero.profileImageUrl = avatar;
+                    }
+                    content.hero = hero;
+                    ciData.content = content;
+                    needsDbUpdate = true;
+                }
+            } catch (err) {
+                console.warn(`[CareerIdentity] Failed to fetch gender on initialization for ${email}:`, err);
+            }
+        }
+
+        if (needsDbUpdate) {
+            ciData.updatedAt = new Date().toISOString();
+            try {
+                const db = getDatabase();
+                await db
+                    .from('profiles')
+                    .update({ career_identity_data: ciData })
+                    .eq('id', userId);
+            } catch (err) {
+                console.error(`[CareerIdentity] Could not persist initialized CI data for ${userId}:`, err);
+            }
+        }
+
+        return ciData;
+    }
+
     async getProfile(resumeId: string, userId: string | null): Promise<CareerIdentityProfileResponse> {
         const tier = await subscriptionService.getTier(resumeId);
 
@@ -256,27 +315,11 @@ export class CareerIdentityService {
             return { tier, profile: null, derived: null };
         }
 
-        let ciData = (profile as any).career_identity_data as Record<string, unknown> | null;
-
-        if (!ciData) {
-            const now = new Date().toISOString();
-            const themeId = await assignTheme();
-            ciData = {
-                themeId,
-                status: 'draft',
-                content: {},
-                createdAt: now,
-                updatedAt: now,
-            };
-
-            const db = getDatabase();
-            const { error: updateError } = await db
-                .from('profiles')
-                .update({ career_identity_data: ciData })
-                .eq('id', userId);
-
-            if (updateError) throw updateError;
-        }
+        const ciData = await this.ensureInitializedCareerIdentity(
+            userId,
+            profile.email,
+            (profile as any).career_identity_data as Record<string, unknown> | null
+        );
 
         const derived = await this.resolveDerivedData(resumeId);
 
@@ -482,6 +525,95 @@ export class CareerIdentityService {
     }
 
     /**
+     * Finds the single latest uploaded resume across both crm_job_requests and job_requests.
+     * Evaluates both created_at and updated_at, ignores rows without a valid resume file,
+     * and accurately resolves against the appropriate storage bucket.
+     */
+    private async findLatestResume(userId: string, email?: string | null): Promise<{
+        job: any | null;
+        resumeUrl: string | null;
+        isCRM: boolean;
+        bucket: string;
+    }> {
+        const db = getDatabase();
+
+        const [crmRes, regRes] = await Promise.all([
+            db.from('crm_job_requests')
+                .select('id, resume_url, job_title, job_description, created_at, updated_at')
+                .or(email ? `user_id.eq.${userId},email.eq.${email}` : `user_id.eq.${userId}`)
+                .order('created_at', { ascending: false }),
+            db.from('job_requests')
+                .select('id, resume_path, job_title, job_description, created_at, updated_at')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false }),
+        ]);
+
+        interface ResumeCandidate {
+            id: string;
+            rawResume: string;
+            isCRM: boolean;
+            bucket: string;
+            timestamp: number;
+            record: any;
+        }
+
+        const candidates: ResumeCandidate[] = [];
+
+        for (const row of crmRes.data || []) {
+            if (row.resume_url && typeof row.resume_url === 'string' && row.resume_url.trim().length > 0) {
+                const ts = Math.max(
+                    new Date(row.updated_at || 0).getTime(),
+                    new Date(row.created_at || 0).getTime()
+                );
+                candidates.push({
+                    id: row.id,
+                    rawResume: row.resume_url.trim(),
+                    isCRM: true,
+                    bucket: 'CRM_users_resumes',
+                    timestamp: ts,
+                    record: row,
+                });
+            }
+        }
+
+        for (const row of regRes.data || []) {
+            if (row.resume_path && typeof row.resume_path === 'string' && row.resume_path.trim().length > 0) {
+                const ts = Math.max(
+                    new Date(row.updated_at || 0).getTime(),
+                    new Date(row.created_at || 0).getTime()
+                );
+                candidates.push({
+                    id: row.id,
+                    rawResume: row.resume_path.trim(),
+                    isCRM: false,
+                    bucket: 'resumes',
+                    timestamp: ts,
+                    record: row,
+                });
+            }
+        }
+
+        // Sort descending: highest timestamp = newest resume
+        candidates.sort((a, b) => b.timestamp - a.timestamp);
+
+        if (candidates.length === 0) {
+            console.log(`[ResumeSelector] Candidate ${userId}: No uploaded resume found in crm_job_requests or job_requests`);
+            return { job: null, resumeUrl: null, isCRM: false, bucket: 'resumes' };
+        }
+
+        const latest = candidates[0];
+        const resumeUrl = this.resolveStorageUrl(latest.rawResume, latest.bucket);
+        console.log(`[ResumeSelector] Candidate ${userId}: Selected latest resume from ${latest.bucket} (ID: ${latest.id}, timestamp: ${new Date(latest.timestamp).toISOString()})`);
+
+        return {
+            job: latest.record,
+            resumeUrl,
+            isCRM: latest.isCRM,
+            bucket: latest.bucket,
+        };
+    }
+
+    /**
      * Admin: Get a single Career Identity request by userId.
      */
     async getRequest(userId: string): Promise<any> {
@@ -495,19 +627,15 @@ export class CareerIdentityService {
         if (error) throw error;
         if (!profile) throw new NotFoundError('User', userId);
 
-        const ciData = (profile.career_identity_data as Record<string, unknown>) || {};
+        const ciData = await this.ensureInitializedCareerIdentity(
+            profile.id,
+            profile.email,
+            profile.career_identity_data as Record<string, unknown> | null
+        );
         console.log(`[DIAG-GET] getRequest(${userId}): raw ciData.walletCardUrl=${ciData.walletCardUrl || 'null'}, walletCardStatus=${ciData.walletCardStatus || 'null'}`);
 
-        const [crmJobs, regJobs] = await Promise.all([
-            db.from('crm_job_requests').select('id, resume_url, job_title, job_description, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
-            db.from('job_requests').select('id, resume_path, job_title, job_description, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
-        ]);
-
-        const allJobs: any[] = [...(crmJobs.data || []), ...(regJobs.data || [])];
-        const isCRM = (crmJobs.data?.length || 0) > 0;
-        const firstJob: any = allJobs[0] || null;
-        const rawResumeUrl = firstJob?.resume_url || firstJob?.resume_path || null;
-        const resumeUrl = rawResumeUrl ? this.resolveStorageUrl(rawResumeUrl, isCRM ? 'CRM_users_resumes' : 'resumes') : null;
+        // Find absolute latest resume across crm_job_requests and job_requests
+        const { job: firstJob, resumeUrl } = await this.findLatestResume(userId, profile.email);
 
         let introVideoUrl: string | null = null;
         let recordingCreatedAt: string | null = null;
@@ -551,6 +679,117 @@ export class CareerIdentityService {
                 jobDescription: firstJob?.job_description || null,
             },
         };
+    }
+
+    /**
+     * Admin: Auto-fills Career Identity profile content using the candidate's latest resume.
+     * Passes the resume to the internal ApplyWizard parser API and adapts it.
+     * Integrates onboarding gender lookup to assign random avatar and theme if not already set.
+     * NOTE: Does NOT write to database — only returns content & themeId for admin review in UI.
+     */
+    async autoFillFromResume(userId: string): Promise<{ content: Record<string, unknown>; themeId: string }> {
+        const db = getDatabase();
+
+        // 1. Fetch user profile (using verified existing columns)
+        const { data: profile, error: profileError } = await db
+            .from('profiles')
+            .select('id, email, full_name, first_name, tier, career_identity_data')
+            .eq('id', userId)
+            .maybeSingle();
+
+        if (profileError) throw profileError;
+        if (!profile) throw new NotFoundError('User', userId);
+
+        const existingCi = (profile.career_identity_data as Record<string, any>) || {};
+        const existingContact = existingCi.content?.contact || {};
+        const existingHero = existingCi.content?.hero || {};
+
+        // Resolve avatar & gender if not already present
+        let assignedAvatar: string | null = existingHero.profileImageUrl || null;
+        let assignedGender: 'Male' | 'Female' | null = existingHero.gender || null;
+
+        if (!assignedAvatar) {
+            try {
+                const crm = await crmUserRepository.findByEmailOrAppEmail(profile.email);
+                const companyEmail = crm?.company_application_email;
+                const { gender } = await fetchClientGender(profile.email, companyEmail);
+                if (gender) {
+                    assignedGender = gender;
+                    assignedAvatar = assignRandomAvatar(gender);
+                }
+            } catch (err) {
+                console.warn(`[AutoFill] Could not fetch gender for ${profile.email}:`, err);
+            }
+        }
+
+        const chosenTheme = existingCi.themeId || assignRandomTheme();
+
+        const attachHeroDetails = (content: Record<string, any>) => {
+            if (!content.hero) content.hero = {};
+            if (assignedAvatar) {
+                content.hero.profileImageUrl = assignedAvatar;
+            }
+            if (assignedGender) {
+                content.hero.gender = assignedGender;
+            }
+            return content;
+        };
+
+        // 2. Fetch portfolio link if available (catch gracefully if table doesn't exist)
+        let portfolioUrl: string | null = null;
+        try {
+            const { data: portfolio } = await db
+                .from('portfolio_settings')
+                .select('url')
+                .eq('user_id', userId)
+                .maybeSingle();
+            if (portfolio?.url) {
+                portfolioUrl = portfolio.url;
+            }
+        } catch {
+            // Non-fatal
+        }
+
+        // 3. Find absolute latest resume across crm_job_requests and job_requests
+        const { job: firstJob, resumeUrl } = await this.findLatestResume(userId, profile.email);
+
+        const context: AutoFillContext = {
+            profile: {
+                full_name: profile.full_name,
+                first_name: profile.first_name,
+                email: profile.email,
+                phone: existingContact.phone || null,
+                location: existingContact.location || null,
+                bio: existingCi.content?.about || null,
+            },
+            jobRequest: firstJob,
+            portfolioUrl,
+        };
+
+        if (!resumeUrl) {
+            console.warn(`[AutoFill] User ${userId} has no uploaded resume, adapting from DB profile context`);
+            const fallbackContent = adaptParserResponse(null, context);
+            return { content: attachHeroDetails(fallbackContent), themeId: chosenTheme };
+        }
+
+        try {
+            console.log(`[AutoFill] Downloading resume for user ${userId} from ${resumeUrl}`);
+            const res = await fetch(resumeUrl);
+            if (!res.ok) {
+                throw new Error(`Failed to download resume file (${res.status} ${res.statusText})`);
+            }
+            const arrayBuffer = await res.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            const parsedResult = await callApplyWizardParser(buffer, 'resume.pdf');
+            const content = adaptParserResponse(parsedResult, context);
+            return { content: attachHeroDetails(content), themeId: chosenTheme };
+        } catch (err: any) {
+            console.error(`[AutoFill] Parser failed for user ${userId}, falling back to DB context:`, err);
+            // Fallback gracefully so admin still gets pre-filled fields from database
+            const fallbackContent = adaptParserResponse(null, context);
+            return { content: attachHeroDetails(fallbackContent), themeId: chosenTheme };
+        }
     }
 
     /**
