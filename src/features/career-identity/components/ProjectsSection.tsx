@@ -3,6 +3,7 @@ import { Layers, Github, PlayCircle, Layout } from 'lucide-react';
 import { Scribble, Tape } from './CommonElements';
 import type { CareerIdentityThemeStyles } from '../themes/themeRegistry';
 import { getThemeTokens } from '../themes/themeRegistry';
+import { trackClaritySmartEvent } from '../../../utils/clarity';
 
 interface Project {
     title: string;
@@ -102,6 +103,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ isHumanMode, p
                                         href={project.githubLink || project.projectLink}
                                         target="_blank"
                                         rel="noopener noreferrer"
+                                        onClick={() => trackClaritySmartEvent('portfolio_click')}
                                         className={`border px-4 py-2 rounded-lg text-xs font-normal transition-all shadow-sm flex items-center gap-2 group ${isHumanMode
                                             ? 'bg-amber-600 border-amber-500 text-white hover:bg-amber-700 font-hand text-base'
                                             : tokens.buttonSecondary

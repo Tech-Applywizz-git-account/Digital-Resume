@@ -30,6 +30,12 @@ import {
 } from '../services/careerIdentityService';
 import { trackEvent, trackSessionEnd } from '../../../utils/tracking';
 import { apiUrl } from '../../../lib/apiBase';
+import {
+    mountClientClarity,
+    detectAndForceClearClarityData,
+    trackClaritySmartEvent,
+    resolveTrafficSource,
+} from '../../../utils/clarity';
 
 const getValidLink = (url?: string | null) => {
     if (!url) return undefined;
@@ -171,7 +177,6 @@ const CareerIdentityPage: React.FC = () => {
     const [candidatePhone] = useState<string | null>(null);
     const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
     const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-    const [hasClickedIntroOnce, setHasClickedIntroOnce] = useState(false);
     const [walletPassUrl, setWalletPassUrl] = useState<string | null>(null);
     const [walletCardUrl, setWalletCardUrl] = useState<string | null>(null);
     const [appleWalletReady, setAppleWalletReady] = useState(false);
@@ -273,6 +278,94 @@ const CareerIdentityPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [castIdParam, isPreviewMode]);
 
+    // Microsoft Clarity Dynamic Per-Client Integration
+    useEffect(() => {
+        if (isPreviewMode || !castIdParam) return;
+
+        const profileData = profile?.profile;
+        if (!profileData) return;
+
+        const clarityStatus = (profileData as any).clarityStatus;
+        const clarityProjectId = (profileData as any).clarityProjectId;
+
+        if (clarityStatus !== 'active' || !clarityProjectId) {
+            detectAndForceClearClarityData();
+            return;
+        }
+
+        let isCancelled = false;
+
+        const resolveViewerRoleAndMount = async () => {
+            // Determine 4-tier viewer role
+            let viewerRole: 'owner' | 'admin' | 'other_client' | 'unknown_visitor' = 'unknown_visitor';
+            if (user) {
+                const currentUserId = user.id;
+                const profileOwnerId = profileData.userId;
+                const userEmail = (user.email || '').toLowerCase().trim();
+
+                // 1. Is this the profile owner?
+                if (
+                    (profileOwnerId && currentUserId === profileOwnerId) ||
+                    (userEmail && (profileData as any).email && userEmail === ((profileData as any).email || '').toLowerCase().trim())
+                ) {
+                    viewerRole = 'owner';
+                } else {
+                    // 2. Is this user in the crm_admins table?
+                    let isAdmin = false;
+                    const cachedAdmin = sessionStorage.getItem(`is_crm_admin_${currentUserId}`);
+                    if (cachedAdmin !== null) {
+                        isAdmin = cachedAdmin === 'true';
+                    } else if (userEmail) {
+                        try {
+                            const { data: adminRecord } = await supabase
+                                .from('crm_admins')
+                                .select('email')
+                                .ilike('email', userEmail)
+                                .maybeSingle();
+                            isAdmin = !!adminRecord;
+                            sessionStorage.setItem(`is_crm_admin_${currentUserId}`, String(isAdmin));
+                        } catch (err) {
+                            console.warn('[Clarity] Failed to verify admin status:', err);
+                        }
+                    }
+
+                    if (isAdmin) {
+                        viewerRole = 'admin';
+                    } else {
+                        // 3. Authenticated user who is neither owner nor admin
+                        viewerRole = 'other_client';
+                    }
+                }
+            }
+
+            if (isCancelled) return;
+
+            const source = resolveTrafficSource();
+            const theme = profileData.themeId || activeThemeKey;
+
+            mountClientClarity(clarityProjectId, {
+                castId: castIdParam,
+                candidateId: profileData.userId,
+                viewerRole,
+                source,
+                theme,
+            });
+        };
+
+        resolveViewerRoleAndMount();
+
+        return () => {
+            isCancelled = true;
+            detectAndForceClearClarityData();
+        };
+    }, [isPreviewMode, castIdParam, profile?.profile?.clarityStatus, profile?.profile?.clarityProjectId, user, activeThemeKey]);
+
+    useEffect(() => {
+        if (isContactModalOpen) {
+            trackClaritySmartEvent('contact_open');
+        }
+    }, [isContactModalOpen]);
+
     useEffect(() => {
         if (videoUrl && !isIntroVideoOpen && !hasAutoPlayed) {
             const timer = setTimeout(() => {
@@ -306,12 +399,10 @@ const CareerIdentityPage: React.FC = () => {
         }
     }, [isIntroVideoOpen, isVideoPlaying]);
 
-    const handlePlayIntroWithAvatarCheck = () => {
+    const handlePlayIntro = () => {
         trackEvent('play_intro', castIdParam || "profile", { source: sourceParam });
-        if (!selectedAvatar && !hasClickedIntroOnce) {
-            setIsAvatarModalOpen(true); setHasClickedIntroOnce(true);
-            if (castIdParam) sessionStorage.setItem(`intro_clicked_${castIdParam}`, 'true');
-        } else { setIsIntroVideoOpen(true); }
+        trackClaritySmartEvent('video_play');
+        setIsIntroVideoOpen(true);
     };
 
     const handleAvatarSelect = (avatarPath: string) => {
@@ -324,6 +415,7 @@ const CareerIdentityPage: React.FC = () => {
         if (!resumeUrl) return;
         setIsDownloadingResume(true);
         trackEvent('pdf_download', castIdParam || "profile", { source: sourceParam });
+        trackClaritySmartEvent('resume_download');
         try {
             const fileName = `${(displayName || 'Resume').replace(/\s+/g, '_')}_resume.pdf`;
             const response = await fetch(resumeUrl);
@@ -354,6 +446,7 @@ const CareerIdentityPage: React.FC = () => {
         if (!castIdParam) return;
         try {
             setWalletActionLoading('card');
+            trackClaritySmartEvent('wallet_card_png_download');
             const blob = await downloadWalletCard(castIdParam);
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -375,6 +468,7 @@ const CareerIdentityPage: React.FC = () => {
         if (!castIdParam) return;
         try {
             setWalletActionLoading('google');
+            trackClaritySmartEvent('wallet_google_click');
             const saveUrl = await fetchGoogleWalletUrl(castIdParam);
             window.open(saveUrl, '_blank', 'noopener,noreferrer');
         } catch {
@@ -387,6 +481,7 @@ const CareerIdentityPage: React.FC = () => {
 
     const handleAppleWallet = () => {
         if (!castIdParam) return;
+        trackClaritySmartEvent('wallet_apple_click');
         if (appleWalletReady) {
             setWalletActionLoading('apple');
             window.open(getAppleWalletPassUrl(castIdParam), '_blank', 'noopener,noreferrer');
@@ -472,7 +567,10 @@ const CareerIdentityPage: React.FC = () => {
                                 )}
                                 {portfolioUrl && (
                                     <a href={getValidLink(portfolioUrl)} target="_blank" rel="noopener noreferrer"
-                                        onClick={() => trackEvent('portfolio_click', castIdParam || "profile", { source: sourceParam })}
+                                        onClick={() => {
+                                            trackEvent('portfolio_click', castIdParam || "profile", { source: sourceParam });
+                                            trackClaritySmartEvent('portfolio_click');
+                                        }}
                                         className={`flex items-center gap-2 h-9 md:h-10 px-3 md:px-4 rounded-xl border text-xs font-medium transition-all ${isHumanMode ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : themeTokens.navButton}`}>
                                         Portfolio
                                     </a>
@@ -546,7 +644,7 @@ const CareerIdentityPage: React.FC = () => {
                             selectedAvatar={selectedAvatar}
                             onAvatarClick={canChangeAvatarParam ? () => setIsAvatarModalOpen(true) : () => { }}
                             canChangeAvatar={canChangeAvatarParam}
-                            setIsIntroVideoOpen={handlePlayIntroWithAvatarCheck}
+                            setIsIntroVideoOpen={handlePlayIntro}
                             setIsContactModalOpen={() => { setIsContactModalOpen(true); trackEvent('lets_talk', castIdParam || "profile", { source: sourceParam, type: 'hero_contact' }); }}
                             themeTokens={themeTokens}
                         />
@@ -744,9 +842,12 @@ const CareerIdentityPage: React.FC = () => {
                 shareUrl={shareUrl}
                 candidateName={candidateNameParam}
                 displayName={displayName}
+                themeId={activeThemeKey}
             />
 
             <ResumeModals
+                themeId={activeThemeKey}
+                themeTokens={themeTokens}
                 isHireMeModalOpen={isHireMeModalOpen} setIsHireMeModalOpen={setIsHireMeModalOpen}
                 isContactModalOpen={isContactModalOpen} setIsContactModalOpen={setIsContactModalOpen}
                 isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen}

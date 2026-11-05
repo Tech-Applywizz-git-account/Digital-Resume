@@ -87,10 +87,10 @@ const Step1: React.FC = () => {
   }, [user]);
 
   const handleFileSelect = (file: File) => {
-    const validTypes = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     const fileExt = file.name.split(".").pop()?.toLowerCase();
-    if (!validTypes.includes(file.type) && !["pdf", "doc", "docx"].includes(fileExt || "")) {
-      showToast("Please upload a PDF or DOCX file.", "warning");
+    const isPdf = file.type === "application/pdf" || fileExt === "pdf";
+    if (!isPdf) {
+      showToast("Please upload a PDF file.", "warning");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -330,12 +330,12 @@ const Step1: React.FC = () => {
                           <div className="text-3xl mb-3">📄</div>
                           <p className="text-base font-medium text-gray-700 mb-1">Your resume is already uploaded, if you want to replace your resume</p>
                           <p className="text-base font-medium text-gray-700 mb-1">Click to upload or drag and drop</p>
-                          <p className="text-xs text-gray-500">PDF or DOCX (max 10MB)</p>
+                          <p className="text-xs text-gray-500">PDF (max 10MB)</p>
                         </div>
                       ) : (
                         <div className="flex items-center justify-center space-x-2 text-green-700"><Check className="h-5 w-5" /><span className="font-medium">Resume Selected Successfully</span></div>
                       )}
-                      <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.doc,.docx" onChange={(e) => e.target.files && handleFileSelect(e.target.files[0])} />
+                      <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,application/pdf" onChange={(e) => e.target.files && handleFileSelect(e.target.files[0])} />
                     </div>
                     {selectedFile && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4 flex items-center justify-between">

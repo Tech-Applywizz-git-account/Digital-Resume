@@ -616,6 +616,7 @@ export default function CareerIdentityAdminEditor({
 
             {/* Avatar Selection Modal */}
             <ResumeModals
+                themeId={selectedThemeId}
                 isHireMeModalOpen={false} setIsHireMeModalOpen={() => { }}
                 isContactModalOpen={false} setIsContactModalOpen={() => { }}
                 isScheduleModalOpen={false} setIsScheduleModalOpen={() => { }}

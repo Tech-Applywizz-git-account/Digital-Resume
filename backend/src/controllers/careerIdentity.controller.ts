@@ -51,13 +51,18 @@ export const careerIdentityController = {
             return res.status(401).json({ success: false, message: 'Unauthorized' });
         }
 
-        const { resume_id, content, status, workflowStatus } = req.body;
+        const { resume_id, content, status, workflowStatus, clientConsent } = req.body;
         if (!resume_id) {
             return res.status(400).json({ success: false, message: 'resume_id is required' });
         }
 
         // Ownership is implicit: the authenticated user can only update their own profile
-        const result = await careerIdentityService.updateProfile(resume_id, userId, { content, status, workflowStatus });
+        const result = await careerIdentityService.updateProfile(resume_id, userId, {
+            content,
+            status,
+            workflowStatus,
+            clientConsent,
+        });
         return res.status(200).json({ success: true, data: result });
     }),
 };

@@ -31,6 +31,22 @@ export type CareerIdentityWorkflowStatus =
     | "ready_for_review"
     | "changes_requested";
 
+export interface CareerIdentityClarityConfig {
+    projectId: string | null;
+    accountEmail: string | null;
+    accountType: 'company_zoho' | 'client_personal' | null;
+    role: 'member';
+    status: 'disabled' | 'pending' | 'active';
+    clientConsent: {
+        accepted: boolean;
+        acceptedAt: string | null;
+        revokedAt?: string | null;
+    };
+    notes?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
 export interface CareerIdentityProfile {
     id: string;
     resumeId: string;
@@ -44,6 +60,9 @@ export interface CareerIdentityProfile {
     walletPassUrl?: string | null;
     walletCardUrl?: string | null;
     walletCardUpdatedAt?: string | null;
+    clarity?: CareerIdentityClarityConfig | null;
+    clarityProjectId?: string | null;
+    clarityStatus?: 'disabled' | 'pending' | 'active';
 }
 
 export interface CareerIdentityContent {
@@ -163,4 +182,7 @@ export interface CareerIdentityProfileResponse {
 export interface CareerIdentityUpdatePayload {
     content?: Partial<CareerIdentityContent>;
     status?: CareerIdentityProfileStatus;
+    clientConsent?: {
+        accepted: boolean;
+    };
 }

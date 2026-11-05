@@ -34,6 +34,22 @@ export interface CareerIdentityProfileResponse {
     derived: CareerIdentityDerivedData | null;
 }
 
+export interface CareerIdentityClarityConfig {
+    projectId: string | null;
+    accountEmail: string | null;
+    accountType: 'company_zoho' | 'client_personal' | null;
+    role: 'member';
+    status: 'disabled' | 'pending' | 'active';
+    clientConsent: {
+        accepted: boolean;
+        acceptedAt: string | null;
+        revokedAt?: string | null;
+    };
+    notes?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
 /**
  * Default theme assignment — randomly selects among the 3 active themes: aurora, zenith, atlas.
  */
@@ -179,6 +195,16 @@ export class CareerIdentityService {
         castId: string,
         userId: string
     ): Record<string, unknown> {
+        const clarity = (ciData.clarity as CareerIdentityClarityConfig | undefined) ?? {
+            projectId: null,
+            accountEmail: null,
+            accountType: null,
+            role: 'member',
+            status: 'disabled',
+            clientConsent: { accepted: false, acceptedAt: null, revokedAt: null },
+            notes: null,
+        };
+
         return {
             id: userId,
             resumeId: castId,
@@ -189,6 +215,11 @@ export class CareerIdentityService {
             content: ciData.content ?? {},
             createdAt: ciData.createdAt ?? null,
             updatedAt: ciData.updatedAt ?? null,
+            clarity,
+            clarityProjectId: clarity.status === 'active' ? clarity.projectId : null,
+            clarityStatus: clarity.status ?? 'disabled',
+            clarityClientConsent: clarity.clientConsent ?? { accepted: false, acceptedAt: null, revokedAt: null },
+            clarityAccountEmail: clarity.accountEmail ?? null,
         };
     }
 
@@ -220,6 +251,15 @@ export class CareerIdentityService {
             if (ciData.walletPassUrl) (profileDTO as any).walletPassUrl = ciData.walletPassUrl;
             if (ciData.walletCardUrl) (profileDTO as any).walletCardUrl = ciData.walletCardUrl;
             if (ciData.walletCardUpdatedAt) (profileDTO as any).walletCardUpdatedAt = ciData.walletCardUpdatedAt;
+
+            const clarity = ciData.clarity as CareerIdentityClarityConfig | undefined;
+            if (clarity && clarity.status === 'active' && clarity.projectId) {
+                (profileDTO as any).clarityProjectId = clarity.projectId;
+                (profileDTO as any).clarityStatus = 'active';
+            } else {
+                (profileDTO as any).clarityProjectId = null;
+                (profileDTO as any).clarityStatus = clarity?.status || 'disabled';
+            }
         }
 
         return {
@@ -281,6 +321,26 @@ export class CareerIdentityService {
             } catch (err) {
                 console.warn(`[CareerIdentity] Failed to fetch gender on initialization for ${email}:`, err);
             }
+        }
+
+        // 4. Ensure clarity configuration block exists with disabled default
+        if (!ciData.clarity) {
+            ciData.clarity = {
+                projectId: null,
+                accountEmail: null,
+                accountType: null,
+                role: 'member',
+                status: 'disabled',
+                clientConsent: {
+                    accepted: false,
+                    acceptedAt: null,
+                    revokedAt: null,
+                },
+                notes: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            };
+            needsDbUpdate = true;
         }
 
         if (needsDbUpdate) {
@@ -360,7 +420,12 @@ export class CareerIdentityService {
     async updateProfile(
         resumeId: string,
         userId: string | null,
-        body: { content?: Record<string, unknown>; status?: string; workflowStatus?: string }
+        body: {
+            content?: Record<string, unknown>;
+            status?: string;
+            workflowStatus?: string;
+            clientConsent?: { accepted: boolean };
+        }
     ): Promise<CareerIdentityProfileResponse> {
         if (!userId) {
             throw new UnauthorizedError('Not authorized to update this profile');
@@ -394,6 +459,8 @@ export class CareerIdentityService {
         const now = new Date().toISOString();
         const updatedCiData: Record<string, unknown> = {
             ...existingCiData,
+            castId: resumeId,
+            resumeId,
             content: mergedContent,
             updatedAt: now,
         };
@@ -404,6 +471,56 @@ export class CareerIdentityService {
 
         if (body.workflowStatus) {
             updatedCiData.workflowStatus = body.workflowStatus;
+        }
+
+        if (body.clientConsent !== undefined) {
+            const isAccepted = typeof body.clientConsent === 'boolean'
+                ? body.clientConsent
+                : !!(body.clientConsent as any)?.accepted;
+
+            const existingClarity = (existingCiData.clarity as Record<string, any>) || {
+                projectId: null,
+                accountEmail: null,
+                accountType: null,
+                role: 'member',
+                status: 'disabled',
+                notes: null,
+            };
+
+            const existingConsent = existingClarity.clientConsent || {};
+            const acceptedAt = isAccepted ? now : (existingConsent.acceptedAt || null);
+            const revokedAt = !isAccepted ? now : null;
+
+            updatedCiData.clarity = {
+                ...existingClarity,
+                projectId: existingClarity.projectId ?? null,
+                accountEmail: existingClarity.accountEmail ?? null,
+                accountType: existingClarity.accountType ?? null,
+                role: 'member',
+                status: isAccepted ? (existingClarity.projectId ? 'active' : 'pending') : 'disabled',
+                clientConsent: {
+                    accepted: isAccepted,
+                    acceptedAt,
+                    revokedAt,
+                },
+                updatedAt: now,
+            };
+        } else if (!updatedCiData.clarity) {
+            updatedCiData.clarity = {
+                projectId: null,
+                accountEmail: null,
+                accountType: null,
+                role: 'member',
+                status: 'disabled',
+                clientConsent: {
+                    accepted: false,
+                    acceptedAt: null,
+                    revokedAt: null,
+                },
+                notes: null,
+                createdAt: now,
+                updatedAt: now,
+            };
         }
 
         const db = getDatabase();
@@ -430,7 +547,7 @@ export class CareerIdentityService {
      * Admin: List all Career Identity requests.
      * Returns users with career_identity_data along with their resume/video assets.
      */
-    async listRequests(filter?: { workflowStatus?: string; status?: string }): Promise<any[]> {
+    async listRequests(filter?: { workflowStatus?: string; status?: string; clarityStatus?: string }): Promise<any[]> {
         const db = getDatabase();
 
         // Primary filter: users who have purchased career_identity tier
@@ -447,30 +564,22 @@ export class CareerIdentityService {
             const ciData = (profile.career_identity_data as Record<string, unknown>) || {};
             const workflowStatus = (ciData.workflowStatus as string) || 'not_submitted';
             const status = (ciData.status as string) || 'draft';
+            const clarityStatus = (ciData.clarity as any)?.status || 'disabled';
 
             // Apply optional filters
             if (filter?.workflowStatus && workflowStatus !== filter.workflowStatus) continue;
             if (filter?.status && status !== filter.status) continue;
+            if (filter?.clarityStatus && clarityStatus !== filter.clarityStatus) continue;
 
-            const [crmJobs, regJobs] = await Promise.all([
-                db.from('crm_job_requests').select('id, resume_url').eq('user_id', profile.id).limit(1),
-                db.from('job_requests').select('id, resume_path').eq('user_id', profile.id).limit(1),
-            ]);
-
-            const allJobs: any[] = [...(crmJobs.data || []), ...(regJobs.data || [])];
-            const firstJob: any = allJobs[0];
-            const rawResumeUrl = firstJob?.resume_url || firstJob?.resume_path || null;
-            const resumeUrl = rawResumeUrl ? this.resolveStorageUrl(
-                rawResumeUrl,
-                crmJobs.data?.length ? 'CRM_users_resumes' : 'resumes'
-            ) : null;
+            const preferredCastId = (ciData.castId as string) || (ciData.resumeId as string) || null;
+            const { job: firstJob, resumeUrl } = await this.findLatestResume(profile.id, profile.email, preferredCastId);
 
             let introVideoUrl: string | null = null;
             if (firstJob?.id) {
                 const jobId = firstJob.id;
                 const [crmVideos, regVideos] = await Promise.all([
-                    db.from('crm_recordings').select('video_url').eq('job_request_id', jobId).limit(1),
-                    db.from('recordings').select('storage_path').eq('job_request_id', jobId).limit(1),
+                    db.from('crm_recordings').select('video_url').eq('job_request_id', jobId).order('created_at', { ascending: false }).limit(1),
+                    db.from('recordings').select('storage_path').eq('job_request_id', jobId).order('created_at', { ascending: false }).limit(1),
                 ]);
                 const crmVideo = (crmVideos.data as any[])?.[0]?.video_url;
                 const regVideo = (regVideos.data as any[])?.[0]?.storage_path;
@@ -479,6 +588,23 @@ export class CareerIdentityService {
                     introVideoUrl = this.resolveStorageUrl(
                         rawVideo,
                         crmVideos.data?.length ? 'CRM_users_recordings' : 'recordings'
+                    );
+                }
+            }
+
+            // Fallback: if no video on the selected job, check user's latest recording overall
+            if (!introVideoUrl) {
+                const [userCrmVideos, userRegVideos] = await Promise.all([
+                    db.from('crm_recordings').select('video_url').or(profile.email ? `user_id.eq.${profile.id},email.eq.${profile.email}` : `user_id.eq.${profile.id}`).order('created_at', { ascending: false }).limit(1),
+                    db.from('recordings').select('storage_path').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(1),
+                ]);
+                const uCrm = (userCrmVideos.data as any[])?.[0]?.video_url;
+                const uReg = (userRegVideos.data as any[])?.[0]?.storage_path;
+                const uRaw = uCrm || uReg;
+                if (uRaw) {
+                    introVideoUrl = this.resolveStorageUrl(
+                        uRaw,
+                        userCrmVideos.data?.length ? 'CRM_users_recordings' : 'recordings'
                     );
                 }
             }
@@ -493,6 +619,8 @@ export class CareerIdentityService {
                 submissionDate: ciData.createdAt || null,
                 createdAt: profile.created_at,
                 updatedAt: ciData.updatedAt || profile.updated_at,
+                clarityStatus: (ciData.clarity as any)?.status || 'disabled',
+                clarityClientConsent: (ciData.clarity as any)?.clientConsent?.accepted || false,
                 assets: {
                     resumeUrl,
                     introVideoUrl,
@@ -525,11 +653,12 @@ export class CareerIdentityService {
     }
 
     /**
-     * Finds the single latest uploaded resume across both crm_job_requests and job_requests.
-     * Evaluates both created_at and updated_at, ignores rows without a valid resume file,
-     * and accurately resolves against the appropriate storage bucket.
+     * Finds the candidate's primary Career Identity resume & job request.
+     * 1. If preferredCastId is given (e.g. pinned in career_identity_data), checks if it exists in candidate's records.
+     * 2. Otherwise finds the newest job request across crm_job_requests and job_requests,
+     *    prioritizing rows that have an actual uploaded resume and ordering by created_at DESC.
      */
-    private async findLatestResume(userId: string, email?: string | null): Promise<{
+    private async findLatestResume(userId: string, email?: string | null, preferredCastId?: string | null): Promise<{
         job: any | null;
         resumeUrl: string | null;
         isCRM: boolean;
@@ -548,62 +677,64 @@ export class CareerIdentityService {
                 .order('created_at', { ascending: false }),
         ]);
 
-        interface ResumeCandidate {
+        interface CandidateRow {
             id: string;
-            rawResume: string;
+            rawResume: string | null;
             isCRM: boolean;
             bucket: string;
-            timestamp: number;
+            createdTime: number;
             record: any;
         }
 
-        const candidates: ResumeCandidate[] = [];
+        const allRows: CandidateRow[] = [
+            ...(crmRes.data || []).map((row: any) => ({
+                id: row.id,
+                rawResume: row.resume_url?.trim() || null,
+                isCRM: true,
+                bucket: 'CRM_users_resumes',
+                createdTime: new Date(row.created_at || 0).getTime(),
+                record: row,
+            })),
+            ...(regRes.data || []).map((row: any) => ({
+                id: row.id,
+                rawResume: row.resume_path?.trim() || null,
+                isCRM: false,
+                bucket: 'resumes',
+                createdTime: new Date(row.created_at || 0).getTime(),
+                record: row,
+            })),
+        ];
 
-        for (const row of crmRes.data || []) {
-            if (row.resume_url && typeof row.resume_url === 'string' && row.resume_url.trim().length > 0) {
-                const ts = Math.max(
-                    new Date(row.updated_at || 0).getTime(),
-                    new Date(row.created_at || 0).getTime()
-                );
-                candidates.push({
-                    id: row.id,
-                    rawResume: row.resume_url.trim(),
-                    isCRM: true,
-                    bucket: 'CRM_users_resumes',
-                    timestamp: ts,
-                    record: row,
-                });
-            }
-        }
-
-        for (const row of regRes.data || []) {
-            if (row.resume_path && typeof row.resume_path === 'string' && row.resume_path.trim().length > 0) {
-                const ts = Math.max(
-                    new Date(row.updated_at || 0).getTime(),
-                    new Date(row.created_at || 0).getTime()
-                );
-                candidates.push({
-                    id: row.id,
-                    rawResume: row.resume_path.trim(),
-                    isCRM: false,
-                    bucket: 'resumes',
-                    timestamp: ts,
-                    record: row,
-                });
-            }
-        }
-
-        // Sort descending: highest timestamp = newest resume
-        candidates.sort((a, b) => b.timestamp - a.timestamp);
-
-        if (candidates.length === 0) {
-            console.log(`[ResumeSelector] Candidate ${userId}: No uploaded resume found in crm_job_requests or job_requests`);
+        if (allRows.length === 0) {
+            console.log(`[ResumeSelector] Candidate ${userId}: No job requests found in crm_job_requests or job_requests`);
             return { job: null, resumeUrl: null, isCRM: false, bucket: 'resumes' };
         }
 
-        const latest = candidates[0];
+        // 1. If preferredCastId is given and matches candidate's records, select it
+        if (preferredCastId) {
+            const preferredMatch = allRows.find(r => r.id === preferredCastId);
+            if (preferredMatch) {
+                const resumeUrl = this.resolveStorageUrl(preferredMatch.rawResume, preferredMatch.bucket);
+                console.log(`[ResumeSelector] Candidate ${userId}: Selected preferred castId ${preferredCastId} from ${preferredMatch.bucket}`);
+                return {
+                    job: preferredMatch.record,
+                    resumeUrl,
+                    isCRM: preferredMatch.isCRM,
+                    bucket: preferredMatch.bucket,
+                };
+            }
+        }
+
+        // 2. Separate rows with valid resume vs rows without
+        const rowsWithResume = allRows.filter(r => !!r.rawResume);
+        const pool = rowsWithResume.length > 0 ? rowsWithResume : allRows;
+
+        // Sort descending: highest created_at = newest job request
+        pool.sort((a, b) => b.createdTime - a.createdTime);
+
+        const latest = pool[0];
         const resumeUrl = this.resolveStorageUrl(latest.rawResume, latest.bucket);
-        console.log(`[ResumeSelector] Candidate ${userId}: Selected latest resume from ${latest.bucket} (ID: ${latest.id}, timestamp: ${new Date(latest.timestamp).toISOString()})`);
+        console.log(`[ResumeSelector] Candidate ${userId}: Selected primary resume from ${latest.bucket} (ID: ${latest.id}, created: ${new Date(latest.createdTime).toISOString()})`);
 
         return {
             job: latest.record,
@@ -634,8 +765,9 @@ export class CareerIdentityService {
         );
         console.log(`[DIAG-GET] getRequest(${userId}): raw ciData.walletCardUrl=${ciData.walletCardUrl || 'null'}, walletCardStatus=${ciData.walletCardStatus || 'null'}`);
 
-        // Find absolute latest resume across crm_job_requests and job_requests
-        const { job: firstJob, resumeUrl } = await this.findLatestResume(userId, profile.email);
+        const preferredCastId = (ciData.castId as string) || (ciData.resumeId as string) || null;
+        // Find candidate's primary resume across crm_job_requests and job_requests
+        const { job: firstJob, resumeUrl } = await this.findLatestResume(userId, profile.email, preferredCastId);
 
         let introVideoUrl: string | null = null;
         let recordingCreatedAt: string | null = null;
@@ -653,6 +785,21 @@ export class CareerIdentityService {
             }
         }
 
+        // Fallback: if no video on the selected job, check user's latest recording overall
+        if (!introVideoUrl) {
+            const [userCrmVideos, userRegVideos] = await Promise.all([
+                db.from('crm_recordings').select('video_url, created_at').or(profile.email ? `user_id.eq.${userId},email.eq.${profile.email}` : `user_id.eq.${userId}`).order('created_at', { ascending: false }).limit(1),
+                db.from('recordings').select('storage_path, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
+            ]);
+            const uCrm = (userCrmVideos.data as any[])?.[0];
+            const uReg = (userRegVideos.data as any[])?.[0];
+            const uRaw = uCrm?.video_url || uReg?.storage_path || null;
+            if (uRaw) {
+                introVideoUrl = this.resolveStorageUrl(uRaw, userCrmVideos.data?.length ? 'CRM_users_recordings' : 'recordings');
+                recordingCreatedAt = uCrm?.created_at || uReg?.created_at || null;
+            }
+        }
+
         return {
             userId: profile.id,
             email: profile.email,
@@ -665,6 +812,15 @@ export class CareerIdentityService {
             submissionDate: ciData.createdAt || null,
             createdAt: profile.created_at,
             updatedAt: ciData.updatedAt || profile.updated_at,
+            clarity: ciData.clarity || {
+                projectId: null,
+                accountEmail: null,
+                accountType: null,
+                role: 'member',
+                status: 'disabled',
+                clientConsent: { accepted: false, acceptedAt: null },
+                notes: null,
+            },
             walletCardUrl: ciData.walletCardUrl || null,
             walletCardUpdatedAt: ciData.walletCardUpdatedAt || null,
             walletCardStatus: ciData.walletCardStatus || (ciData.walletCardUrl ? 'generated' : 'idle'),
@@ -751,7 +907,8 @@ export class CareerIdentityService {
         }
 
         // 3. Find absolute latest resume across crm_job_requests and job_requests
-        const { job: firstJob, resumeUrl } = await this.findLatestResume(userId, profile.email);
+        const preferredCastId = (existingCi.castId as string) || (existingCi.resumeId as string) || null;
+        const { job: firstJob, resumeUrl } = await this.findLatestResume(userId, profile.email, preferredCastId);
 
         const context: AutoFillContext = {
             profile: {
@@ -838,11 +995,23 @@ export class CareerIdentityService {
         themeId?: string;
         content?: Record<string, unknown>;
         walletPassUrl?: string;
+        clarity?: {
+            projectId?: string | null;
+            accountEmail?: string | null;
+            accountType?: 'company_zoho' | 'client_personal' | null;
+            status?: 'disabled' | 'pending' | 'active';
+            notes?: string | null;
+            clientConsent?: {
+                accepted: boolean;
+                acceptedAt?: string | null;
+                revokedAt?: string | null;
+            };
+        };
     }): Promise<any> {
         const db = getDatabase();
         const { data: profile, error: fetchError } = await db
             .from('profiles')
-            .select('career_identity_data')
+            .select('career_identity_data, email')
             .eq('id', userId)
             .maybeSingle();
 
@@ -872,6 +1041,43 @@ export class CareerIdentityService {
         }
         if (body.walletPassUrl !== undefined) {
             updatedCiData.walletPassUrl = body.walletPassUrl;
+        }
+        if (body.clarity !== undefined) {
+            const existingClarity = (existingCiData.clarity as Record<string, any>) || {};
+            const existingConsent = existingClarity.clientConsent || { accepted: false, acceptedAt: null, revokedAt: null };
+
+            let clientConsent = { ...existingConsent };
+            if (body.clarity.clientConsent !== undefined) {
+                const bConsent = body.clarity.clientConsent;
+                const isAccepted = !!bConsent.accepted;
+                clientConsent = {
+                    accepted: isAccepted,
+                    acceptedAt: bConsent.acceptedAt !== undefined
+                        ? bConsent.acceptedAt
+                        : (isAccepted ? (existingConsent.acceptedAt || now) : existingConsent.acceptedAt),
+                    revokedAt: bConsent.revokedAt !== undefined
+                        ? bConsent.revokedAt
+                        : (!isAccepted && existingConsent.accepted ? now : (existingConsent.revokedAt || null)),
+                };
+            }
+
+            const targetStatus = body.clarity.status || existingClarity.status || 'disabled';
+
+            updatedCiData.clarity = {
+                ...existingClarity,
+                projectId: body.clarity.projectId !== undefined ? body.clarity.projectId : (existingClarity.projectId ?? null),
+                accountEmail: body.clarity.accountEmail !== undefined
+                    ? (body.clarity.accountEmail ? body.clarity.accountEmail.trim() : null)
+                    : (existingClarity.accountEmail ?? null),
+                accountType: body.clarity.accountType !== undefined
+                    ? body.clarity.accountType
+                    : (existingClarity.accountType ?? null),
+                role: 'member',
+                status: targetStatus,
+                clientConsent,
+                notes: body.clarity.notes !== undefined ? body.clarity.notes : (existingClarity.notes ?? null),
+                updatedAt: now,
+            };
         }
 
         const { error: updateError } = await db
@@ -939,7 +1145,7 @@ export class CareerIdentityService {
         console.log(`[DIAG] generateWalletCard: START for userId=${userId}`);
         const { data: profile, error: fetchError } = await db
             .from('profiles')
-            .select('id, full_name, first_name, career_identity_data')
+            .select('id, email, full_name, first_name, career_identity_data')
             .eq('id', userId)
             .maybeSingle();
 
@@ -954,14 +1160,10 @@ export class CareerIdentityService {
         const hero = (content.hero as Record<string, unknown>) || {};
         const contact = (content.contact as Record<string, unknown>) || {};
 
-        // Find the user's castId (resume ID)
-        const [crmJobs, regJobs] = await Promise.all([
-            db.from('crm_job_requests').select('id, company_name, job_title').eq('user_id', userId).limit(1),
-            db.from('job_requests').select('id, company_name, job_title').eq('user_id', userId).limit(1),
-        ]);
-        const allJobs: any[] = [...(crmJobs.data || []), ...(regJobs.data || [])];
-        const firstJob: any = allJobs[0];
-        const castId: string | null = firstJob?.id || null;
+        // Find the user's primary castId (resume ID)
+        const preferredCastId = (ciData.castId as string) || (ciData.resumeId as string) || null;
+        const { job: firstJob } = await this.findLatestResume(userId, profile.email, preferredCastId);
+        const castId: string | null = preferredCastId || firstJob?.id || null;
         if (!castId) {
             console.log(`[DIAG] generateWalletCard: FAILED - no castId found for userId=${userId}`);
             return null;

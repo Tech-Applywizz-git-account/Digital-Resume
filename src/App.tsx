@@ -1,6 +1,7 @@
-import React from "react";
-import { Routes, Route } from "react-router-dom";
+import React, { useEffect } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { detectAndForceClearClarityData, installClarityRouteGuard } from "./utils/clarity";
 
 import Landing from "./pages/landing";
 import Auth from "./pages/Auth";
@@ -46,6 +47,18 @@ const RootRoute = () => {
 };
 
 function App() {
+  const location = useLocation();
+
+  useEffect(() => {
+    installClarityRouteGuard();
+  }, []);
+
+  useEffect(() => {
+    if (!location.pathname.startsWith('/career-identity/')) {
+      detectAndForceClearClarityData();
+    }
+  }, [location.pathname]);
+
   return (
     <AuthProvider>
       <Routes>

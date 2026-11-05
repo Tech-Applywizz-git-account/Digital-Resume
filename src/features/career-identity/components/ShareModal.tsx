@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Link, QrCode, Check, Download, Smartphone, Copy } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
+import { getModalThemeTokens } from '../themes/themeRegistry';
 
 interface ShareModalProps {
     isOpen: boolean;
@@ -9,9 +10,11 @@ interface ShareModalProps {
     shareUrl: string;
     candidateName: string | null;
     displayName: string;
+    themeId?: string | null;
 }
 
-export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, shareUrl, candidateName, displayName }) => {
+export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, shareUrl, candidateName, displayName, themeId }) => {
+    const modalTheme = getModalThemeTokens(themeId);
     const [copied, setCopied] = useState(false);
     const [showQR, setShowQR] = useState(false);
 
@@ -59,14 +62,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, shareUr
                         className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
                     >
                         {/* Header */}
-                        <div className="bg-[#0e121b] p-6 flex justify-between items-center">
+                        <div className={`${modalTheme.shareHeaderBg} p-6 flex justify-between items-center`}>
                             <div className="flex items-center gap-3">
                                 <div className="p-2.5 bg-white/10 rounded-xl">
                                     <Smartphone size={22} className="text-white" />
                                 </div>
                                 <div>
-                                    <h3 className="text-white text-xl font-bold">Share Profile</h3>
-                                    <p className="text-blue-200 text-xs uppercase tracking-widest font-medium">Career Identity</p>
+                                    <h3 className={`text-white text-xl ${modalTheme.headerFont}`}>Share Profile</h3>
+                                    <p className={`${modalTheme.shareHeaderSubtitle} text-xs uppercase tracking-widest font-medium opacity-90`}>Career Identity</p>
                                 </div>
                             </div>
                             <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
@@ -78,13 +81,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, shareUr
                             {/* Copy Link */}
                             <button
                                 onClick={handleCopyLink}
-                                className="w-full p-4 rounded-2xl border border-slate-100 flex items-center gap-4 hover:border-blue-200 hover:bg-blue-50/50 transition-all group active:scale-[0.99]"
+                                className={`w-full p-4 rounded-2xl border flex items-center gap-4 ${modalTheme.shareOptionCard} transition-all group active:scale-[0.99]`}
                             >
-                                <div className="p-3 rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+                                <div className={`p-3 rounded-xl ${modalTheme.shareOptionIcon} transition-colors`}>
                                     {copied ? <Check size={20} className="text-emerald-500" /> : <Link size={20} />}
                                 </div>
                                 <div className="text-left flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-slate-900">{copied ? 'Copied!' : 'Copy Link'}</p>
+                                    <p className={`text-sm font-bold text-slate-900 ${modalTheme.valueFont}`}>{copied ? 'Copied!' : 'Copy Link'}</p>
                                     <p className="text-xs text-slate-500 truncate">{shareUrl}</p>
                                 </div>
                                 <Copy size={16} className="text-slate-400 shrink-0" />
@@ -93,13 +96,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, shareUr
                             {/* QR Code */}
                             <button
                                 onClick={() => setShowQR(!showQR)}
-                                className="w-full p-4 rounded-2xl border border-slate-100 flex items-center gap-4 hover:border-blue-200 hover:bg-blue-50/50 transition-all group active:scale-[0.99]"
+                                className={`w-full p-4 rounded-2xl border flex items-center gap-4 ${modalTheme.shareOptionCard} transition-all group active:scale-[0.99]`}
                             >
-                                <div className="p-3 rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+                                <div className={`p-3 rounded-xl ${modalTheme.shareOptionIcon} transition-colors`}>
                                     <QrCode size={20} />
                                 </div>
                                 <div className="text-left flex-1">
-                                    <p className="text-sm font-bold text-slate-900">QR Code</p>
+                                    <p className={`text-sm font-bold text-slate-900 ${modalTheme.valueFont}`}>QR Code</p>
                                     <p className="text-xs text-slate-500">Show scannable QR code</p>
                                 </div>
                             </button>

@@ -4,8 +4,11 @@ import {
     X, Download, History, MessageSquare, Mail,
     Phone, ArrowUpRight, Calendar, BadgeCheck, AlertCircle
 } from 'lucide-react';
+import { getModalThemeTokens, CareerIdentityThemeStyles } from '../themes/themeRegistry';
 
 interface ResumeModalsProps {
+    themeId?: string | null;
+    themeTokens?: CareerIdentityThemeStyles;
     isHireMeModalOpen: boolean;
     setIsHireMeModalOpen: (open: boolean) => void;
     isContactModalOpen: boolean;
@@ -41,6 +44,8 @@ const Scribble = ({ className }: { className?: string }) => (
 );
 
 export const ResumeModals: React.FC<ResumeModalsProps> = ({
+    themeId,
+    themeTokens,
     isHireMeModalOpen, setIsHireMeModalOpen,
     isContactModalOpen, setIsContactModalOpen,
     isScheduleModalOpen, setIsScheduleModalOpen,
@@ -50,6 +55,7 @@ export const ResumeModals: React.FC<ResumeModalsProps> = ({
     formStatus, statusMessage, isAvatarModalOpen, setIsAvatarModalOpen,
     onAvatarSelect, initialGender = 'Male'
 }) => {
+    const modalTheme = getModalThemeTokens(themeId);
     const [avatarGender, setAvatarGender] = React.useState<'Male' | 'Female'>(initialGender);
 
     React.useEffect(() => {
@@ -77,21 +83,21 @@ export const ResumeModals: React.FC<ResumeModalsProps> = ({
                 {isHireMeModalOpen && (
                     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsHireMeModalOpen(false)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
-                        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className={`relative w-full max-w-lg overflow-hidden transition-all duration-700 ${isHumanMode ? 'bg-[#fdfcf8] rounded-[3rem] border-2 border-orange-200' : 'bg-white rounded-3xl shadow-2xl'}`}>
-                            <div className={`p-6 text-white flex justify-between items-center transition-all duration-700 ${isHumanMode ? 'bg-orange-600' : 'bg-[#0e121b]'}`}>
+                        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className={`relative w-full max-w-lg overflow-hidden transition-all duration-700 ${isHumanMode ? 'bg-[#fdfcf8] rounded-[3rem] border-2 border-orange-200' : modalTheme.cardContainer}`}>
+                            <div className={`p-6 text-white flex justify-between items-center transition-all duration-700 ${isHumanMode ? 'bg-orange-600' : modalTheme.shareHeaderBg}`}>
                                 <div>
-                                    <h3 className={`text-xl font-normal transition-all duration-700 ${isHumanMode ? 'font-hand text-2xl' : ''}`}>{displayName}</h3>
-                                    <p className={`text-sm opacity-70 transition-all duration-700 ${isHumanMode ? 'font-hand text-lg' : ''}`}>{displayTitle}</p>
+                                    <h3 className={`text-xl transition-all duration-700 ${isHumanMode ? 'font-hand text-2xl font-normal' : modalTheme.headerFont}`}>{displayName}</h3>
+                                    <p className={`text-sm opacity-70 transition-all duration-700 ${isHumanMode ? 'font-hand text-lg' : modalTheme.headerSubtitle}`}>{displayTitle}</p>
                                 </div>
                                 <button onClick={() => setIsHireMeModalOpen(false)} className="p-2 hover:bg-white/20 rounded-full text-white"><X size={20} /></button>
                             </div>
                             <div className="p-8 space-y-4">
                                 <p className={`text-sm text-slate-500 transition-all duration-700 ${isHumanMode ? 'font-hand text-xl text-stone-600' : ''}`}>Download the full resume directly or contact to request more details.</p>
                                 <div className="space-y-3">
-                                    <button onClick={handleDownloadResume} className={`w-full py-4 rounded-2xl font-normal text-sm flex items-center justify-center gap-2 transition-all shadow-lg duration-700 ${isHumanMode ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-100/50 font-hand text-xl tracking-normal' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200'}`}>
+                                    <button onClick={handleDownloadResume} className={`w-full py-4 rounded-2xl font-normal text-sm flex items-center justify-center gap-2 transition-all shadow-lg duration-700 ${isHumanMode ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-100/50 font-hand text-xl tracking-normal' : modalTheme.primaryButton}`}>
                                         <Download size={18} />Download Resume
                                     </button>
-                                    <button onClick={() => { setIsHireMeModalOpen(false); setIsScheduleModalOpen(true); }} className={`w-full py-4 rounded-2xl font-normal text-sm flex items-center justify-center gap-2 transition-all border-2 duration-700 ${isHumanMode ? 'border-orange-200 text-orange-600 bg-white hover:bg-orange-50 font-hand text-xl tracking-normal' : 'border-slate-100 text-[#0e121b] hover:bg-slate-50'}`}>
+                                    <button onClick={() => { setIsHireMeModalOpen(false); setIsScheduleModalOpen(true); }} className={`w-full py-4 rounded-2xl font-normal text-sm flex items-center justify-center gap-2 transition-all border-2 duration-700 ${isHumanMode ? 'border-orange-200 text-orange-600 bg-white hover:bg-orange-50 font-hand text-xl tracking-normal' : modalTheme.secondaryButton}`}>
                                         <History size={18} />Schedule a Call
                                     </button>
                                 </div>
@@ -106,52 +112,52 @@ export const ResumeModals: React.FC<ResumeModalsProps> = ({
                 {isContactModalOpen && (
                     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsContactModalOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className={`relative w-full max-w-lg overflow-hidden transition-all duration-700 ${isHumanMode ? 'bg-[#fdfcf8] rounded-[3rem] border-2 border-orange-200 shadow-xl' : 'bg-white rounded-3xl shadow-2xl'}`}>
-                            <div className={`p-6 flex justify-between items-center transition-all duration-700 ${isHumanMode ? 'bg-orange-600 text-white' : 'bg-blue-600 text-white'}`}>
+                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className={`relative w-full max-w-lg overflow-hidden transition-all duration-700 ${isHumanMode ? 'bg-[#fdfcf8] rounded-[3rem] border-2 border-orange-200 shadow-xl' : modalTheme.cardContainer}`}>
+                            <div className={`p-6 flex justify-between items-center transition-all duration-700 ${isHumanMode ? 'bg-orange-600 text-white' : modalTheme.headerBg}`}>
                                 <div className="flex items-center gap-3">
                                     <div className={`p-2 rounded-xl bg-white/20 transition-all duration-700`}><MessageSquare size={24} /></div>
                                     <div>
-                                        <h3 className={`text-xl font-normal transition-all duration-700 ${isHumanMode ? 'font-hand text-2xl tracking-normal' : ''}`}>Contact {displayName}</h3>
-                                        <p className={`text-[10px] font-normal uppercase tracking-widest opacity-70 transition-all duration-700 ${isHumanMode ? 'font-hand text-base' : ''}`}>Choose Communication Method</p>
+                                        <h3 className={`text-xl transition-all duration-700 ${isHumanMode ? 'font-hand text-2xl tracking-normal font-normal' : `${modalTheme.headerFont} tracking-tight`}`}>Contact {displayName}</h3>
+                                        <p className={`text-[10px] font-normal uppercase tracking-widest opacity-80 transition-all duration-700 ${isHumanMode ? 'font-hand text-base' : modalTheme.headerSubtitle}`}>Choose Communication Method</p>
                                     </div>
                                 </div>
                                 <button onClick={() => setIsContactModalOpen(false)} className={`rounded-full p-2 hover:bg-white/10 transition-colors text-white`}><X size={20} /></button>
                             </div>
 
                             <div className="p-8 space-y-6">
-                                <div className="space-y-4">
-                                    <div className={`p-4 rounded-2xl border flex items-center justify-between group transition-all duration-700 ${isHumanMode ? 'bg-orange-50 border-orange-100 hover:border-orange-300' : 'bg-slate-50 border-slate-100 hover:border-blue-200'}`}>
+                                <div className="space-y-4" data-clarity-mask="true">
+                                    <div className={`p-4 rounded-2xl border flex items-center justify-between group transition-all duration-700 ${isHumanMode ? 'bg-orange-50 border-orange-100 hover:border-orange-300' : modalTheme.infoCard}`}>
                                         <div className="flex items-center gap-3">
-                                            <div className={`p-2.5 rounded-xl transition-all duration-700 ${isHumanMode ? 'bg-orange-100 text-orange-600' : 'bg-blue-50 text-blue-600'}`}><Mail size={18} /></div>
+                                            <div className={`p-2.5 rounded-xl transition-all duration-700 ${isHumanMode ? 'bg-orange-100 text-orange-600' : modalTheme.iconPill}`}><Mail size={18} /></div>
                                             <div>
-                                                <p className={`text-[10px] font-normal uppercase tracking-widest mb-0.5 transition-all duration-700 ${isHumanMode ? 'text-orange-700/60 font-hand text-base' : 'text-slate-400'}`}>Email Address</p>
-                                                <p className={`text-sm font-normal transition-all duration-700 ${isHumanMode ? 'text-stone-800 font-hand text-lg' : 'text-[#0e121b]'}`}>{displayEmail}</p>
+                                                <p className={`text-[10px] font-normal uppercase tracking-widest mb-0.5 transition-all duration-700 ${isHumanMode ? 'text-orange-700/60 font-hand text-base' : modalTheme.labelFont}`}>Email Address</p>
+                                                <p data-clarity-mask="true" className={`text-sm font-normal transition-all duration-700 ${isHumanMode ? 'text-stone-800 font-hand text-lg' : modalTheme.valueFont}`}>{displayEmail}</p>
                                             </div>
                                         </div>
                                     </div>
 
                                     {candidatePhone && (
-                                        <div className={`p-4 rounded-2xl border flex items-center justify-between group transition-all duration-700 ${isHumanMode ? 'bg-orange-50 border-orange-100 hover:border-orange-300' : 'bg-slate-50 border-slate-100 hover:border-blue-200'}`}>
+                                        <div className={`p-4 rounded-2xl border flex items-center justify-between group transition-all duration-700 ${isHumanMode ? 'bg-orange-50 border-orange-100 hover:border-orange-300' : modalTheme.infoCard}`}>
                                             <div className="flex items-center gap-3">
-                                                <div className={`p-2.5 rounded-xl transition-all duration-700 ${isHumanMode ? 'bg-orange-100 text-orange-600' : 'bg-blue-50 text-blue-600'}`}><Phone size={18} /></div>
+                                                <div className={`p-2.5 rounded-xl transition-all duration-700 ${isHumanMode ? 'bg-orange-100 text-orange-600' : modalTheme.iconPill}`}><Phone size={18} /></div>
                                                 <div>
-                                                    <p className={`text-[10px] font-normal uppercase tracking-widest mb-0.5 transition-all duration-700 ${isHumanMode ? 'text-orange-700/60 font-hand text-base' : 'text-slate-400'}`}>Mobile Number</p>
-                                                    <p className={`text-sm font-normal transition-all duration-700 ${isHumanMode ? 'text-stone-800 font-hand text-lg' : 'text-[#0e121b]'}`}>+{candidatePhone}</p>
+                                                    <p className={`text-[10px] font-normal uppercase tracking-widest mb-0.5 transition-all duration-700 ${isHumanMode ? 'text-orange-700/60 font-hand text-base' : modalTheme.labelFont}`}>Mobile Number</p>
+                                                    <p data-clarity-mask="true" className={`text-sm font-normal transition-all duration-700 ${isHumanMode ? 'text-stone-800 font-hand text-lg' : modalTheme.valueFont}`}>+{candidatePhone}</p>
                                                 </div>
                                             </div>
                                         </div>
                                     )}
                                 </div>
 
-                                <div className={`space-y-4 p-6 rounded-[2rem] border transition-all duration-700 ${isHumanMode ? 'bg-orange-50/30 border-orange-100' : 'bg-slate-50/50 border-slate-100'}`}>
-                                    <button onClick={handleEmailCandidate} className={`w-full py-4 rounded-2xl font-normal transition-all flex items-center justify-center gap-2 shadow-sm relative overflow-hidden group duration-700 ${isHumanMode ? 'bg-orange-600 text-white hover:bg-orange-700 font-hand text-xl tracking-normal' : 'bg-blue-600 text-white hover:bg-blue-700 text-xs uppercase tracking-widest'}`}>
+                                <div data-clarity-mask="true" className={`space-y-4 p-6 rounded-[2rem] border transition-all duration-700 ${isHumanMode ? 'bg-orange-50/30 border-orange-100' : 'bg-slate-50/50 border-slate-100'}`}>
+                                    <button onClick={handleEmailCandidate} className={`w-full py-4 rounded-2xl font-normal transition-all flex items-center justify-center gap-2 shadow-sm relative overflow-hidden group duration-700 ${isHumanMode ? 'bg-orange-600 text-white hover:bg-orange-700 font-hand text-xl tracking-normal' : `${modalTheme.primaryButton} text-xs uppercase tracking-widest font-bold`}`}>
                                         <Mail size={18} className="transition-transform group-hover:scale-110" />
                                         <span>Email Candidate</span>
                                         <ArrowUpRight size={14} className="absolute right-4 opacity-40" />
                                     </button>
 
                                     {candidatePhone && (
-                                        <button onClick={handleWhatsAppCandidate} className={`w-full py-4 rounded-2xl font-normal transition-all flex items-center justify-center gap-2 border-[1.5px] relative group duration-700 ${isHumanMode ? 'bg-white border-orange-600 text-orange-600 hover:bg-orange-50 font-hand text-xl tracking-normal' : 'bg-white border-blue-500 text-blue-600 hover:bg-blue-50 text-xs uppercase tracking-widest'}`}>
+                                        <button onClick={handleWhatsAppCandidate} className={`w-full py-4 rounded-2xl font-normal transition-all flex items-center justify-center gap-2 border-[1.5px] relative group duration-700 ${isHumanMode ? 'bg-white border-orange-600 text-orange-600 hover:bg-orange-50 font-hand text-xl tracking-normal' : `${modalTheme.secondaryButton} text-xs uppercase tracking-widest font-bold`}`}>
                                             <MessageSquare size={18} className="transition-transform group-hover:scale-110" />
                                             <span>WhatsApp Candidate</span>
                                             <ArrowUpRight size={14} className="absolute right-4 opacity-40" />
@@ -179,16 +185,16 @@ export const ResumeModals: React.FC<ResumeModalsProps> = ({
                             initial={{ opacity: 0, scale: 0.9, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                            className={`relative w-full max-w-2xl overflow-hidden transition-all duration-700 ${isHumanMode ? 'bg-[#fdfcf8] rounded-[3rem] border-2 border-orange-200 shadow-2xl shadow-orange-100/50' : 'bg-white rounded-[2.5rem] shadow-2xl'}`}
+                            className={`relative w-full max-w-2xl overflow-hidden transition-all duration-700 ${isHumanMode ? 'bg-[#fdfcf8] rounded-[3rem] border-2 border-orange-200 shadow-2xl shadow-orange-100/50' : modalTheme.cardContainer}`}
                         >
                             {/* Header */}
-                            <div className={`p-8 flex justify-between items-center transition-all duration-700 ${isHumanMode ? 'bg-orange-600 text-white' : 'bg-[#0e121b] text-white'}`}>
+                            <div className={`p-8 flex justify-between items-center transition-all duration-700 ${isHumanMode ? 'bg-orange-600 text-white' : modalTheme.shareHeaderBg}`}>
                                 <div className="flex items-center gap-4">
                                     <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
                                         <Scribble className="w-6 h-6 text-white" />
                                     </div>
                                     <div>
-                                        <h3 className={`text-2xl font-normal transition-all duration-700 ${isHumanMode ? 'font-hand text-3xl tracking-normal' : ''}`}>Choose Your Avatar</h3>
+                                        <h3 className={`text-2xl font-normal transition-all duration-700 ${isHumanMode ? 'font-hand text-3xl tracking-normal' : `${modalTheme.headerFont}`}`}>Choose Your Avatar</h3>
                                         <p className={`text-xs opacity-70 transition-all duration-700 ${isHumanMode ? 'font-hand text-base tracking-normal' : 'uppercase tracking-widest'}`}>Pick one to represent your profile</p>
                                     </div>
                                 </div>
@@ -202,7 +208,7 @@ export const ResumeModals: React.FC<ResumeModalsProps> = ({
                                     <div className="flex p-1.5 bg-slate-100 rounded-2xl gap-1">
                                         <button
                                             onClick={() => setAvatarGender('Male')}
-                                            className={`px-8 py-2.5 rounded-xl text-sm font-black transition-all ${avatarGender === 'Male' ? 'bg-white text-blue-600 shadow-sm scale-105' : 'text-slate-500 hover:text-slate-700'}`}
+                                            className={`px-8 py-2.5 rounded-xl text-sm font-black transition-all ${avatarGender === 'Male' ? `${modalTheme.avatarActiveGender} shadow-sm scale-105` : 'text-slate-500 hover:text-slate-700'}`}
                                         >
                                             MALE
                                         </button>
@@ -223,7 +229,7 @@ export const ResumeModals: React.FC<ResumeModalsProps> = ({
                                             whileHover={{ scale: 1.05, y: -5 }}
                                             whileTap={{ scale: 0.95 }}
                                             onClick={() => onAvatarSelect(path)}
-                                            className={`group relative aspect-square rounded-[2rem] overflow-hidden border-4 transition-all bg-slate-100 ${isHumanMode ? 'border-orange-50 hover:border-orange-500' : 'border-slate-50 hover:border-blue-500'}`}
+                                            className={`group relative aspect-square rounded-[2rem] overflow-hidden border-4 transition-all bg-slate-100 ${isHumanMode ? 'border-orange-50 hover:border-orange-500' : `border-slate-50 ${modalTheme.avatarHoverBorder}`}`}
                                         >
                                             {/* Shimmer Placeholder */}
                                             <div className="absolute inset-0 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 animate-shimmer" style={{ backgroundSize: '1000px 100%' }}></div>

@@ -278,3 +278,102 @@ export const getThemeTokens = (
 const getFallbackTheme = (): CareerIdentityThemeDefinition =>
     CAREER_IDENTITY_THEMES.find((t) => t.key === DEFAULT_CAREER_IDENTITY_THEME) ||
     CAREER_IDENTITY_THEMES[0];
+
+export interface CareerIdentityModalThemeStyles {
+    /** Header background style */
+    headerBg: string;
+    /** Header text / subtitle style */
+    headerSubtitle: string;
+    /** Header font class */
+    headerFont: string;
+    /** Modal card outer container */
+    cardContainer: string;
+    /** Info card surface and hover */
+    infoCard: string;
+    /** Icon container pill inside info card */
+    iconPill: string;
+    /** Text/label styles */
+    labelFont: string;
+    valueFont: string;
+    /** Primary Action CTA (e.g. Email Candidate, Download Resume) */
+    primaryButton: string;
+    /** Secondary Action CTA (e.g. WhatsApp Candidate, Schedule Call) */
+    secondaryButton: string;
+    /** Avatar selection styling */
+    avatarActiveGender: string;
+    avatarHoverBorder: string;
+    /** Share modal styles */
+    shareHeaderBg: string;
+    shareHeaderSubtitle: string;
+    shareOptionCard: string;
+    shareOptionIcon: string;
+    shareActionButton: string;
+}
+
+export const getModalThemeTokens = (
+    key: string | null | undefined
+): CareerIdentityModalThemeStyles => {
+    switch (key) {
+        case 'atlas':
+            return {
+                headerBg: 'bg-[#881337] text-white',
+                headerSubtitle: 'text-rose-200',
+                headerFont: 'font-serif font-bold',
+                cardContainer: 'bg-white rounded-3xl shadow-2xl border border-[#e8e2d5]',
+                infoCard: 'bg-[#faf8f5] border-[#e8e2d5] hover:border-[#881337]/40',
+                iconPill: 'bg-rose-50 text-[#881337]',
+                labelFont: 'text-stone-400 font-serif',
+                valueFont: 'text-[#1c1917] font-serif',
+                primaryButton: 'bg-[#881337] text-white hover:bg-[#701a28] shadow-rose-950/20 font-serif',
+                secondaryButton: 'bg-white border-[#881337] text-[#881337] hover:bg-rose-50 font-serif',
+                avatarActiveGender: 'bg-white text-[#881337]',
+                avatarHoverBorder: 'hover:border-[#881337]',
+                shareHeaderBg: 'bg-[#2a181b] text-[#faf8f5]',
+                shareHeaderSubtitle: 'text-rose-200 font-serif',
+                shareOptionCard: 'border-[#e8e2d5] hover:border-rose-300 hover:bg-rose-50/50',
+                shareOptionIcon: 'bg-rose-50 text-[#881337] group-hover:bg-rose-100',
+                shareActionButton: 'bg-[#2a181b] text-white hover:bg-[#881337]',
+            };
+        case 'zenith':
+            return {
+                headerBg: 'bg-[#2a7b6f] text-white',
+                headerSubtitle: 'text-teal-100',
+                headerFont: 'font-sans font-bold',
+                cardContainer: 'bg-white rounded-3xl shadow-2xl border border-teal-100/80',
+                infoCard: 'bg-teal-50/30 border-teal-100/70 hover:border-teal-300',
+                iconPill: 'bg-teal-50 text-[#2a7b6f]',
+                labelFont: 'text-slate-400 font-sans',
+                valueFont: 'text-slate-900 font-sans',
+                primaryButton: 'bg-[#2a7b6f] text-white hover:bg-[#23685e] shadow-teal-900/20 font-sans',
+                secondaryButton: 'bg-white border-teal-600 text-[#2a7b6f] hover:bg-teal-50 font-sans',
+                avatarActiveGender: 'bg-white text-[#2a7b6f]',
+                avatarHoverBorder: 'hover:border-[#2a7b6f]',
+                shareHeaderBg: 'bg-[#1a2d33] text-white',
+                shareHeaderSubtitle: 'text-teal-200',
+                shareOptionCard: 'border-teal-100/80 hover:border-teal-300 hover:bg-teal-50/50',
+                shareOptionIcon: 'bg-teal-50 text-[#2a7b6f] group-hover:bg-teal-100',
+                shareActionButton: 'bg-[#1a2d33] text-white hover:bg-[#2a7b6f]',
+            };
+        case 'aurora':
+        default:
+            return {
+                headerBg: 'bg-blue-600 text-white',
+                headerSubtitle: 'text-blue-100',
+                headerFont: 'font-sans font-bold',
+                cardContainer: 'bg-white rounded-3xl shadow-2xl border border-slate-100',
+                infoCard: 'bg-slate-50 border-slate-100 hover:border-blue-200',
+                iconPill: 'bg-blue-50 text-blue-600',
+                labelFont: 'text-slate-400 font-sans',
+                valueFont: 'text-[#0e121b] font-sans',
+                primaryButton: 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 font-sans',
+                secondaryButton: 'bg-white border-blue-500 text-blue-600 hover:bg-blue-50 font-sans',
+                avatarActiveGender: 'bg-white text-blue-600',
+                avatarHoverBorder: 'hover:border-blue-500',
+                shareHeaderBg: 'bg-[#0e121b] text-white',
+                shareHeaderSubtitle: 'text-blue-200',
+                shareOptionCard: 'border-slate-100 hover:border-blue-200 hover:bg-blue-50/50',
+                shareOptionIcon: 'bg-blue-50 text-blue-600 group-hover:bg-blue-100',
+                shareActionButton: 'bg-[#0e121b] text-white hover:bg-blue-600',
+            };
+    }
+};

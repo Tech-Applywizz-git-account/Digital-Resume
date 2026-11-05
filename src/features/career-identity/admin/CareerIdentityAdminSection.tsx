@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../integrations/supabase/client';
-import { Loader2, Eye, Clock, CheckCircle, RefreshCw, Sparkles, Send, AlertCircle, ExternalLink } from 'lucide-react';
+import { Loader2, Eye, Clock, CheckCircle, RefreshCw, Sparkles, Send, AlertCircle, ExternalLink, Copy, Check } from 'lucide-react';
 import { apiUrl } from '../../../lib/apiBase';
 
 interface CIRequest {
@@ -14,6 +14,8 @@ interface CIRequest {
     submissionDate: string | null;
     createdAt: string;
     updatedAt: string;
+    clarityStatus?: string;
+    clarityClientConsent?: boolean;
     assets: {
         resumeUrl: string | null;
         introVideoUrl: string | null;
@@ -21,7 +23,7 @@ interface CIRequest {
     };
 }
 
-type FilterTab = 'all' | 'submitted' | 'in_progress' | 'ready_for_review' | 'published';
+type FilterTab = 'all' | 'submitted' | 'in_progress' | 'ready_for_review' | 'published' | 'clarity_pending' | 'clarity_active';
 
 const FILTER_TABS: { key: FilterTab; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -29,6 +31,8 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
     { key: 'in_progress', label: 'In Progress' },
     { key: 'ready_for_review', label: 'Ready for Review' },
     { key: 'published', label: 'Published' },
+    { key: 'clarity_pending', label: '⚡ Clarity Setup Needed' },
+    { key: 'clarity_active', label: '🎥 Clarity Live' },
 ];
 
 const WORKFLOW_BADGES: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
@@ -57,6 +61,30 @@ export default function CareerIdentityAdminSection() {
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
     const [error, setError] = useState<string | null>(null);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [pendingClarityCount, setPendingClarityCount] = useState<number | null>(null);
+
+    const handleCopyCastId = (castId: string) => {
+        navigator.clipboard.writeText(castId);
+        setCopiedId(castId);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    const fetchClarityCount = useCallback(async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) return;
+            const res = await fetch(apiUrl('/api/v1/career-identity/admin/requests?clarityStatus=pending'), {
+                headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            if (res.ok) {
+                const body = await res.json();
+                setPendingClarityCount(body.data?.length || 0);
+            }
+        } catch {
+            // non-fatal
+        }
+    }, []);
 
     const fetchRequests = useCallback(async () => {
         setLoading(true);
@@ -73,6 +101,10 @@ export default function CareerIdentityAdminSection() {
             if (activeFilter !== 'all') {
                 if (activeFilter === 'published') {
                     params.set('status', 'published');
+                } else if (activeFilter === 'clarity_pending') {
+                    params.set('clarityStatus', 'pending');
+                } else if (activeFilter === 'clarity_active') {
+                    params.set('clarityStatus', 'active');
                 } else {
                     params.set('workflowStatus', activeFilter);
                 }
@@ -89,7 +121,15 @@ export default function CareerIdentityAdminSection() {
             }
 
             const body = await res.json();
-            setRequests(body.data || []);
+            const data: CIRequest[] = body.data || [];
+            setRequests(data);
+
+            if (activeFilter === 'all') {
+                const count = data.filter(r => r.clarityStatus === 'pending').length;
+                setPendingClarityCount(count);
+            } else if (activeFilter === 'clarity_pending') {
+                setPendingClarityCount(data.length);
+            }
         } catch (err: any) {
             console.error('[CareerIdentityAdmin] Failed to fetch requests:', err);
             setError(err?.message || 'Failed to load requests');
@@ -101,6 +141,10 @@ export default function CareerIdentityAdminSection() {
     useEffect(() => {
         fetchRequests();
     }, [fetchRequests]);
+
+    useEffect(() => {
+        fetchClarityCount();
+    }, [fetchClarityCount]);
 
     const formatDate = (date: string | null) => {
         if (!date) return '—';
@@ -154,19 +198,40 @@ export default function CareerIdentityAdminSection() {
             </div>
 
             {/* Filter Tabs */}
-            <div className="flex gap-2 border-b border-slate-200 pb-3">
-                {FILTER_TABS.map((tab) => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setActiveFilter(tab.key)}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeFilter === tab.key
-                            ? 'bg-[#0B4F6C] text-white'
-                            : 'text-slate-600 hover:bg-slate-100'
-                            }`}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
+            <div className="flex gap-2 border-b border-slate-200 pb-3 overflow-x-auto">
+                {FILTER_TABS.map((tab) => {
+                    const isClarityPending = tab.key === 'clarity_pending';
+                    const isClarityActive = tab.key === 'clarity_active';
+                    const isSelected = activeFilter === tab.key;
+
+                    let tabClass = 'text-slate-600 hover:bg-slate-100';
+                    if (isSelected) {
+                        tabClass = isClarityPending
+                            ? 'bg-amber-600 text-white shadow-sm'
+                            : isClarityActive
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'bg-[#0B4F6C] text-white';
+                    } else if (isClarityPending) {
+                        tabClass = 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/80';
+                    }
+
+                    return (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActiveFilter(tab.key)}
+                            className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap ${tabClass}`}
+                        >
+                            <span>{tab.label}</span>
+                            {isClarityPending && pendingClarityCount !== null && pendingClarityCount > 0 && (
+                                <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${
+                                    isSelected ? 'bg-white text-amber-800' : 'bg-amber-200 text-amber-900'
+                                }`}>
+                                    {pendingClarityCount}
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Error State */}
@@ -194,6 +259,10 @@ export default function CareerIdentityAdminSection() {
                     <p className="text-sm text-slate-500">
                         {activeFilter === 'all'
                             ? 'No Career Identity requests have been submitted yet.'
+                            : activeFilter === 'clarity_pending'
+                            ? 'No clients are currently waiting for Microsoft Clarity project setup.'
+                            : activeFilter === 'clarity_active'
+                            ? 'No clients currently have active Microsoft Clarity projects.'
                             : `No requests with status "${activeFilter.replace(/_/g, ' ')}".`}
                     </p>
                 </div>
@@ -220,9 +289,21 @@ export default function CareerIdentityAdminSection() {
                                 {requests.map((req) => (
                                     <tr key={req.userId} className="hover:bg-slate-50 transition-colors">
                                         <td className="py-3 px-4">
-                                            <span className="font-medium text-slate-900">
-                                                {req.fullName || 'Unknown'}
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium text-slate-900">
+                                                    {req.fullName || 'Unknown'}
+                                                </span>
+                                                {req.clarityStatus === 'active' && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Clarity Live">
+                                                        🎥 Live
+                                                    </span>
+                                                )}
+                                                {req.clarityStatus === 'pending' && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200" title="Client opted in, awaiting setup">
+                                                        🎥 Opted-In
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="py-3 px-4 text-slate-600">{req.email}</td>
                                         <td className="py-3 px-4">{getWorkflowBadge(req.workflowStatus)}</td>
@@ -250,13 +331,36 @@ export default function CareerIdentityAdminSection() {
                                         <td className="py-3 px-4 text-slate-500 text-xs">{formatDate(req.submissionDate)}</td>
                                         <td className="py-3 px-4 text-slate-500 text-xs">{formatDate(req.updatedAt)}</td>
                                         <td className="py-3 px-4 text-center">
-                                            <button
-                                                onClick={() => navigate(`/career-identity-admin/request/${req.userId}`)}
-                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B4F6C] text-white rounded-lg text-xs font-medium hover:bg-[#0a3d54] transition-colors"
-                                            >
-                                                <Eye className="w-3.5 h-3.5" />
-                                                Open
-                                            </button>
+                                            <div className="inline-flex items-center gap-2">
+                                                <button
+                                                    onClick={() => navigate(`/career-identity-admin/request/${req.userId}`)}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B4F6C] text-white rounded-lg text-xs font-medium hover:bg-[#0a3d54] transition-colors"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                    Open
+                                                </button>
+
+                                                {req.assets?.resumeId && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyCastId(req.assets.resumeId!)}
+                                                        title={`Copy Cast ID: ${req.assets.resumeId}`}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium transition-colors"
+                                                    >
+                                                        {copiedId === req.assets.resumeId ? (
+                                                            <>
+                                                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                                                <span className="text-emerald-600">Copied</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                                                <span>Copy ID</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

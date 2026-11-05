@@ -4,7 +4,8 @@ import { supabase } from '../../../integrations/supabase/client';
 import {
     Loader2, ArrowLeft, Eye, Clock, CheckCircle, RefreshCw, Sparkles,
     Send, AlertCircle, ExternalLink, Play, FileText, User, Mail, Calendar,
-    Tag, Shield, Video, Download, Edit3, Wallet, FileText as FilePdf
+    Tag, Shield, Video, Download, Edit3, Wallet, FileText as FilePdf,
+    Copy, Check
 } from 'lucide-react';
 import CareerIdentityAdminEditor from './CareerIdentityAdminEditor';
 import type { CareerIdentityContent, CareerIdentityProfileStatus } from '../../../types/careerIdentity';
@@ -56,6 +57,13 @@ export default function CareerIdentityAdminRequestDetail() {
     const [error, setError] = useState<string | null>(null);
     const [updating, setUpdating] = useState(false);
     const [updateError, setUpdateError] = useState<string | null>(null);
+    const [copiedCastId, setCopiedCastId] = useState(false);
+
+    const handleCopyCastId = (id: string) => {
+        navigator.clipboard.writeText(id);
+        setCopiedCastId(true);
+        setTimeout(() => setCopiedCastId(false), 2000);
+    };
 
     const fetchRequest = useCallback(async () => {
         if (!userId) return;
@@ -209,6 +217,136 @@ export default function CareerIdentityAdminRequestDetail() {
     const [walletCardUpdatedAt, setWalletCardUpdatedAt] = useState<string | null>(null);
     const [walletCardError, setWalletCardError] = useState<string | null>(null);
     const [regenerating, setRegenerating] = useState(false);
+
+    // Microsoft Clarity state
+    const [clarityProjectId, setClarityProjectId] = useState('');
+    const [clarityAccountEmail, setClarityAccountEmail] = useState('');
+    const [clarityAccountType, setClarityAccountType] = useState<'company_zoho' | 'client_personal' | null>(null);
+    const [clarityStatus, setClarityStatus] = useState<'disabled' | 'pending' | 'active'>('disabled');
+    const [clarityClientConsent, setClarityClientConsent] = useState<{ accepted: boolean; acceptedAt: string | null; revokedAt?: string | null }>({ accepted: false, acceptedAt: null, revokedAt: null });
+    const [clarityNotes, setClarityNotes] = useState('');
+    const [savingClarity, setSavingClarity] = useState(false);
+    const [claritySaveMessage, setClaritySaveMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+    const [copiedProjectEmail, setCopiedProjectEmail] = useState(false);
+    const [isEditingClarity, setIsEditingClarity] = useState(false);
+
+    const handleCancelClarityEdit = () => {
+        if (request) {
+            const c = (request as any).clarity || {};
+            setClarityProjectId(c.projectId || '');
+            setClarityAccountEmail(c.accountEmail || '');
+            setClarityAccountType(c.accountType || null);
+            setClarityStatus(c.status || 'disabled');
+            setClarityNotes(c.notes || '');
+        }
+        setIsEditingClarity(false);
+    };
+
+    useEffect(() => {
+        if (request) {
+            const c = (request as any).clarity || {};
+            setClarityProjectId(c.projectId || '');
+            setClarityAccountEmail(c.accountEmail || '');
+            setClarityAccountType(c.accountType || null);
+            setClarityStatus(c.status || 'disabled');
+            setClarityClientConsent(c.clientConsent || { accepted: false, acceptedAt: null, revokedAt: null });
+            setClarityNotes(c.notes || '');
+        }
+    }, [request]);
+
+    const handleSaveClarity = async () => {
+        if (!userId) return;
+        setSavingClarity(true);
+        setClaritySaveMessage(null);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) throw new Error('Not authenticated');
+
+            const body = {
+                clarity: {
+                    projectId: clarityProjectId.trim() || null,
+                    accountEmail: clarityAccountEmail.trim() || null,
+                    accountType: clarityAccountType,
+                    status: clarityStatus,
+                    notes: clarityNotes.trim() || null,
+                    clientConsent: clarityClientConsent,
+                },
+            };
+
+            const res = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
+                method: 'PATCH',
+                headers: {
+                    Authorization: `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}));
+                throw new Error(errBody?.message || `Failed to save Clarity config (${res.status})`);
+            }
+
+            setClaritySaveMessage({ text: 'Clarity configuration saved successfully.', type: 'success' });
+            setIsEditingClarity(false);
+            await fetchRequest();
+            setTimeout(() => setClaritySaveMessage(null), 3000);
+        } catch (err: any) {
+            setClaritySaveMessage({ text: err?.message || 'Failed to save Clarity configuration.', type: 'error' });
+        } finally {
+            setSavingClarity(false);
+        }
+    };
+
+    const handleDirectConsentChange = async (newConsent: { accepted: boolean; acceptedAt: string | null; revokedAt?: string | null }) => {
+        if (!userId) return;
+        setSavingClarity(true);
+        setClaritySaveMessage(null);
+        setClarityClientConsent(newConsent);
+        setClarityStatus('disabled');
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) throw new Error('Not authenticated');
+
+            const body = {
+                clarity: {
+                    projectId: clarityProjectId.trim() || null,
+                    accountEmail: clarityAccountEmail.trim() || null,
+                    accountType: clarityAccountType,
+                    status: 'disabled',
+                    notes: clarityNotes.trim() || null,
+                    clientConsent: newConsent,
+                },
+            };
+
+            const res = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
+                method: 'PATCH',
+                headers: {
+                    Authorization: `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}));
+                throw new Error(errBody?.message || `Failed to update Clarity consent (${res.status})`);
+            }
+
+            setClaritySaveMessage({
+                text: newConsent.revokedAt
+                    ? 'Consent revoked & tracking disabled successfully.'
+                    : 'Consent successfully reset to fresh opt-in.',
+                type: 'success',
+            });
+            await fetchRequest();
+            setTimeout(() => setClaritySaveMessage(null), 3500);
+        } catch (err: any) {
+            setClaritySaveMessage({ text: err?.message || 'Failed to update Clarity consent.', type: 'error' });
+        } finally {
+            setSavingClarity(false);
+        }
+    };
 
     const handleSave = async (data: { content: CareerIdentityContent; themeId: string; status?: CareerIdentityProfileStatus; workflowStatus?: string }) => {
         if (!userId) return;
@@ -381,6 +519,29 @@ export default function CareerIdentityAdminRequestDetail() {
                         </button>
                     )}
 
+                    {request.assets?.resumeId && !editing && (
+                        <div className="ml-auto flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handleCopyCastId(request.assets.resumeId!)}
+                                title="Copy Cast ID"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                {copiedCastId ? (
+                                    <>
+                                        <Check className="w-4 h-4 text-emerald-600" />
+                                        <span className="text-emerald-600 font-medium">Copied ID</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Copy className="w-4 h-4 text-slate-500" />
+                                        <span>Copy ID</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    )}
+
                     {updateError && (
                         <span className="text-sm text-red-600 flex items-center gap-1 ml-2">
                             <AlertCircle className="w-4 h-4" /> {updateError}
@@ -427,6 +588,26 @@ export default function CareerIdentityAdminRequestDetail() {
                                         <p className="text-sm text-slate-600 font-mono text-xs">{request.userId}</p>
                                     </div>
                                     <div>
+                                        <p className="text-xs text-slate-500 font-medium">Cast ID</p>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                            <p className="text-sm text-slate-600 font-mono text-xs">{request.assets?.resumeId || '—'}</p>
+                                            {request.assets?.resumeId && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCopyCastId(request.assets.resumeId!)}
+                                                    title="Copy Cast ID"
+                                                    className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
+                                                >
+                                                    {copiedCastId ? (
+                                                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                                    ) : (
+                                                        <Copy className="w-3.5 h-3.5" />
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div>
                                         <p className="text-xs text-slate-500 font-medium">Subscription Tier</p>
                                         <p className="text-sm font-semibold text-slate-900 capitalize">{request.tier}</p>
                                     </div>
@@ -454,6 +635,349 @@ export default function CareerIdentityAdminRequestDetail() {
                                         <p className="text-sm text-slate-900">{request.assets.jobTitle || '—'}</p>
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Microsoft Clarity Integration Card */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                                    <div>
+                                        <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                            <span className="text-base">📊</span>
+                                            Microsoft Clarity (Recruiter Session Replays)
+                                        </h2>
+                                        <p className="text-xs text-slate-500 mt-0.5">
+                                            Configure dedicated tracking project for this candidate
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        {clarityStatus === 'disabled' ? (
+                                            clarityClientConsent.revokedAt || (!clarityClientConsent.accepted && clarityClientConsent.acceptedAt) ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-300">
+                                                    <span className="w-2 h-2 rounded-full bg-slate-400" />
+                                                    Disabled (Consent Revoked {clarityClientConsent.revokedAt ? `on ${new Date(clarityClientConsent.revokedAt).toLocaleDateString()}` : ''})
+                                                </span>
+                                            ) : clarityClientConsent.accepted ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-300">
+                                                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                                    Disabled by Admin (Client Consented)
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                                    <Clock className="w-3.5 h-3.5 text-slate-500" />
+                                                    Pending Client Opt-In
+                                                </span>
+                                            )
+                                        ) : clarityStatus === 'pending' ? (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-300">
+                                                <Clock className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                                                Client Accepted {clarityClientConsent.acceptedAt ? `on ${new Date(clarityClientConsent.acceptedAt).toLocaleDateString()}` : ''} (Setup Needed)
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                                Live · Client Accepted {clarityClientConsent.acceptedAt ? `on ${new Date(clarityClientConsent.acceptedAt).toLocaleDateString()}` : ''}
+                                            </span>
+                                        )}
+
+                                        {/* Quick Action to revoke or reset consent */}
+                                        {clarityClientConsent.accepted ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    handleDirectConsentChange({
+                                                        accepted: false,
+                                                        acceptedAt: clarityClientConsent.acceptedAt,
+                                                        revokedAt: new Date().toISOString(),
+                                                    });
+                                                }}
+                                                disabled={savingClarity}
+                                                className="text-[11px] text-red-600 hover:text-red-700 underline font-medium cursor-pointer disabled:opacity-50"
+                                                title="Mark that the client requested to revoke consent and disable tracking"
+                                            >
+                                                Revoke Client Consent
+                                            </button>
+                                        ) : (!clarityClientConsent.accepted && (clarityClientConsent.revokedAt || clarityClientConsent.acceptedAt)) ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    handleDirectConsentChange({
+                                                        accepted: false,
+                                                        acceptedAt: null,
+                                                        revokedAt: null,
+                                                    });
+                                                }}
+                                                disabled={savingClarity}
+                                                className="text-[11px] text-slate-500 hover:text-slate-700 underline cursor-pointer disabled:opacity-50"
+                                                title="Reset to fresh never-opted-in state"
+                                            >
+                                                Reset to Fresh Opt-In
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                </div>
+
+                                {!isEditingClarity ? (
+                                    /* ── View Mode (Clean Summary) ── */
+                                    <div className="space-y-4 pt-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/70 border border-slate-200/80 rounded-xl p-4">
+                                            <div>
+                                                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Account Model</p>
+                                                <p className="text-xs font-semibold text-slate-800 mt-1">
+                                                    {clarityAccountType === 'company_zoho'
+                                                        ? '🏢 Company Zoho Mail'
+                                                        : clarityAccountType === 'client_personal'
+                                                        ? '👤 Client Personal Email'
+                                                        : '— Not Configured'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Clarity Account Email</p>
+                                                <p className="text-xs font-mono font-semibold text-slate-800 mt-1">
+                                                    {clarityAccountEmail || '— Not set'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Clarity Project ID</p>
+                                                <p className="text-xs font-mono font-semibold text-slate-800 mt-1">
+                                                    {clarityProjectId || '— Not provisioned'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Tracking Status</p>
+                                                <div className="mt-1">
+                                                    {clarityStatus === 'active' && clarityProjectId ? (
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                            <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                                            Active (Recording on public page)
+                                                        </span>
+                                                    ) : clarityStatus === 'pending' ? (
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+                                                            <Clock className="w-3 h-3 text-amber-600" />
+                                                            Pending Setup
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-300">
+                                                            Disabled (No tracking)
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Suggested Project Name in Microsoft Clarity */}
+                                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-[11px] font-semibold text-slate-700">Suggested Project Name in Microsoft Clarity:</p>
+                                                    <p className="text-xs font-mono text-[#0B4F6C] font-semibold mt-0.5">
+                                                        Career Identifier - {clarityAccountEmail || request?.email || 'candidate@applywizz.com'}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const projName = `Career Identifier - ${clarityAccountEmail || request?.email || ''}`;
+                                                        navigator.clipboard.writeText(projName);
+                                                        setCopiedProjectEmail(true);
+                                                        setTimeout(() => setCopiedProjectEmail(false), 2000);
+                                                    }}
+                                                    className="text-xs text-[#0B4F6C] bg-white border border-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-100 inline-flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0"
+                                                >
+                                                    {copiedProjectEmail ? <><Check className="w-3.5 h-3.5 text-emerald-600" /> Copied</> : <><Copy className="w-3.5 h-3.5 text-slate-600" /> Copy Project Name</>}
+                                                </button>
+                                            </div>
+                                            <p className="text-[11px] text-slate-400 mt-1">
+                                                When creating the project in Microsoft Clarity, use this as the <strong>Project Name</strong>, and invite <strong>{clarityAccountEmail || request?.email || 'the email above'}</strong> as a <strong>Member</strong>.
+                                            </p>
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="flex flex-wrap items-center gap-3 pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsEditingClarity(true)}
+                                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0B4F6C] hover:bg-[#0a3d54] text-white rounded-lg text-xs font-medium transition-colors shadow-sm cursor-pointer"
+                                            >
+                                                <Edit3 className="w-3.5 h-3.5" />
+                                                Edit Clarity Config
+                                            </button>
+
+                                            <a
+                                                href={clarityProjectId ? `https://clarity.microsoft.com/projects/view/${clarityProjectId}/dashboard` : 'https://clarity.microsoft.com'}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors border border-slate-200"
+                                            >
+                                                <ExternalLink className="w-3.5 h-3.5" />
+                                                {clarityProjectId ? 'Open Clarity Console ↗' : 'Open Microsoft Clarity ↗'}
+                                            </a>
+
+                                            {claritySaveMessage && (
+                                                <span className={`text-xs font-medium flex items-center gap-1 ${claritySaveMessage.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                    {claritySaveMessage.type === 'success' ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                                                    {claritySaveMessage.text}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* ── Edit Mode ── */
+                                    <div className="space-y-4 pt-2">
+                                        {/* Account Model */}
+                                        <div>
+                                            <label className="text-xs text-slate-500 font-medium block mb-2">Account Model</label>
+                                            <div className="flex items-center gap-6">
+                                                <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="accountType"
+                                                        value="company_zoho"
+                                                        checked={clarityAccountType === 'company_zoho'}
+                                                        onChange={() => {
+                                                            setClarityAccountType('company_zoho');
+                                                            if (clarityAccountEmail === request?.email) {
+                                                                setClarityAccountEmail('');
+                                                            }
+                                                        }}
+                                                        className="text-[#0B4F6C] focus:ring-[#0B4F6C]"
+                                                    />
+                                                    Company Zoho Mail
+                                                </label>
+                                                <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="accountType"
+                                                        value="client_personal"
+                                                        checked={clarityAccountType === 'client_personal'}
+                                                        onChange={() => {
+                                                            setClarityAccountType('client_personal');
+                                                            if (request?.email) {
+                                                                setClarityAccountEmail(request.email);
+                                                            }
+                                                        }}
+                                                        className="text-[#0B4F6C] focus:ring-[#0B4F6C]"
+                                                    />
+                                                    Client Personal Email
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {/* Clarity Account Email */}
+                                        <div>
+                                            <label className="text-xs text-slate-500 font-medium block mb-1">
+                                                Clarity Account Email <span className="text-slate-400 font-normal">(Invite this email as a Member)</span>
+                                            </label>
+                                            <input
+                                                type="email"
+                                                value={clarityAccountEmail}
+                                                onChange={(e) => setClarityAccountEmail(e.target.value)}
+                                                placeholder={clarityAccountType === 'company_zoho' ? 'e.g. candidate@applywizz.com' : (request?.email || 'Enter account email')}
+                                                className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#0B4F6C]"
+                                            />
+                                        </div>
+
+                                        {/* Suggested Project Name in Microsoft Clarity */}
+                                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-[11px] font-semibold text-slate-700">Suggested Project Name in Microsoft Clarity:</p>
+                                                    <p className="text-xs font-mono text-[#0B4F6C] font-semibold mt-0.5">
+                                                        Career Identifier - {clarityAccountEmail || request?.email || 'candidate@applywizz.com'}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const projName = `Career Identifier - ${clarityAccountEmail || request?.email || ''}`;
+                                                        navigator.clipboard.writeText(projName);
+                                                        setCopiedProjectEmail(true);
+                                                        setTimeout(() => setCopiedProjectEmail(false), 2000);
+                                                    }}
+                                                    className="text-xs text-[#0B4F6C] bg-white border border-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-100 inline-flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0"
+                                                >
+                                                    {copiedProjectEmail ? <><Check className="w-3.5 h-3.5 text-emerald-600" /> Copied</> : <><Copy className="w-3.5 h-3.5 text-slate-600" /> Copy Project Name</>}
+                                                </button>
+                                            </div>
+                                            <p className="text-[11px] text-slate-400 mt-1">
+                                                When creating the project in Microsoft Clarity, use this as the <strong>Project Name</strong>, and invite <strong>{clarityAccountEmail || request?.email || 'the email above'}</strong> as a <strong>Member</strong>.
+                                            </p>
+                                        </div>
+
+                                        {/* Project ID & Tracking Status */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-xs text-slate-500 font-medium block mb-1">Clarity Project ID</label>
+                                                <input
+                                                    type="text"
+                                                    value={clarityProjectId}
+                                                    onChange={(e) => setClarityProjectId(e.target.value)}
+                                                    placeholder="e.g. p9x7b2k1lm"
+                                                    className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#0B4F6C]"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-slate-500 font-medium block mb-1">Tracking Status</label>
+                                                <select
+                                                    value={clarityStatus}
+                                                    onChange={(e) => setClarityStatus(e.target.value as any)}
+                                                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#0B4F6C]"
+                                                >
+                                                    <option value="disabled">Disabled (No tracking)</option>
+                                                    <option value="pending">Pending (Awaiting setup)</option>
+                                                    <option value="active">Active (Recording on public page)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Status helper text */}
+                                        <div className="text-xs text-slate-500 pt-1">
+                                            {clarityStatus === 'active' && clarityProjectId ? (
+                                                <p className="text-emerald-700 flex items-center gap-1 font-medium">
+                                                    <CheckCircle className="w-3.5 h-3.5" />
+                                                    Active: Public page (/career-identity/{request.assets?.resumeId || '...'}) is streaming recordings to this project ID.
+                                                </p>
+                                            ) : clarityStatus === 'pending' ? (
+                                                <p className="text-amber-700 flex items-center gap-1">
+                                                    <Clock className="w-3.5 h-3.5" />
+                                                    Pending: Client accepted or requested Clarity. Provision project and switch status to Active.
+                                                </p>
+                                            ) : (
+                                                <p className="text-slate-500">
+                                                    Disabled: Clarity scripts will NOT load on the candidate's public page.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="flex flex-wrap items-center gap-3 pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleSaveClarity}
+                                                disabled={savingClarity}
+                                                className="inline-flex items-center gap-2 px-4 py-2 bg-[#0B4F6C] hover:bg-[#0a3d54] text-white rounded-lg text-xs font-medium transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+                                            >
+                                                {savingClarity ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                                                💾 Save Changes
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={handleCancelClarityEdit}
+                                                disabled={savingClarity}
+                                                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-medium transition-colors border border-slate-200 cursor-pointer disabled:opacity-50"
+                                            >
+                                                Cancel
+                                            </button>
+
+                                            {claritySaveMessage && (
+                                                <span className={`text-xs font-medium flex items-center gap-1 ${claritySaveMessage.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                    {claritySaveMessage.type === 'success' ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                                                    {claritySaveMessage.text}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Resume Preview Card */}

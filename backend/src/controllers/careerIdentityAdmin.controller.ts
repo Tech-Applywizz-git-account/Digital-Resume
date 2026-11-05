@@ -45,10 +45,12 @@ export const careerIdentityAdminController = {
 
         const workflowStatus = req.query.workflowStatus as string | undefined;
         const status = req.query.status as string | undefined;
+        const clarityStatus = req.query.clarityStatus as string | undefined;
 
-        const filter: { workflowStatus?: string; status?: string } = {};
+        const filter: { workflowStatus?: string; status?: string; clarityStatus?: string } = {};
         if (workflowStatus) filter.workflowStatus = workflowStatus;
         if (status) filter.status = status;
+        if (clarityStatus) filter.clarityStatus = clarityStatus;
 
         const requests = await careerIdentityService.listRequests(
             Object.keys(filter).length > 0 ? filter : undefined
@@ -95,7 +97,7 @@ export const careerIdentityAdminController = {
             return res.status(400).json({ success: false, message: 'userId is required' });
         }
 
-        const { workflowStatus, status, themeId, content, walletPassUrl } = req.body;
+        const { workflowStatus, status, themeId, content, walletPassUrl, clarity } = req.body;
 
         const result = await careerIdentityService.adminUpdateRequest(targetUserId, {
             workflowStatus,
@@ -103,6 +105,7 @@ export const careerIdentityAdminController = {
             themeId,
             content,
             walletPassUrl,
+            clarity,
         });
 
         return res.status(200).json({ success: true, data: result });
