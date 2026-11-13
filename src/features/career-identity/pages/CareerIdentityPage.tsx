@@ -26,6 +26,7 @@ import {
     downloadWalletCard,
     fetchGoogleWalletUrl,
     fetchWalletStatus,
+    fetchCareerIdentityViewer,
     getAppleWalletPassUrl,
 } from '../services/careerIdentityService';
 import { trackEvent, trackSessionEnd } from '../../../utils/tracking';
@@ -61,28 +62,34 @@ const CareerIdentityPage: React.FC = () => {
     const { user } = useAuth();
 
     const isPreviewMode = searchParams.get('preview') === 'true';
-    const previewContent = isPreviewMode
-        ? localStorage.getItem('ci_preview_content')
-        : null;
-    const previewTheme = isPreviewMode
-        ? localStorage.getItem('ci_preview_theme')
-        : null;
-    const previewAvatar = isPreviewMode
-        ? localStorage.getItem('ci_preview_avatar')
-        : null;
-    const previewVideoUrl = isPreviewMode
-        ? localStorage.getItem('ci_preview_video_url')
-        : null;
-    const previewResumeUrl = isPreviewMode
-        ? localStorage.getItem('ci_preview_resume_url')
-        : null;
+    const previewId = isPreviewMode ? searchParams.get('previewId') : null;
+    const [preview] = useState(() => {
+        if (!previewId) return null;
+        try {
+            return JSON.parse(localStorage.getItem(`ci_preview_${previewId}`) || 'null');
+        } catch {
+            return null;
+        }
+    });
+    const previewContent = preview?.content ? JSON.stringify(preview.content) : null;
+    const previewTheme = preview?.theme ?? null;
+    const previewAvatar = preview?.avatar ?? null;
+    const previewVideoUrl = preview?.videoUrl ?? null;
+    const previewResumeUrl = preview?.resumeUrl ?? null;
+
+    useEffect(() => {
+        if (previewId) localStorage.removeItem(`ci_preview_${previewId}`);
+    }, [previewId]);
 
     const themeParam = searchParams.get('theme');
 
     const cachedProfileRaw = (!isPreviewMode && castIdParam) ? localStorage.getItem(`ci_profile_${castIdParam}`) : null;
     let initialCachedProfile: CareerIdentityProfileResponse | null = null;
     if (cachedProfileRaw) {
-        try { initialCachedProfile = JSON.parse(cachedProfileRaw); } catch { }
+        try {
+            const cached = JSON.parse(cachedProfileRaw);
+            if (!cached?.profile?.submissionId) initialCachedProfile = cached;
+        } catch { }
     }
     const cachedTheme = (!isPreviewMode && castIdParam)
         ? (localStorage.getItem(`ci_theme_${castIdParam}`) as CareerIdentityThemeKey | null)
@@ -130,9 +137,9 @@ const CareerIdentityPage: React.FC = () => {
     const displayLocation = profile?.profile?.content?.contact?.location || '';
     const displayEducation = (profile?.profile?.content?.education || []).map((e: any) => e.degree).filter(Boolean).join(', ');
     const displayOpenToRelocate = profile?.profile?.content?.hero?.openToRelocate || false;
-    const videoUrl = videoUrlParam || profile?.derived?.videoUrl || null;
+    const videoUrl = (profile?.profile?.submissionId ? profile.derived?.videoUrl : videoUrlParam || profile?.derived?.videoUrl) || null;
     const portfolioUrl = profile?.derived?.portfolioUrl || null;
-    const resumeUrl = resumeUrlParam || profile?.derived?.resumeUrl || null;
+    const resumeUrl = (profile?.profile?.submissionId ? profile.derived?.resumeUrl : resumeUrlParam || profile?.derived?.resumeUrl) || null;
     const shareUrl = `${window.location.origin}${location.pathname}${location.search}`;
 
     const content = profile?.profile?.content;
@@ -214,7 +221,11 @@ const CareerIdentityPage: React.FC = () => {
                     setProfile(body.data);
                     if (castId) {
                         try {
-                            localStorage.setItem(`ci_profile_${castId}`, JSON.stringify(body.data));
+                            if (body.data.profile?.submissionId) {
+                                localStorage.removeItem(`ci_profile_${castId}`);
+                            } else {
+                                localStorage.setItem(`ci_profile_${castId}`, JSON.stringify(body.data));
+                            }
                             if (body.data.profile?.themeId) {
                                 localStorage.setItem(`ci_theme_${castId}`, body.data.profile.themeId);
                             }
@@ -237,8 +248,8 @@ const CareerIdentityPage: React.FC = () => {
     useEffect(() => {
         if (isPreviewMode) {
             setSelectedAvatar(previewAvatar || null);
-        } else if (profile?.profile?.content?.hero?.profileImageUrl) {
-            setSelectedAvatar(profile.profile.content.hero.profileImageUrl);
+        } else {
+            setSelectedAvatar(profile?.profile?.content?.hero?.profileImageUrl || null);
         }
     }, [profile, isPreviewMode, previewAvatar]);
 
@@ -317,12 +328,7 @@ const CareerIdentityPage: React.FC = () => {
                         isAdmin = cachedAdmin === 'true';
                     } else if (userEmail) {
                         try {
-                            const { data: adminRecord } = await supabase
-                                .from('crm_admins')
-                                .select('email')
-                                .ilike('email', userEmail)
-                                .maybeSingle();
-                            isAdmin = !!adminRecord;
+                            isAdmin = (await fetchCareerIdentityViewer()).isAdmin;
                             sessionStorage.setItem(`is_crm_admin_${currentUserId}`, String(isAdmin));
                         } catch (err) {
                             console.warn('[Clarity] Failed to verify admin status:', err);
@@ -768,7 +774,7 @@ const CareerIdentityPage: React.FC = () => {
                                                 <Mail size={18} />Contact
                                             </button>
                                             <button
-                                                onClick={() => window.open(`/final-result/${castIdParam || 'profile'}`, '_blank')}
+                                                onClick={() => window.open(`/final-result/${profile?.profile?.resumeId || castIdParam || 'profile'}`, '_blank')}
                                                 className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 border shadow-sm active:scale-[0.98] transition-all ${
                                                     isHumanMode
                                                         ? 'bg-white text-stone-800 hover:bg-stone-50 border-amber-300'

@@ -2,7 +2,6 @@
  * Wallet Service (Provider Orchestrator + Native Apple Pass)
  */
 import { PKPass } from 'passkit-generator';
-import { subscriptionService } from '../subscription/subscription.service.js';
 import { neatpassProvider } from './providers/neatpass/neatpass.service.js';
 import { tap2Provider } from './providers/tap2/tap2.service.js';
 import { googleWalletService } from './providers/google/googleWallet.service.js';
@@ -115,11 +114,6 @@ class WalletService {
         }
 
         const { record, userId } = await assertWalletAccess(castId, authenticatedUserId);
-        const tier = await subscriptionService.getTier(castId);
-        if (tier !== 'career_identity') {
-            throw new Error('Apple Wallet is only available for Career Identity profiles.');
-        }
-
         const data = await loadWalletCardData(castId, record, userId);
         const {
             stripPng,

@@ -36,8 +36,11 @@ export const resumeController = {
         }
 
         const file = req.file;
-        if (!file) {
-            return res.status(400).json({ success: false, message: 'No file provided' });
+        if (!file || file.size === 0) {
+            return res.status(400).json({ success: false, message: 'Please choose a non-empty PDF file.' });
+        }
+        if (file.mimetype !== 'application/pdf' || file.buffer.toString('latin1', 0, 5) !== '%PDF-') {
+            return res.status(415).json({ success: false, message: 'Please upload a PDF file only.' });
         }
 
         const { jobRequestId } = req.body;
@@ -49,6 +52,7 @@ export const resumeController = {
             originalName: file.originalname,
             mimeType: file.mimetype,
             jobRequestId,
+            replace: req.body.replace === 'true',
         });
 
         return res.status(201).json({ success: true, data: result });

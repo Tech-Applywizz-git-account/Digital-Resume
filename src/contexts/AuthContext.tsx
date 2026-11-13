@@ -15,7 +15,7 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: SignupData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   sendOTP: (email: string) => Promise<void>;
   verifyOTP: (email: string, otp: string) => Promise<boolean>;
   isOTPVerified: (email: string) => boolean;
@@ -355,7 +355,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) console.warn('Supabase sign-out failed:', error);
+    sessionStorage.removeItem('digital_resume_admin_access');
+    sessionStorage.removeItem('admin_email');
     clearSessionCache();
     setIsAuthenticated(false);
     setUser(null);

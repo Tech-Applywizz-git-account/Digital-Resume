@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import Busboy from 'busboy';
 import { requireAuth, setCors } from '../../../lib/supabaseAuth.js';
 
@@ -54,7 +55,7 @@ async function parseJsonBody(req) {
 
 function parseMultipart(req) {
   return new Promise((resolve, reject) => {
-    const busboy = Busboy({ headers: req.headers });
+    const busboy = Busboy({ headers: req.headers, limits: { fileSize: 10 * 1024 * 1024 + 1, files: 1 } });
     const fields = {};
     let fileInfo = null;
     const chunks = [];
@@ -65,7 +66,7 @@ function parseMultipart(req) {
         mimeType: info.mimeType || 'application/octet-stream',
       };
       file.on('data', (data) => chunks.push(data));
-      file.on('limit', () => reject(new Error('File too large')));
+      file.on('limit', () => reject(Object.assign(new Error('Your PDF exceeds 10 MB.'), { statusCode: 413 })));
     });
 
     busboy.on('field', (name, value) => {
@@ -89,20 +90,24 @@ function parseMultipart(req) {
   });
 }
 
-async function isCrmUser(admin, email) {
-  if (!email) return false;
+async function findCrmUser(admin, email) {
+  if (!email) return null;
   const { data: byEmail } = await admin
     .from('digital_resume_by_crm')
-    .select('email')
+    .select('email,user_id')
     .eq('email', email)
     .maybeSingle();
-  if (byEmail) return true;
+  if (byEmail) return byEmail;
   const { data: byAppEmail } = await admin
     .from('digital_resume_by_crm')
-    .select('email')
+    .select('email,user_id')
     .eq('company_application_email', email)
     .maybeSingle();
-  return !!byAppEmail;
+  return byAppEmail;
+}
+
+async function isCrmUser(admin, email) {
+  return !!await findCrmUser(admin, email);
 }
 
 function publicUrl(admin, bucket, path) {
@@ -164,17 +169,19 @@ async function createJobRequest(admin, user, body) {
   return { id: data.id };
 }
 
-async function uploadResume(admin, user, file, jobRequestId) {
+async function uploadResume(admin, user, file, jobRequestId, replace) {
   if (!jobRequestId) throw new Error('Job request ID required');
   if (!file?.buffer?.length) throw new Error('No file provided');
 
   const email = user.email;
-  const crm = await isCrmUser(admin, email);
+  const crmUser = await findCrmUser(admin, email);
+  const crm = !!crmUser;
+  const crmEmail = replace ? crmUser?.email ?? email : email;
   const table = crm ? 'crm_job_requests' : 'job_requests';
 
   const { data: existing, error: findError } = await admin
     .from(table)
-    .select('id,user_id')
+    .select(crm ? 'id,user_id,email' : 'id,user_id')
     .eq('id', jobRequestId)
     .maybeSingle();
   if (findError) throw findError;
@@ -182,12 +189,15 @@ async function uploadResume(admin, user, file, jobRequestId) {
   if (existing.user_id && existing.user_id !== user.id) {
     throw new Error('Unauthorized: job request does not belong to this user');
   }
+  const ownsLegacyCrmResume = crmUser?.user_id === user.id && existing.email?.toLowerCase() === crmEmail.toLowerCase();
+  if (replace && !existing.user_id && !ownsLegacyCrmResume) {
+    throw Object.assign(new Error('You do not own this resume.'), { statusCode: 403 });
+  }
 
   const bucket = crm ? 'CRM_users_resumes' : 'resumes';
-  const fileExt = (file.originalName.split('.').pop() || 'pdf').toLowerCase();
-  const storagePath = crm
-    ? `${email}/${jobRequestId}_${Date.now()}.${fileExt}`
-    : `${user.id}/${jobRequestId}_${Date.now()}.${fileExt}`;
+  const fileExt = replace ? 'pdf' : (file.originalName.split('.').pop() || 'pdf').toLowerCase();
+  const fileId = replace ? randomUUID() : Date.now();
+  const storagePath = `${crm ? crmEmail : user.id}/${jobRequestId}_${fileId}.${fileExt}`;
 
   const { data: uploaded, error: uploadError } = await admin.storage
     .from(bucket)
@@ -200,18 +210,30 @@ async function uploadResume(admin, user, file, jobRequestId) {
   const resumeUrl = publicUrl(admin, bucket, uploaded?.path || storagePath);
   if (!resumeUrl) throw new Error('Failed to resolve public URL');
 
-  if (crm) {
-    const { error } = await admin
-      .from('crm_job_requests')
-      .update({ resume_url: resumeUrl, application_status: 'ready' })
-      .eq('id', jobRequestId);
-    if (error) throw error;
+  const updates = crm ? { resume_url: resumeUrl } : { resume_path: resumeUrl };
+  if (replace) {
+    updates.updated_at = new Date().toISOString();
+    if (!crm) updates.resume_original_name = file.originalName;
   } else {
-    const { error } = await admin
-      .from('job_requests')
-      .update({ resume_path: resumeUrl, status: 'ready' })
-      .eq('id', jobRequestId);
-    if (error) throw error;
+    updates[crm ? 'application_status' : 'status'] = 'ready';
+  }
+
+  let update = admin.from(table).update(updates).eq('id', jobRequestId);
+  if (replace) {
+    update = existing.user_id
+      ? update.eq('user_id', user.id)
+      : update.is('user_id', null).eq('email', existing.email);
+    update = update.select('id').single();
+  }
+  const { error } = await update;
+  if (error) throw error;
+
+  if (replace && crm) {
+    const { error: historyError } = await admin.from('crm_resumes').insert({
+      email: crmEmail, user_id: user.id, resume_name: file.originalName,
+      resume_url: resumeUrl, file_type: 'pdf', file_size: file.buffer.length,
+    });
+    if (historyError) console.warn('Could not record CRM resume replacement history:', historyError);
   }
 
   return { resumeUrl, fileName: file.originalName };
@@ -299,7 +321,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, message: 'Expected multipart/form-data' });
       }
       const { fields, file } = await parseMultipart(req);
-      const result = await uploadResume(admin, user, file, fields.jobRequestId);
+      if (!file?.buffer.length) {
+        return res.status(400).json({ success: false, message: 'Please choose a non-empty PDF file.' });
+      }
+      if (file.mimeType !== 'application/pdf' || file.buffer.toString('latin1', 0, 5) !== '%PDF-') {
+        return res.status(415).json({ success: false, message: 'Please upload a PDF file only.' });
+      }
+      const result = await uploadResume(admin, user, file, fields.jobRequestId, fields.replace === 'true');
       return res.status(201).json({ success: true, data: result });
     }
 
@@ -323,10 +351,9 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error('resumes API error:', err);
     const message = err?.message || 'Internal server error';
-    const status =
-      message.includes('Unauthorized') || message.includes('not found') || message.includes('No file')
-        ? 400
-        : 500;
+    const status = err?.statusCode ?? (
+      message.includes('Unauthorized') || message.includes('not found') || message.includes('No file') ? 400 : 500
+    );
     return res.status(status).json({ success: false, message });
   }
 }

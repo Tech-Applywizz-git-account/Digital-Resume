@@ -10,6 +10,7 @@
  */
 
 import {
+    CareerIdentityClarityConfig,
     CareerIdentityProfileResponse,
     CareerIdentityUpdatePayload,
 } from "../../../types/careerIdentity";
@@ -87,7 +88,7 @@ export const downloadWalletCard = async (castId: string): Promise<Blob> => {
 
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body?.message || `Failed to generate wallet card (${res.status})`);
+        throw new Error(body?.error?.message || body?.message || `Failed to generate wallet card (${res.status})`);
     }
 
     return res.blob();
@@ -107,7 +108,7 @@ export const fetchWalletStatus = async (castId: string): Promise<{
 
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body?.message || `Failed to load wallet status (${res.status})`);
+        throw new Error(body?.error?.message || body?.message || `Failed to load wallet status (${res.status})`);
     }
 
     const body = await res.json();
@@ -122,7 +123,7 @@ export const fetchGoogleWalletUrl = async (castId: string): Promise<string> => {
 
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body?.message || `Failed to generate Google Wallet link (${res.status})`);
+        throw new Error(body?.error?.message || body?.message || `Failed to generate Google Wallet link (${res.status})`);
     }
 
     const body = await res.json();
@@ -150,9 +151,64 @@ export const updateCareerIdentityProfile = async (
 
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body?.message || `Failed to update Career Identity profile (${res.status})`);
+        throw new Error(body?.error?.message || body?.message || `Failed to update Career Identity profile (${res.status})`);
     }
 
     const body = await res.json();
     return body.data;
 };
+export interface EligibleResume {
+    castId: string;
+    source: string;
+    recordingNumber: number;
+    createdAt: string;
+    recordingId: string;
+    resumeUrl: string;
+    videoUrl: string;
+}
+
+export interface PublishedAppearance {
+    submissionId: string;
+    themeId: 'aurora' | 'zenith' | 'atlas';
+    avatar: string | null;
+}
+
+export type SubmissionRecording = { number: number; createdAt: string };
+
+export interface CareerIdentityDashboardData {
+    publishedRecording?: SubmissionRecording | null;
+    appearance?: PublishedAppearance | null;
+    summary?: { name: string | null; email: string | null };
+    eligible: EligibleResume[];
+    publishedId: string | null;
+    workflowStatus: string;
+    pending: { id: string; castId: string; submittedAt: string; recording?: SubmissionRecording | null; resumeUrl: string; videoUrl: string } | null;
+    clarity: CareerIdentityClarityConfig | null;
+}
+
+async function dashboardRequest<T>(path: string, method = 'GET', payload?: object): Promise<T> {
+    const response = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers: { ...await authHeaders(), 'Content-Type': 'application/json' },
+        body: payload ? JSON.stringify(payload) : undefined,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const message = body.error?.message || body.message || 'Unable to complete your Career Identity request.';
+        throw new Error(response.status >= 500 && body.requestId ? `${message} Reference: ${body.requestId}` : message);
+    }
+    return body.data;
+}
+
+export const fetchCareerIdentityDashboard = () => dashboardRequest<CareerIdentityDashboardData>('/dashboard');
+export const submitCareerIdentity = (selection: EligibleResume, idempotencyKey: string, expectedPendingId: string | null) =>
+    dashboardRequest('/submissions', 'POST', { ...selection, idempotencyKey, expectedPendingId });
+export const withdrawCareerIdentitySubmission = (submissionId: string) =>
+    dashboardRequest<void>(`/submissions/${encodeURIComponent(submissionId)}`, 'DELETE');
+export const updateCareerIdentityConsent = (accepted: boolean) =>
+    dashboardRequest('/consent', 'PATCH', { accepted });
+
+export const fetchCareerIdentityViewer = () => dashboardRequest<{ isAdmin: boolean }>('/viewer');
+
+export const savePublishedAppearance = (appearance: Omit<PublishedAppearance, 'avatar'> & { avatar?: string | null }) =>
+    dashboardRequest<void>('/appearance', 'PATCH', appearance);

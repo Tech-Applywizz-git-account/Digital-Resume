@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { getCustomerDashboardPath } from "../features/subscription/services/subscriptionService";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -19,19 +20,18 @@ import { isSafeUUID } from "../utils/uuidHelpers";
 const Step1: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const searchParams = new URLSearchParams(location.search);
   const mode = searchParams.get('mode');
   const showHistory = mode === 'continue';
 
-  const handleLogout = () => {
-    logout();
-    navigate("/");
-  };
+  const handleLogout = () => navigate("/");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [apiResumeUrl, setApiResumeUrl] = useState<string | null>(null);
@@ -87,16 +87,22 @@ const Step1: React.FC = () => {
   }, [user]);
 
   const handleFileSelect = (file: File) => {
-    const fileExt = file.name.split(".").pop()?.toLowerCase();
-    const isPdf = file.type === "application/pdf" || fileExt === "pdf";
-    if (!isPdf) {
-      showToast("Please upload a PDF file.", "warning");
+    if (isUploading) return;
+    if (file.type !== "application/pdf") {
+      removeFile();
+      setFileError("Please upload a PDF file only.");
+      return;
+    }
+    if (file.size === 0) {
+      setFileError("Please choose a non-empty PDF file.");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      showToast("File size exceeds 10MB limit.", "warning");
+      setFileError("Your PDF exceeds 10 MB.");
       return;
     }
+    setFileError(null);
+    setUploadedFileName(null);
     setSelectedFile(file);
   };
 
@@ -109,7 +115,10 @@ const Step1: React.FC = () => {
       return;
     }
 
+    setFileError(null);
     setIsUploading(true);
+    let uploadingFile = false;
+    let confirmedUploadName: string | null = null;
     try {
       const jobRequestId = localStorage.getItem("current_job_request_id");
       const existingResumeUrl = localStorage.getItem("uploadedResumeUrl");
@@ -156,6 +165,7 @@ const Step1: React.FC = () => {
       let finalFileName = localStorage.getItem("resumeFileName") || "Resume.pdf";
 
       if (selectedFile) {
+        uploadingFile = true;
         const formData = new FormData();
         formData.append('file', selectedFile);
         formData.append('jobRequestId', activeJobRequestId || '');
@@ -168,10 +178,29 @@ const Step1: React.FC = () => {
           body: formData,
         });
 
-        if (!uploadResponse.ok) throw new Error('Failed to upload resume');
+        if (!uploadResponse.ok) {
+          if (uploadResponse.status === 415) {
+            removeFile();
+            setFileError("Please upload a PDF file only.");
+            return;
+          }
+          const body = await uploadResponse.json().catch(() => null);
+          throw new Error(body?.error?.message || body?.message || 'Failed to upload resume');
+        }
         const uploadResult = await uploadResponse.json();
+        if (!uploadResult.data?.resumeUrl) {
+          throw new Error("The server did not return a link to the uploaded file.");
+        }
         finalResumeUrl = uploadResult.data.resumeUrl;
+        uploadingFile = false;
         finalFileName = selectedFile.name;
+        confirmedUploadName = finalFileName;
+        localStorage.setItem("uploadedResumeUrl", finalResumeUrl || "");
+        localStorage.setItem("resumeFileName", finalFileName);
+        localStorage.removeItem("resumeFullText");
+        setApiResumeUrl(null);
+        removeFile();
+        setUploadedFileName(finalFileName);
 
         const buffer = await selectedFile.arrayBuffer();
         finalResumeText = await extractTextFromBuffer(buffer, selectedFile.name);
@@ -232,11 +261,16 @@ const Step1: React.FC = () => {
       localStorage.setItem("resumeFileName", finalFileName);
       localStorage.setItem("resumeFullText", finalResumeText || "");
 
-      showToast("Resume processed and script generated!", "success");
-      navigate(`/step2${mode ? `?mode=${mode}` : ''}`);
+      navigate(`/step2${mode ? `?mode=${mode}` : ''}`, {
+        state: { uploadedFileName: confirmedUploadName },
+      });
     } catch (err: any) {
       console.error("❌ Process failed:", err);
-      showToast("Failed to process resume: " + err.message, "error");
+      if (uploadingFile) {
+        setFileError(`Couldn't upload ${selectedFile?.name}. ${err.message || "Please try again."}`);
+      } else {
+        showToast("Failed to process resume: " + err.message, "error");
+      }
     } finally {
       setIsUploading(false);
     }
@@ -244,6 +278,7 @@ const Step1: React.FC = () => {
 
   const removeFile = () => {
     setSelectedFile(null);
+    setFileError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -328,23 +363,33 @@ const Step1: React.FC = () => {
                       {!selectedFile ? (
                         <div>
                           <div className="text-3xl mb-3">📄</div>
-                          <p className="text-base font-medium text-gray-700 mb-1">Your resume is already uploaded, if you want to replace your resume</p>
+                          {(apiResumeUrl || localStorage.getItem("uploadedResumeUrl")) && (
+                            <p className="text-base font-medium text-gray-700 mb-1">You can keep your current resume or choose a replacement</p>
+                          )}
                           <p className="text-base font-medium text-gray-700 mb-1">Click to upload or drag and drop</p>
                           <p className="text-xs text-gray-500">PDF (max 10MB)</p>
                         </div>
                       ) : (
-                        <div className="flex items-center justify-center space-x-2 text-green-700"><Check className="h-5 w-5" /><span className="font-medium">Resume Selected Successfully</span></div>
+                        <div className="flex items-center justify-center space-x-2 text-green-700"><Check className="h-5 w-5" /><span className="font-medium">PDF selected. Upload starts when you click Next Step.</span></div>
                       )}
-                      <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,application/pdf" onChange={(e) => e.target.files && handleFileSelect(e.target.files[0])} />
+                      <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,application/pdf" onChange={(e) => {
+                        const file = e.currentTarget.files?.[0];
+                        if (file) handleFileSelect(file);
+                        e.currentTarget.value = "";
+                      }} />
                     </div>
+                    {fileError && <p role="alert" className="mt-2 text-sm text-red-700">{fileError}</p>}
+                    {uploadedFileName && (
+                      <p role="status" className="mt-2 break-words text-sm text-emerald-700">Uploaded {uploadedFileName} successfully.</p>
+                    )}
                     {selectedFile && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4 flex items-center justify-between">
                         <div className="flex items-center space-x-3"><div className="text-green-600 font-bold text-xl">📄</div><div><p className="font-medium text-gray-900 text-sm">{selectedFile.name}</p></div></div>
-                        <button type="button" className="text-gray-400 hover:text-gray-600 font-bold" onClick={removeFile}>✕</button>
+                        <button type="button" disabled={isUploading} className="text-gray-400 hover:text-gray-600 font-bold" onClick={removeFile}>✕</button>
                       </div>
                     )}
                     <div className="flex justify-between pt-6">
-                      <Button type="button" variant="outline" onClick={() => navigate("/dashboard")} disabled={isUploading}>Back</Button>
+                      <Button type="button" variant="outline" onClick={async () => navigate(await getCustomerDashboardPath())} disabled={isUploading}>Back</Button>
                       <Button type="submit" disabled={isUploading} className="min-w-[120px]">{isUploading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</> : "Next Step →"}</Button>
                     </div>
                   </form>

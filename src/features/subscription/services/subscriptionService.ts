@@ -43,3 +43,8 @@ export const getMyTier = async (): Promise<SubscriptionTier | null> => {
         return null;
     }
 };
+
+export async function getCustomerDashboardPath(): Promise<string> {
+    const tier = await getMyTier();
+    return tier === 'career_identity' ? '/career-identity-dashboard' : '/dashboard';
+}

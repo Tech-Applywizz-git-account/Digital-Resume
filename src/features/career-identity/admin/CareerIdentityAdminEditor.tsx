@@ -2,16 +2,21 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { ResumeModals } from '../components/ResumeModals';
 import type { CareerIdentityContent, CareerIdentityProfileStatus } from '../../../types/careerIdentity';
 import { CAREER_IDENTITY_THEMES, CareerIdentityThemeKey } from '../themes/themeRegistry';
-import { Save, Eye, CheckCircle, RefreshCw, Plus, X, Camera, AlertCircle, Sparkles, Palette } from 'lucide-react';
+import { Save, Eye, CheckCircle, RefreshCw, Plus, X, Camera, AlertCircle, Sparkles, Palette, ExternalLink } from 'lucide-react';
 import { apiUrl } from '../../../lib/apiBase';
 import { supabase } from '../../../integrations/supabase/client';
 
 interface EditorProps {
     userId?: string;
+    submissionId?: string;
     initialContent: CareerIdentityContent;
     initialThemeId: string | null;
     initialStatus: CareerIdentityProfileStatus;
     resumeId: string | null;
+    resumeUrl: string | null;
+    videoUrl: string | null;
+    canPublish: boolean;
+    appearanceLocked: boolean;
     onSave: (data: { content: CareerIdentityContent; themeId: string; status?: CareerIdentityProfileStatus; workflowStatus?: string }) => Promise<void>;
     onCancel: () => void;
     saving: boolean;
@@ -24,10 +29,15 @@ function createId(): string {
 
 export default function CareerIdentityAdminEditor({
     userId,
+    submissionId,
     initialContent,
     initialThemeId,
     initialStatus,
     resumeId,
+    resumeUrl,
+    videoUrl,
+    canPublish,
+    appearanceLocked,
     onSave,
     onCancel,
     saving,
@@ -84,6 +94,7 @@ export default function CareerIdentityAdminEditor({
                 localStorage.getItem('user_email');
             const headers: Record<string, string> = {
                 'Content-Type': 'application/json',
+                ...(submissionId ? { 'X-CI-Submission-Id': submissionId } : {}),
             };
             if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
             if (adminEmail) headers['x-admin-email'] = adminEmail;
@@ -107,11 +118,11 @@ export default function CareerIdentityAdminEditor({
 
             // If an avatar was assigned and none is currently selected, select it
             const assignedAvatar = autoContent.hero?.profileImageUrl;
-            if (assignedAvatar && !selectedAvatar) {
+            if (!appearanceLocked && assignedAvatar && !selectedAvatar) {
                 setSelectedAvatar(assignedAvatar);
             }
 
-            if (newThemeId && !selectedThemeId) {
+            if (!appearanceLocked && newThemeId && !selectedThemeId) {
                 setSelectedThemeId(newThemeId);
             }
 
@@ -121,11 +132,11 @@ export default function CareerIdentityAdminEditor({
                 hero: {
                     ...(prev.hero || {}),
                     ...(autoContent.hero || {}),
-                    profileImageUrl: selectedAvatar || assignedAvatar || prev.hero?.profileImageUrl,
+                    profileImageUrl: appearanceLocked ? selectedAvatar ?? undefined : selectedAvatar || assignedAvatar || prev.hero?.profileImageUrl,
                 },
-                about: autoContent.about || prev.about || '',
-                skills: (autoContent.skills && autoContent.skills.length > 0) ? autoContent.skills : (prev.skills || []),
-                education: (autoContent.education && autoContent.education.length > 0) ? autoContent.education : (prev.education || []),
+                about: submissionId ? (autoContent.about ?? '') : (autoContent.about || prev.about || ''),
+                skills: submissionId ? (autoContent.skills ?? []) : (autoContent.skills?.length ? autoContent.skills : (prev.skills ?? [])),
+                education: submissionId ? (autoContent.education ?? []) : (autoContent.education?.length ? autoContent.education : (prev.education ?? [])),
                 contact: {
                     ...(prev.contact || {}),
                     ...(autoContent.contact || {}),
@@ -134,7 +145,7 @@ export default function CareerIdentityAdminEditor({
 
             setAutoFillFeedback({
                 type: 'success',
-                message: 'Auto-filled from latest resume! Review the fields and click "Save Draft" when ready.',
+                message: 'Auto-fill complete. Review the fields and click Save Draft when ready.',
             });
             setValidationErrors([]);
         } catch (err: any) {
@@ -199,11 +210,13 @@ export default function CareerIdentityAdminEditor({
     };
 
     const handlePreview = () => {
-        // Store the latest unsaved edits in localStorage before previewing
-        localStorage.setItem('ci_preview_content', JSON.stringify(content));
-        localStorage.setItem('ci_preview_theme', selectedThemeId);
-        localStorage.setItem('ci_preview_avatar', selectedAvatar || '');
-        window.open(`/career-identity/${resumeId}?preview=true`, '_blank', 'noopener,noreferrer');
+        const previewId = crypto.randomUUID();
+        const storageKey = `ci_preview_${previewId}`;
+        localStorage.setItem(storageKey, JSON.stringify({
+            content, theme: selectedThemeId, avatar: selectedAvatar, resumeUrl, videoUrl,
+        }));
+        window.open(`/career-identity/${resumeId || 'preview'}?preview=true&previewId=${previewId}`, '_blank', 'noopener,noreferrer');
+        window.setTimeout(() => localStorage.removeItem(storageKey), 60_000);
     };
 
     const addSkill = () => {
@@ -272,12 +285,20 @@ export default function CareerIdentityAdminEditor({
 
             {/* Action Buttons */}
             <div className="flex items-center gap-3 flex-wrap">
+                {resumeUrl && (
+                    <a href={resumeUrl} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                        {submissionId ? 'Open Submitted Resume' : 'Open Resume'}
+                        <span className="sr-only"> (opens in a new tab)</span>
+                    </a>
+                )}
                 <button
                     type="button"
                     onClick={handleAutoFill}
                     disabled={saving || autoFilling}
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg text-sm font-semibold hover:from-emerald-700 hover:to-teal-700 transition-all shadow-sm disabled:opacity-50"
-                    title="Extract fields from candidate's latest resume into the form (does not save to DB until you Save Draft)"
+                    title={submissionId ? 'Fill the form using the submitted resume' : 'Fill the form using the candidate’s resume'}
                 >
                     {autoFilling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-emerald-100" />}
                     ⚡ Auto-Fill from Resume
@@ -298,7 +319,7 @@ export default function CareerIdentityAdminEditor({
                         Mark Ready
                     </button>
                 )}
-                {initialStatus === 'draft' && (
+                {initialStatus === 'draft' && canPublish && (
                     <button onClick={() => handleAction(undefined, 'published')} disabled={saving || autoFilling}
                         className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50">
                         {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
@@ -320,7 +341,7 @@ export default function CareerIdentityAdminEditor({
                         </div>
                         <div>
                             <h2 className="text-sm font-semibold text-slate-900">Career Identity Theme</h2>
-                            <p className="text-xs text-slate-500">Select the visual aesthetic and typography system for this profile</p>
+                            <p className="text-xs text-slate-500">{appearanceLocked ? 'Managed by the client on their published profile' : 'Select a theme for this profile'}</p>
                         </div>
                     </div>
                     <span className="text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 text-slate-700 capitalize self-start sm:self-auto">
@@ -329,7 +350,7 @@ export default function CareerIdentityAdminEditor({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {CAREER_IDENTITY_THEMES.map((theme) => {
+                    {!appearanceLocked && CAREER_IDENTITY_THEMES.map((theme) => {
                         const isSelected = selectedThemeId === theme.key;
                         return (
                             <div
@@ -406,11 +427,11 @@ export default function CareerIdentityAdminEditor({
                                     <Camera size={24} className="text-slate-400" />
                                 )}
                             </div>
-                            <button type="button" onClick={() => setIsAvatarModalOpen(true)}
+                            {!appearanceLocked && <button type="button" onClick={() => setIsAvatarModalOpen(true)}
                                 className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200">
                                 Choose Avatar
-                            </button>
-                            {selectedAvatar && (
+                            </button>}
+                            {!appearanceLocked && selectedAvatar && (
                                 <button type="button" onClick={() => setSelectedAvatar(null)}
                                     className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg text-sm transition-colors">
                                     Remove Avatar
@@ -591,7 +612,7 @@ export default function CareerIdentityAdminEditor({
                     onClick={handleAutoFill}
                     disabled={saving || autoFilling}
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg text-sm font-semibold hover:from-emerald-700 hover:to-teal-700 transition-all shadow-sm disabled:opacity-50"
-                    title="Extract fields from candidate's latest resume into the form (does not save to DB until you Save Draft)"
+                    title={submissionId ? 'Fill the form using the submitted resume' : 'Fill the form using the candidate’s resume'}
                 >
                     {autoFilling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-emerald-100" />}
                     ⚡ Auto-Fill from Resume

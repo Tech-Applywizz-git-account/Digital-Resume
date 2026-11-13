@@ -3,10 +3,12 @@ import multer from 'multer';
 import { resumeController } from '../../controllers/resume.controller.js';
 import { authenticateOptional, authenticate } from '../../middleware/authenticate.js';
 import { validateParams } from '../../middleware/validate.js';
+import { AppError } from '../../types/errors.js';
 import { getResumeParamsSchema } from '../../validation/schemas/resume.schema.js';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+// The multipart parser signals a limit at equality. Stop at the first excess byte.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 + 1 } }).single('file');
 
 router.get(
     '/:castId',
@@ -24,7 +26,14 @@ router.post(
 router.post(
     '/upload',
     authenticate,
-    upload.single('file'),
+    (req, res, next) => {
+        upload(req, res, (error) => {
+            if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+                return next(new AppError(413, 'RESUME_TOO_LARGE', 'Your PDF exceeds 10 MB.'));
+            }
+            next(error);
+        });
+    },
     resumeController.uploadResume,
 );
 

@@ -109,7 +109,7 @@ interface UsageLog {
 }
 
 export default function ResumeManagementConsole({ tier, title }: ResumeManagementConsoleProps) {
-    const { user } = useAuth();
+    const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(() => {
         const cached = sessionStorage.getItem('cached_crm_users');
@@ -175,6 +175,7 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
 
     const [tierLogs, setTierLogs] = useState<TierChangeLogRow[]>([]);
     const [isTierLogsLoading, setIsTierLogsLoading] = useState(false);
+    const [tierLogsError, setTierLogsError] = useState<string | null>(null);
     const [switchingEmail, setSwitchingEmail] = useState<string | null>(null);
     const [tierSwitchTarget, setTierSwitchTarget] = useState<CRMUser | null>(null);
     const [tierSwitchReason, setTierSwitchReason] = useState('');
@@ -623,11 +624,12 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
     const loadTierLogs = async () => {
         try {
             setIsTierLogsLoading(true);
+            setTierLogsError(null);
             const logs = await fetchTierLogs();
             setTierLogs(logs);
         } catch (error: any) {
             console.error('Error fetching tier logs:', error);
-            setMessage({ type: 'error', text: error.message || 'Failed to load tier logs' });
+            setTierLogsError(error.message || 'Failed to load tier logs');
         } finally {
             setIsTierLogsLoading(false);
         }
@@ -1125,9 +1127,8 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
         }
     };
 
-    const handleAdminLogout = () => {
-        sessionStorage.removeItem('digital_resume_admin_access');
-        sessionStorage.removeItem('admin_email');
+    const handleAdminLogout = async () => {
+        await logout();
         sessionStorage.removeItem('cached_crm_users');
         sessionStorage.removeItem('cached_crm_admins');
         sessionStorage.removeItem('cached_usage_logs');
@@ -1135,7 +1136,7 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
         sessionStorage.removeItem('admin_dashboard_scroll');
         sessionStorage.removeItem('admin_dashboard_searchTerm');
         sessionStorage.removeItem('admin_dashboard_activeTab');
-        navigate('/DigitalResumeLogin');
+        navigate('/DigitalResumeLogin', { replace: true });
     };
 
     const filteredUsers = users.filter(u =>
@@ -1802,7 +1803,12 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                                     <span className="text-[10px] font-bold text-slate-400 uppercase">{filteredTierLogs.length} entries</span>
                                 </div>
                                 <div className="overflow-y-auto flex-1 hide-scrollbar">
-                                    {isTierLogsLoading && tierLogs.length === 0 ? (
+                                    {tierLogsError ? (
+                                        <div role="alert" className="p-6 text-sm text-red-700">
+                                            <p className="font-semibold">Couldn’t load tier logs</p>
+                                            <p>{tierLogsError}</p>
+                                        </div>
+                                    ) : isTierLogsLoading && tierLogs.length === 0 ? (
                                         <div className="flex flex-col items-center justify-center h-full py-20">
                                             <Loader2 className="w-8 h-8 text-[#0B4F6C] animate-spin mb-3" />
                                             <p className="text-slate-500 text-sm">Loading tier logs...</p>
@@ -1812,8 +1818,8 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                                             <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                                                 <History className="w-8 h-8 text-slate-300" />
                                             </div>
-                                            <h3 className="text-base font-bold text-slate-900">No tier changes yet</h3>
-                                            <p className="text-slate-500 text-xs">Switch a user on the CRM Users tab to append a log entry</p>
+                                            <h3 className="text-base font-bold text-slate-900">{searchTerm ? 'No matching tier changes' : 'No tier changes yet'}</h3>
+                                            <p className="text-slate-500 text-xs">{searchTerm ? 'Try a different search.' : 'Switch a user on the CRM Users tab to append a log entry.'}</p>
                                         </div>
                                     ) : (
                                         <table className="w-full text-left border-collapse">

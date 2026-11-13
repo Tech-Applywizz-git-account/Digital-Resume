@@ -1,3 +1,4 @@
+import { getProject, getSubmission } from '../careerIdentity/submissions.service.js';
 import { profileRepository } from '../../repositories/profile.repository.js';
 import { crmJobRequestRepository } from '../../repositories/crmJobRequest.repository.js';
 import { jobRequestRepository } from '../../repositories/jobRequest.repository.js';
@@ -47,20 +48,24 @@ export async function assertWalletAccess(castId: string, authenticatedUserId?: s
     userId: string;
     published: boolean;
 }> {
-    const { record } = await resolveCastRecord(castId);
+    const directProject = await getProject(castId, true);
+    const directVersion = await getSubmission(directProject?.published_submission_id ?? null);
+    if (directProject && !directVersion) throw new NotFoundError('Career Identity profile', castId);
+    const { record } = directProject ? { record: { user_id: directProject.user_id } } : await resolveCastRecord(castId);
     const userId: string | null = record.user_id || null;
     if (!userId) {
         throw new NotFoundError('Career Identity profile', castId);
     }
 
-    const tier = await subscriptionService.getTier(castId);
+    const { tier } = await subscriptionService.getEffectiveUserTier(userId);
     if (tier !== 'career_identity') {
         throw new ForbiddenError('Wallet passes are only available for Career Identity profiles.');
     }
 
     const profile = await profileRepository.findById(userId);
     const ciData = (profile?.career_identity_data || {}) as Record<string, any>;
-    const published = ciData.status === 'published';
+    const project = directProject ?? await getProject(userId);
+    const published = !!project?.published_submission_id || ciData.status === 'published';
     const isOwner = !!authenticatedUserId && authenticatedUserId === userId;
 
     if (!published && !isOwner) {
@@ -155,16 +160,26 @@ async function resolveCandidateAssets(castId: string, record: any, userId: strin
 export async function loadWalletCardData(castId: string, record: any, userId: string): Promise<WalletCardData> {
     const userProfile = await profileRepository.findById(userId);
     const ciData = (userProfile?.career_identity_data || {}) as Record<string, any>;
-    const content: Record<string, any> = ciData.content || {};
+    const project = await getProject(userId);
+    const version = await getSubmission(project?.published_submission_id ?? null);
+    const content: Record<string, any> = version?.content ?? ciData.content ?? {};
+    const publicId = version ? project!.id : castId;
     const hero: Record<string, any> = content.hero || {};
     const contact: Record<string, any> = content.contact || {};
 
-    const assets = await resolveCandidateAssets(castId, record, userId);
+    const assets = await resolveCandidateAssets(version?.source_cast_id ?? castId, record, userId);
+    if (version) {
+        const apiBase = process.env.BACKEND_PUBLIC_URL || process.env.API_BASE_URL || process.env.RENDER_EXTERNAL_URL;
+        const publicPage = publicCareerIdentityUrl(publicId);
+        const assetBase = apiBase ? `${apiBase.replace(/\/$/, '')}/api/v1/career-identity/profile/public/${publicId}/assets` : null;
+        assets.resumeUrl = assetBase ? `${assetBase}/resume` : publicPage;
+        assets.videoUrl = assetBase ? `${assetBase}/video` : `${publicPage}?autoPlayVideo=true`;
+    }
 
     const skillsCount = Array.isArray(content.skills) && content.skills.length > 0 ? content.skills.length : 12;
     const projectsCount = Array.isArray(content.projects) && content.projects.length > 0 ? content.projects.length : 8;
     const experienceYears = calculateExperienceYears(content.experience, hero.experienceYears);
-    const bookingUrl = `${publicCareerIdentityUrl(castId)}?action=schedule`;
+    const bookingUrl = `${publicCareerIdentityUrl(publicId)}?action=schedule`;
     const openToWork = hero.openToWork !== undefined ? !!hero.openToWork : true;
     const openToWorkText = hero.openToWorkText || hero.tagline || hero.headline || 'Looking for full-time and contract opportunities in AI/ML, Data Analytics and related roles.';
 
@@ -177,8 +192,8 @@ export async function loadWalletCardData(castId: string, record: any, userId: st
         phone: contact.phone || null,
         linkedin: contact.linkedin || null,
         profileImageUrl: hero.profileImageUrl || null,
-        careerIdentityUrl: publicCareerIdentityUrl(castId),
-        castId,
+        careerIdentityUrl: publicCareerIdentityUrl(publicId),
+        castId: publicId,
         company: record.company_name || null,
         verified: hero.verified !== undefined ? !!hero.verified : true,
         openToWork,
@@ -201,6 +216,10 @@ export async function getWalletStatus(castId: string, authenticatedUserId?: stri
     const profile = await profileRepository.findById(userId);
     const ciData = (profile?.career_identity_data || {}) as Record<string, any>;
 
+    const project = await getProject(userId);
+    const version = await getSubmission(project?.published_submission_id ?? null);
+    const wallet = version ? version.content : ciData;
+
     const appleReady = !!(
         process.env.APPLE_PASS_TYPE_IDENTIFIER &&
         process.env.APPLE_TEAM_IDENTIFIER &&
@@ -217,7 +236,7 @@ export async function getWalletStatus(castId: string, authenticatedUserId?: stri
         apple: appleReady,
         google: googleReady,
         visualCard: true,
-        walletPassUrl: (ciData.walletPassUrl as string) || null,
-        walletCardUrl: (ciData.walletCardUrl as string) || null,
+        walletPassUrl: (wallet.walletPassUrl as string) || null,
+        walletCardUrl: (wallet.walletCardUrl as string) || null,
     };
 }

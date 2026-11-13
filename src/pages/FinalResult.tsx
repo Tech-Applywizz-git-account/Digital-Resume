@@ -157,7 +157,9 @@ const FinalResult: React.FC = () => {
   const [resumeFileName, setResumeFileName] = useState<string>(
     urlFromQuery ? (decodeURIComponent(urlFromQuery).split('/').pop()?.split('?')[0] || "Resume.pdf") : "Resume.pdf"
   );
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const videoTarget = JSON.stringify([castId || idFromQuery, emailParam]);
+  const [resolvedVideo, setResolvedVideo] = useState<{ target: string; url: string | null } | null>(null);
+  const videoUrl = resolvedVideo?.target === videoTarget ? resolvedVideo.url : null;
   const [jobTitle, setJobTitle] = useState<string>("");
   const [loading, setLoading] = useState(!urlFromQuery && !!(castId || idFromQuery));
   const nameParamFromUrl = searchParams.get('candidateName') || searchParams.get('name');
@@ -244,6 +246,12 @@ const FinalResult: React.FC = () => {
 
   // ✅ Load data from localStorage or Supabase
   useEffect(() => {
+    let cancelled = false;
+    const setVideoUrl = (url: string | null) => {
+      if (!cancelled) setResolvedVideo({ target: videoTarget, url });
+    };
+
+    setVideoUrl(null);
     const loadData = async () => {
       // Only show top-level loader if we don't have enough initial data
       if (!resumeUrl) {
@@ -284,26 +292,32 @@ const FinalResult: React.FC = () => {
                 }
               });
             setJobTitle('Resume');
-            const video = await resolveRecordingUrl({
-              isCRM: true,
-              email: decodedEmail,
-              userId: user?.id,
-            }) || await resolveRecordingUrl({
-              isCRM: false,
-              email: decodedEmail,
-              userId: user?.id,
-            });
-            if (video) setVideoUrl(video);
+            const findCandidateVideo = async (userId?: string | null) =>
+              await resolveRecordingUrl({ isCRM: true, email: decodedEmail, userId }) ||
+              await resolveRecordingUrl({ isCRM: false, email: decodedEmail, userId });
+
+            let video = await findCandidateVideo();
+            if (!video && !cancelled) {
+              const { data: owner } = await supabase
+                .from('digital_resume_by_crm')
+                .select('user_id')
+                .eq('email', decodedEmail)
+                .maybeSingle();
+              if (owner?.user_id && !cancelled) {
+                video = await findCandidateVideo(owner.user_id);
+              }
+            }
+            setVideoUrl(video);
           } else {
             // No email in URL — fall back to localStorage
-            await loadLocalData();
+            await loadLocalData(setVideoUrl);
           }
         } else if (effectiveId) {
           // If we have an ID (from path or query), load that specific record
-          await loadExternalData(effectiveId);
+          await loadExternalData(effectiveId, setVideoUrl);
         } else {
           // Otherwise load from localStorage (fallback for legacy or incomplete flows)
-          await loadLocalData();
+          await loadLocalData(setVideoUrl);
         }
       } catch (error) {
         console.error("Error loading data:", error);
@@ -313,7 +327,8 @@ const FinalResult: React.FC = () => {
     };
 
     loadData();
-  }, [user, castId, location.search]);
+    return () => { cancelled = true; };
+  }, [user, videoTarget]);
 
   // ✅ Auto-Download Logic — Fires when data is ready and name is resolved (or timeout)
   useEffect(() => {
@@ -532,7 +547,7 @@ const FinalResult: React.FC = () => {
     fetchVercelDetails();
   }, [resumeOwnerEmail, resumeOwnerAppEmail, user, resumeOwnerUserId, castId, idFromQuery]);
 
-  const loadLocalData = async () => {
+  const loadLocalData = async (setVideoUrl: (url: string | null) => void) => {
     // First try to get data from localStorage
     const uploadedResumeUrl = localStorage.getItem("uploadedResumeUrl");
     const fileName = localStorage.getItem("resumeFileName");
@@ -690,7 +705,7 @@ const FinalResult: React.FC = () => {
     if (jobTitleValue) setJobTitle(jobTitleValue);
   };
 
-  const loadExternalData = async (id: string) => {
+  const loadExternalData = async (id: string, setVideoUrl: (url: string | null) => void) => {
     try {
       console.log("🚀 loadExternalData fetching with ID:", id);
 
@@ -801,21 +816,13 @@ const FinalResult: React.FC = () => {
           }
         }
 
-        // --- Fetch Video URL (table row, then the storage bucket) ---
-        let finalVideoUrl = await resolveRecordingUrl({
+        const finalVideoUrl = await resolveRecordingUrl({
           isCRM: !!crmResult.data,
           jobRequestId: id,
-          email: ownerEmail,
-          userId: data.user_id,
+        }) || await resolveRecordingUrl({
+          isCRM: !crmResult.data,
+          jobRequestId: id,
         });
-        if (!finalVideoUrl) {
-          finalVideoUrl = await resolveRecordingUrl({
-            isCRM: !crmResult.data,
-            jobRequestId: id,
-            email: ownerEmail,
-            userId: data.user_id,
-          });
-        }
 
         setVideoUrl(finalVideoUrl);
       } else {
@@ -959,8 +966,8 @@ const FinalResult: React.FC = () => {
     navigate(`${location.pathname}?${params.toString()}`, { replace: true });
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/");
   };
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
@@ -1535,7 +1542,7 @@ const FinalResult: React.FC = () => {
 
 
       {
-        isPanelOpen && (
+        isPanelOpen && (panelMode !== 'video' || videoUrl) && (
           <ResumeChatPanel
             isOpen={isPanelOpen}
             onClose={closePanel}

@@ -6,6 +6,7 @@ import { showToast } from "../../../components/ui/toast";
 import AnalyticsPanel from '../../../components/AnalyticsPanel';
 import { viewDocumentSafe } from '../../../utils/documentUtils';
 import { isSafeUUID } from '../../../utils/uuidHelpers';
+import { apiUrl } from '../../../lib/apiBase';
 import {
     Video,
     CheckCircle,
@@ -95,6 +96,7 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
     const [replacingId, setReplacingId] = useState<string | null>(null);
     const [isReplacing, setIsReplacing] = useState(false);
     const [showReplaceModal, setShowReplaceModal] = useState(false);
+    const [replaceError, setReplaceError] = useState<string | null>(null);
     const [selectedReplaceFile, setSelectedReplaceFile] = useState<File | null>(null);
     const [showAllResumes, setShowAllResumes] = useState(false);
 
@@ -319,97 +321,80 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
 
     // ── Resume replace handlers ────────────────────────────────────────
     const handleReplaceClick = (id: string) => {
+        if (!isSafeUUID(id)) {
+            const resume = careercasts.find((cast) => cast.id === id);
+            if (resume) {
+                localStorage.removeItem('resumeFullText');
+                handleContinue(resume);
+            }
+            return;
+        }
+
+        setReplaceError(null);
         setReplacingId(id);
         fileInputRef.current?.click();
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+        const file = e.currentTarget.files?.[0];
+        e.currentTarget.value = '';
         if (!file || !replacingId || !user) return;
+
+        if (file.type !== 'application/pdf' || file.size === 0) {
+            setReplaceError('Please choose a non-empty PDF file.');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            setReplaceError('Your PDF exceeds 10 MB.');
+            return;
+        }
+
+        setReplaceError(null);
         setSelectedReplaceFile(file);
         setShowReplaceModal(true);
     };
 
+    const closeReplaceModal = () => {
+        setShowReplaceModal(false);
+        setReplacingId(null);
+        setSelectedReplaceFile(null);
+        setReplaceError(null);
+    };
+
     const confirmReplace = async () => {
-        if (!selectedReplaceFile || !replacingId || !user) return;
+        if (!selectedReplaceFile || !replacingId || !isSafeUUID(replacingId) || !user || isReplacing) return;
 
-        // Synthetic/API-only record — upload only, do not update a UUID Supabase row
-        if (!isSafeUUID(replacingId)) {
-            try {
-                setIsReplacing(true);
-                const file = selectedReplaceFile;
-                const fileExt = file.name.split('.').pop()?.toLowerCase();
-                const timestamp = Date.now();
-                const fileName = `replaced_resume_${timestamp}.${fileExt}`;
-                const filePath = `${crmEmail || user.email}/${fileName}`;
-                await supabase.storage.from('CRM_users_resumes').upload(filePath, file, {
-                    upsert: true,
-                    contentType: file.type || 'application/pdf',
-                });
-                showToast("Resume replaced (API-only record — no Supabase row to update).", "success");
-                await fetchcareercasts();
-                setShowReplaceModal(false);
-            } catch (err: any) {
-                console.error('❌ Replace failed for synthetic record:', err);
-                showToast("Failed to replace resume: " + err.message, "error");
-            } finally {
-                setIsReplacing(false);
-                setReplacingId(null);
-                setSelectedReplaceFile(null);
-                if (fileInputRef.current) fileInputRef.current.value = '';
-            }
-            return;
-        }
-
+        setReplaceError(null);
+        setIsReplacing(true);
         try {
-            setIsReplacing(true);
-            const file = selectedReplaceFile;
-            const fileExt = file.name.split('.').pop()?.toLowerCase();
-            const timestamp = Date.now();
-            const fileName = `replaced_resume_${timestamp}.${fileExt}`;
-            let publicUrl: string | null = null;
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) throw new Error('Please sign in again.');
 
-            if (isCRM && crmEmail) {
-                const filePath = `${crmEmail}/${fileName}`;
-                const { error: uploadError } = await supabase.storage
-                    .from('CRM_users_resumes')
-                    .upload(filePath, file, { upsert: true, contentType: file.type || 'application/pdf' });
-                if (uploadError) throw uploadError;
-                const { data: publicData } = supabase.storage.from('CRM_users_resumes').getPublicUrl(filePath);
-                publicUrl = publicData?.publicUrl ?? null;
-                const { error: updateError } = await supabase.from('crm_job_requests')
-                    .update({ resume_url: publicUrl, updated_at: new Date().toISOString() })
-                    .eq('id', replacingId);
-                if (updateError) throw updateError;
-                await supabase.from('crm_resumes').insert({
-                    email: crmEmail, user_id: user.id, resume_name: file.name,
-                    resume_url: publicUrl, file_type: fileExt, file_size: file.size,
-                });
-            } else {
-                const filePath = `${user.id}/${fileName}`;
-                const { error: uploadError } = await supabase.storage
-                    .from('resumes')
-                    .upload(filePath, file, { upsert: true, contentType: file.type || 'application/pdf' });
-                if (uploadError) throw uploadError;
-                const { data: publicData } = supabase.storage.from('resumes').getPublicUrl(filePath);
-                publicUrl = publicData?.publicUrl ?? null;
-                const { error: updateError } = await supabase.from('job_requests')
-                    .update({ resume_path: publicUrl, resume_original_name: file.name, updated_at: new Date().toISOString() })
-                    .eq('id', replacingId);
-                if (updateError) throw updateError;
+            const formData = new FormData();
+            formData.append('file', selectedReplaceFile);
+            formData.append('jobRequestId', replacingId);
+            formData.append('replace', 'true');
+
+            const response = await fetch(apiUrl('/api/v1/resumes/upload'), {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${session.access_token}` },
+                body: formData,
+            });
+            const body = await response.json().catch(() => null);
+            if (!response.ok || !body?.data?.resumeUrl) {
+                if (response.status === 413 || response.status === 415) {
+                    setSelectedReplaceFile(null);
+                }
+                throw new Error(body?.error?.message || body?.message || 'Could not replace the resume. Please try again.');
             }
-            showToast("Resume replaced successfully!", "success");
-            fetchcareercasts();
-            setShowReplaceModal(false);
-            setTimeout(() => { navigate(`/final-result/${replacingId}?autoDownload=true`); }, 1500);
-        } catch (err: any) {
-            console.error("❌ Replace failed:", err);
-            showToast("Failed to replace resume: " + err.message, "error");
+
+            closeReplaceModal();
+            showToast(`Replaced your resume with ${selectedReplaceFile.name}.`, 'success');
+            navigate(`/final-result/${replacingId}?autoDownload=true`);
+        } catch (error) {
+            setReplaceError(error instanceof Error ? error.message : 'Failed to replace the resume.');
         } finally {
             setIsReplacing(false);
-            setReplacingId(null);
-            setSelectedReplaceFile(null);
-            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
@@ -675,6 +660,11 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
                                             </button>
                                         )}
                                     </div>
+                                    {replaceError && !showReplaceModal && (
+                                        <p role="alert" className="mx-4 my-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                                            {replaceError}
+                                        </p>
+                                    )}
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm text-left">
                                             <thead className="bg-gray-50/50 text-[#0B4F6C] uppercase tracking-wide font-bold text-xs hidden md:table-header-group">
@@ -930,7 +920,7 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
                     <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden mx-2 sm:mx-4 animate-in fade-in zoom-in duration-200">
                         <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5 flex justify-between items-center">
                             <h3 className="text-white font-black text-lg flex items-center gap-2"><FileUp className="w-6 h-6" /> Replace Resume</h3>
-                            <button onClick={() => { setShowReplaceModal(false); setSelectedReplaceFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                            <button disabled={isReplacing} onClick={closeReplaceModal}
                                 className="text-white hover:bg-white/20 rounded-lg p-1 transition-colors"><X className="w-6 h-6" /></button>
                         </div>
                         <div className="p-6">
@@ -943,23 +933,30 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
                                 </p>
                             </div>
                             <div className="space-y-4">
-                                <div className="flex items-center gap-4 p-4 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
-                                    <div className="bg-white p-3 rounded-lg shadow-sm"><FileText className="w-8 h-8 text-emerald-600" /></div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">New File Selected</p>
-                                        <p className="text-sm font-bold text-gray-700 truncate">{selectedReplaceFile?.name}</p>
-                                        <p className="text-[10px] text-gray-400">{(selectedReplaceFile?.size || 0) / 1024 > 1024
-                                            ? ((selectedReplaceFile?.size || 0) / (1024 * 1024)).toFixed(2) + ' MB'
-                                            : ((selectedReplaceFile?.size || 0) / 1024).toFixed(2) + ' KB'}</p>
+                                {replaceError && (
+                                    <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                                        {replaceError}
+                                    </p>
+                                )}
+                                {selectedReplaceFile && (
+                                    <div className="flex items-center gap-4 p-4 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
+                                        <div className="bg-white p-3 rounded-lg shadow-sm"><FileText className="w-8 h-8 text-emerald-600" /></div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">New File Selected</p>
+                                            <p className="text-sm font-bold text-gray-700 truncate">{selectedReplaceFile?.name}</p>
+                                            <p className="text-[10px] text-gray-400">{(selectedReplaceFile?.size || 0) / 1024 > 1024
+                                                ? ((selectedReplaceFile?.size || 0) / (1024 * 1024)).toFixed(2) + ' MB'
+                                                : ((selectedReplaceFile?.size || 0) / 1024).toFixed(2) + ' KB'}</p>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                                 <p className="text-xs text-gray-500 italic text-center">Note: Replacing the resume will update the document recruiters see when viewing this digital resume.</p>
                                 <div className="flex gap-3 pt-2">
-                                    <button onClick={() => { setShowReplaceModal(false); setSelectedReplaceFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                                    <button disabled={isReplacing} onClick={closeReplaceModal}
                                         className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-all active:scale-95">Cancel</button>
-                                    <button onClick={confirmReplace} disabled={isReplacing}
+                                    <button onClick={selectedReplaceFile ? confirmReplace : () => fileInputRef.current?.click()} disabled={isReplacing}
                                         className="flex-1 px-4 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2">
-                                        {isReplacing ? <><Loader2 className="w-5 h-5 animate-spin" /> Uploading...</> : <><CheckCircle className="w-5 h-5" /> Confirm Upload</>}
+                                        {isReplacing ? <><Loader2 className="w-5 h-5 animate-spin" /> Uploading...</> : <><CheckCircle className="w-5 h-5" /> {selectedReplaceFile ? "Confirm Upload" : "Choose Another PDF"}</>}
                                     </button>
                                 </div>
                             </div>
@@ -969,7 +966,7 @@ export default function ResumeWorkspace({ user, onLogout, standalone = true, cla
             )}
 
             {/* Hidden File Input */}
-            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".pdf,.doc,.docx" className="hidden" />
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".pdf,application/pdf" className="hidden" />
 
             {/* Analytics Panel */}
             <AnalyticsPanel isOpen={analyticsOpen} onClose={() => setAnalyticsOpen(false)} castId={analyticsId || ''} resumeTitle={analyticsTitle} />

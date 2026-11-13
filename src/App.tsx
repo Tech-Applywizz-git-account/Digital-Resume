@@ -5,6 +5,7 @@ import { detectAndForceClearClarityData, installClarityRouteGuard } from "./util
 
 import Landing from "./pages/landing";
 import Auth from "./pages/Auth";
+import SignInRoute from "./components/SignInRoute";
 import Dashboard from "./pages/Dashboard";
 import Step1 from "./pages/Step1";
 import Step2 from "./pages/Step2";
@@ -63,7 +64,7 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/" element={<RootRoute />} />
-        <Route path="/auth" element={<Auth />} />
+        <Route path="/auth" element={<SignInRoute><Auth /></SignInRoute>} />
         <Route path="/signup" element={<SignupPage />} />
         <Route
           path="/email-correction"
@@ -81,7 +82,7 @@ function App() {
         />
         <Route
           path="/DigitalResumeLogin"
-          element={<DigitalResumeLogin />}
+          element={<SignInRoute><DigitalResumeLogin /></SignInRoute>}
         />
 
         <Route path="/step1" element={<Step1 />} />

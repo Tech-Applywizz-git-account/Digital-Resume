@@ -464,7 +464,7 @@ import {
 } from "lucide-react";
 import { useAuthContext } from "../contexts/AuthContext";
 import { supabase } from "../integrations/supabase/client";
-import { apiUrl } from "../lib/apiBase";
+import { resolveSignedInDestination } from "../services/signInDestination";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -552,75 +552,11 @@ export default function Auth() {
       const normalizedEmail = formData.email.trim().toLowerCase();
       await login(normalizedEmail, formData.password);
 
-      // Check if user is a CRM Dashboard admin
-      try {
-        const { data: adminData } = await supabase
-          .from('crm_admins')
-          .select('email')
-          .ilike('email', normalizedEmail)
-          .maybeSingle();
-
-        if (adminData || normalizedEmail === 'dinesh@applywizz.com') {
-          sessionStorage.setItem('digital_resume_admin_access', 'true');
-          sessionStorage.setItem('admin_email', normalizedEmail);
-          navigate("/digital-resume-dashboard");
-          return;
-        }
-      } catch (adminErr) {
-        console.warn('Admin check failed, proceeding to user dashboard:', adminErr);
-      }
-
-      // Resolve customer subscription tier for routing
       const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      const userId = session?.user?.id;
-      let tier: string | null = null;
-
-      if (token) {
-        try {
-          const tierResponse = await fetch(apiUrl('/api/v1/subscription/me'), {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (tierResponse.ok) {
-            const body = await tierResponse.json();
-            tier = body?.data?.tier ?? null;
-          }
-        } catch (tierErr) {
-          console.warn('Tier resolution failed:', tierErr);
-        }
+      if (session) {
+        const destination = await resolveSignedInDestination(session);
+        navigate(destination, { replace: true });
       }
-
-      // Client fallback when API is unavailable (e.g. misconfigured proxy)
-      if (tier !== 'career_identity' && tier !== 'digital_resume' && userId) {
-        try {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('tier')
-            .eq('id', userId)
-            .maybeSingle();
-          if (profile?.tier === 'career_identity' || profile?.tier === 'digital_resume') {
-            tier = profile.tier;
-          } else if (profile || localStorage.getItem('is_crm_user') === 'true') {
-            tier = 'digital_resume';
-          }
-        } catch {
-          if (localStorage.getItem('is_crm_user') === 'true') {
-            tier = 'digital_resume';
-          }
-        }
-      }
-
-      if (tier === 'career_identity') {
-        navigate("/career-identity-dashboard");
-        return;
-      }
-      if (tier === 'digital_resume') {
-        navigate("/dashboard");
-        return;
-      }
-
-      // No product access
-      navigate("/");
     } catch (err) {
       // handled in context
     }

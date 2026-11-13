@@ -1,73 +1,72 @@
+import { PublishedAppearanceEditor } from '../components/PublishedAppearanceEditor';
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { supabase } from '../../../integrations/supabase/client';
 import { useAuthContext } from '../../../contexts/AuthContext';
-import { useCareerIdentityProfile } from '../hooks/useCareerIdentityProfile';
-import { updateCareerIdentityProfile } from '../services/careerIdentityService';
-import { Loader2, Eye, Sparkles, Send, AlertCircle, RefreshCw, Clock, CheckCircle, FileText } from 'lucide-react';
+import { fetchCareerIdentityDashboard, submitCareerIdentity, updateCareerIdentityConsent, withdrawCareerIdentitySubmission, type CareerIdentityDashboardData, type SubmissionRecording } from '../services/careerIdentityService';
+import { Loader2, Eye, Sparkles, Send, AlertCircle, RefreshCw, Clock, CheckCircle, FileText, UserCircle, Home, LogOut, ChevronDown, KeyRound, CreditCard, HelpCircle, Globe, BookOpen, Briefcase } from 'lucide-react';
 import ResumeWorkspace from '../../resume-dashboard/components/ResumeWorkspace';
 import type { CareerIdentityWorkflowStatus } from '../../../types/careerIdentity';
 import { apiUrl } from '../../../lib/apiBase';
 
 type TierState = 'loading' | 'digital_resume' | 'career_identity' | 'null_tier' | 'error';
+const headerActionClass = 'inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors';
+const accountLinkGroups = [
+    [
+        { to: '/profile', label: 'Account Profile', icon: UserCircle },
+        { to: '/password', label: 'Password', icon: KeyRound },
+        { to: '/billing', label: 'Billing & Payment', icon: CreditCard },
+    ],
+    [
+        { to: '/network', label: 'Network', icon: Globe },
+        { to: '/resources', label: 'Resources', icon: BookOpen },
+        { to: '/hr-email', label: 'HR Emails', icon: Briefcase },
+    ],
+    [
+        { to: '/contact', label: 'Support', icon: HelpCircle },
+    ],
+];
+
+const recordingDate = (date: string) =>
+    new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+const recordingLabel = (recording: SubmissionRecording) =>
+    `Recording-${recording.number} · ${recordingDate(recording.createdAt)}`;
 
 export default function CareerIdentityDashboard() {
     const navigate = useNavigate();
-    const { user } = useAuthContext();
+    const { user, logout } = useAuthContext();
     const [tier, setTier] = useState<TierState>('loading');
-    const [resumeId, setResumeId] = useState<string | null>(null);
-    const [resumeLoading, setResumeLoading] = useState(true);
+    const [editingAppearance, setEditingAppearance] = useState(false);
+    const [appearanceSaved, setAppearanceSaved] = useState(false);
+    const [dashboard, setDashboard] = useState<CareerIdentityDashboardData | null>(null);
+    const [profileError, setProfileError] = useState(false);
+    const [selectionIndex, setSelectionIndex] = useState<number | null>(null);
+    const [confirmationKey, setConfirmationKey] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [loadingPicker, setLoadingPicker] = useState(false);
+    const [withdrawalId, setWithdrawalId] = useState<string | null>(null);
+    const [withdrawing, setWithdrawing] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
-    const [hasResume, setHasResume] = useState(false);
-    const [hasVideo, setHasVideo] = useState(false);
     const [consentChecked, setConsentChecked] = useState(false);
     const [enablingClarity, setEnablingClarity] = useState(false);
     const [disablingClarity, setDisablingClarity] = useState(false);
     const [clarityError, setClarityError] = useState<string | null>(null);
 
+    const refresh = useCallback(async () => {
+        setDashboard(await fetchCareerIdentityDashboard());
+        setProfileError(false);
+    }, []);
     useEffect(() => {
-        let cancelled = false;
-        const resolveResumeId = async () => {
-            if (!user?.id) { if (!cancelled) setResumeLoading(false); return; }
-            try {
-                const { data: profileData } = await supabase.from('profiles').select('career_identity_data').eq('id', user.id).maybeSingle();
-                const ciData = profileData?.career_identity_data as any;
-                if (ciData?.castId || ciData?.resumeId) {
-                    if (!cancelled) { setResumeId(ciData.castId || ciData.resumeId); setResumeLoading(false); }
-                    return;
-                }
-                const { data: crmData } = await supabase.from('crm_job_requests').select('id').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
-                if (crmData?.id) { if (!cancelled) { setResumeId(crmData.id); setResumeLoading(false); } return; }
-                const { data: regularData } = await supabase.from('job_requests').select('id').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
-                if (regularData?.id) { if (!cancelled) setResumeId(regularData.id); }
-            } catch { /* ignore */ }
-            if (!cancelled) setResumeLoading(false);
-        };
-        resolveResumeId();
-        return () => { cancelled = true; };
-    }, [user?.id]);
-
-    const checkAssets = useCallback(async () => {
-        if (!user?.id) return;
-        try {
-            const [crmJobs, regJobs] = await Promise.all([
-                supabase.from('crm_job_requests').select('id, resume_url').eq('user_id', user.id),
-                supabase.from('job_requests').select('id, resume_path').eq('user_id', user.id),
-            ]);
-            const allJobs = [...(crmJobs.data || []), ...(regJobs.data || [])];
-            const hasResumeAsset = allJobs.some((j: any) => j.resume_url || j.resume_path);
-            setHasResume(hasResumeAsset);
-            if (hasResumeAsset) {
-                const jobIds = allJobs.map((j: any) => j.id).filter(Boolean);
-                const [crmRecs, regRecs] = await Promise.all([
-                    supabase.from('crm_recordings').select('id').in('job_request_id', jobIds).limit(1),
-                    supabase.from('recordings').select('id').in('job_request_id', jobIds).limit(1),
-                ]);
-                setHasVideo(!!((crmRecs.data && crmRecs.data.length > 0) || (regRecs.data && regRecs.data.length > 0)));
-            } else { setHasVideo(false); }
-        } catch { setHasResume(false); setHasVideo(false); }
-    }, [user?.id]);
+        if (tier !== 'career_identity' || !user?.id) return;
+        let active = true;
+        fetchCareerIdentityDashboard().then(data => {
+            if (active) setDashboard(data);
+        }).catch(() => {
+            if (active) setProfileError(true);
+        });
+        return () => { active = false; };
+    }, [tier, user?.id]);
 
     useEffect(() => {
         let cancelled = false;
@@ -90,54 +89,77 @@ export default function CareerIdentityDashboard() {
         return () => { cancelled = true; };
     }, []);
 
-    const { profile, derived, loading: profileLoading, error: profileError, refresh, updateProfile } = useCareerIdentityProfile(resumeId);
-
-    useEffect(() => { checkAssets(); }, [checkAssets, profile]);
-
     const handleSubmit = async () => {
-        if (!resumeId || !user?.id) return;
-        setSubmitting(true); setSubmitError(null);
-        try { await updateCareerIdentityProfile(resumeId, { workflowStatus: 'submitted' }, user.id); await refresh(); }
-        catch (err: any) { setSubmitError(err?.message || 'Failed to submit. Please try again.'); }
-        finally { setSubmitting(false); }
-    };
-
-    const handleEnableClarity = async () => {
-        const targetResumeId = resumeId || (profile as any)?.resumeId || user?.id;
-        if (!targetResumeId || !user?.id) return;
-        setEnablingClarity(true);
-        setClarityError(null);
+        const selected = selectionIndex === null ? null : dashboard?.eligible[selectionIndex];
+        if (!selected || submitting) return;
+        setSubmitting(true);
+        setSubmitError(null);
         try {
-            const success = await updateProfile({ clientConsent: { accepted: true } });
-            if (!success) {
-                await updateCareerIdentityProfile(targetResumeId, { clientConsent: { accepted: true } }, user.id);
-                await refresh();
-            }
-        } catch (err: any) {
-            setClarityError(err?.message || 'Failed to enable Clarity tracking. Please try again.');
+            await submitCareerIdentity(selected, confirmationKey, dashboard?.pending?.id ?? null);
+            await refresh();
+            setSelectionIndex(null);
+        } catch (error) {
+            setSubmitError(error instanceof Error ? error.message : 'Failed to submit. Please try again.');
         } finally {
-            setEnablingClarity(false);
+            setSubmitting(false);
         }
     };
 
-    const handleDisableClarity = async () => {
-        const targetResumeId = resumeId || (profile as any)?.resumeId || user?.id;
-        if (!targetResumeId || !user?.id) return;
-        setDisablingClarity(true);
-        setClarityError(null);
+    const handleWithdraw = async () => {
+        if (!withdrawalId || withdrawing) return;
+        setWithdrawing(true);
+        setSubmitError(null);
         try {
-            const success = await updateProfile({ clientConsent: { accepted: false } });
-            if (!success) {
-                await updateCareerIdentityProfile(targetResumeId, { clientConsent: { accepted: false } }, user.id);
-                await refresh();
-            }
-            setConsentChecked(false);
-        } catch (err: any) {
-            setClarityError(err?.message || 'Failed to pause recruiter recordings. Please try again.');
+            await withdrawCareerIdentitySubmission(withdrawalId);
+            setDashboard(previous => previous?.pending?.id === withdrawalId ? {
+                ...previous,
+                pending: null,
+                workflowStatus: previous.publishedId ? 'published' : 'not_submitted',
+            } : previous);
+            setWithdrawalId(null);
+            await refresh().catch(() => undefined);
+        } catch (error) {
+            setSubmitError(error instanceof Error ? error.message : 'Unable to withdraw the submission.');
         } finally {
-            setDisablingClarity(false);
+            setWithdrawing(false);
         }
     };
+
+    const openPicker = async () => {
+        setLoadingPicker(true);
+        setSubmitError(null);
+        try {
+            const data = await fetchCareerIdentityDashboard();
+            setDashboard(data);
+            if (!data.eligible.length) {
+                setSubmitError('Finish recording a Digital Resume before submitting.');
+                return;
+            }
+            setConfirmationKey(crypto.randomUUID());
+            setSelectionIndex(0);
+        } catch (error) {
+            setSubmitError(error instanceof Error ? error.message : 'Unable to load your recordings.');
+        } finally {
+            setLoadingPicker(false);
+        }
+    };
+
+    const changeConsent = async (accepted: boolean) => {
+        const setSaving = accepted ? setEnablingClarity : setDisablingClarity;
+        setSaving(true);
+        setClarityError(null);
+        try {
+            await updateCareerIdentityConsent(accepted);
+            await refresh();
+            if (!accepted) setConsentChecked(false);
+        } catch (error) {
+            setClarityError(error instanceof Error ? error.message : 'Unable to update recording consent.');
+        } finally {
+            setSaving(false);
+        }
+    };
+    const handleEnableClarity = () => changeConsent(true);
+    const handleDisableClarity = () => changeConsent(false);
 
     if (tier === 'loading' || tier === 'error') {
         return (
@@ -153,102 +175,114 @@ export default function CareerIdentityDashboard() {
     if (tier === 'digital_resume') return <Navigate to="/dashboard" replace />;
     if (tier === 'null_tier') return <Navigate to="/" replace />;
 
-    const isLoading = resumeLoading || profileLoading;
-    const workflowStatus: CareerIdentityWorkflowStatus = (profile as any)?.workflowStatus ?? 'not_submitted';
+    const isLoading = !dashboard && !profileError;
+    const workflowStatus = (dashboard?.workflowStatus ?? 'not_submitted') as CareerIdentityWorkflowStatus;
+    const latest = dashboard?.eligible[0];
+    const pending = dashboard?.pending;
+    const publishedId = dashboard?.publishedId;
+    const summary = dashboard?.summary;
+    const accountEmail = summary?.email || user?.email;
+    const selection = selectionIndex === null ? null : dashboard?.eligible[selectionIndex];
+    const isFrozen = !pending && ['submitted', 'in_progress'].includes(workflowStatus);
 
-    // Frozen banner only shows while Career Identity is actually under preparation (submitted/in_progress)
-    // NOT when it's ready for viewing
-    const isFrozen = ['submitted', 'in_progress'].includes(workflowStatus);
-
-    // States where Career Identity is available for viewing
-    const isAvailableForViewing = ['ready_for_review', 'changes_requested', 'published'].includes(workflowStatus);
-
-    const renderWorkflowSection = () => {
-        // Elegant premium card when Career Identity is ready — no workflow buttons
-        if (isAvailableForViewing) {
-            return (
-                <div className="relative overflow-hidden bg-gradient-to-br from-[#0B4F6C] via-[#0a5a7a] to-[#159A9C] rounded-2xl shadow-xl p-8 sm:p-10 text-center">
-                    {/* Decorative background elements */}
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/3 blur-2xl" />
-                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/3 -translate-x-1/4 blur-2xl" />
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-gradient-to-br from-white/[0.03] to-transparent" />
-
-                    <div className="relative z-10">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm mb-5 ring-4 ring-white/10">
-                            <Sparkles className="h-8 w-8 text-white" />
-                        </div>
-                        {derived?.candidateName && (
-                            <h2 className="text-2xl font-bold text-white mb-1">{derived.candidateName}</h2>
-                        )}
-                        {derived?.jobTitle && (
-                            <p className="text-white/70 text-sm font-medium mb-3">{derived.jobTitle}</p>
-                        )}
-                        <h3 className="text-lg font-bold text-white/90 mb-1">✨ Career Identity</h3>
-                        <p className="text-white/60 text-sm mb-7">Your premium Career Identity profile is ready.</p>
-                        {resumeId && (
-                            <button
-                                onClick={() => navigate(`/career-identity/${resumeId}`)}
-                                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-white text-[#0B4F6C] rounded-xl font-bold text-sm hover:bg-white/90 hover:shadow-lg active:scale-[0.97] transition-all shadow-md"
-                            >
-                                <Eye className="w-4 h-4" /> View Career Identity
-                            </button>
-                        )}
+    const renderWorkflowSection = () => (
+        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6">
+            <h2 className="text-lg font-semibold text-slate-900">
+                {pending ? (publishedId ? 'Update submitted' : 'Submission received')
+                    : publishedId ? 'Career Identity is published'
+                    : isFrozen ? 'Career Identity is in progress' : 'Submit for Career Identity'}
+            </h2>
+            {pending && (
+                <div className="space-y-2 text-sm">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs font-medium text-slate-600">{publishedId ? 'Recording submitted for this update' : 'Submitted recording'}</p>
+                        <p className="mt-1 font-semibold text-slate-900">{pending.recording ? recordingLabel(pending.recording) : 'Digital Resume on this submission'}</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                            Submitted {recordingDate(pending.submittedAt)} · {workflowStatus === 'submitted' ? 'Awaiting review' : workflowStatus.replaceAll('_', ' ')}
+                        </p>
+                    </div>
+                    <div className="flex flex-wrap gap-4">
+                        <a className="text-teal-700 underline" href={pending.resumeUrl} target="_blank" rel="noreferrer">Submitted PDF</a>
+                        <a className="text-teal-700 underline" href={pending.videoUrl} target="_blank" rel="noreferrer">Submitted intro video</a>
                     </div>
                 </div>
-            );
-        }
-
-        switch (workflowStatus) {
-            case 'not_submitted':
-                return (
-                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-8">
-                        <div className="flex items-center gap-3 mb-4">
-                            <Sparkles className="h-6 w-6 text-amber-500" />
-                            <div>
-                                <h2 className="text-lg font-bold text-slate-900">Next Step — Career Identity</h2>
-                                <p className="text-sm text-slate-500 mt-0.5">Your Career Identity will be professionally created by our team using your uploaded resume and introduction video.</p>
-                            </div>
-                        </div>
-                        <div className="space-y-3 mb-6">
-                            <div className={`flex items-center gap-3 p-3 rounded-lg ${hasResume ? 'bg-emerald-50' : 'bg-slate-50'}`}>
-                                {hasResume ? <CheckCircle className="h-5 w-5 text-emerald-500 shrink-0" /> : <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />}
-                                <div><p className="text-sm font-medium text-slate-900">Resume Uploaded</p>{!hasResume && <p className="text-xs text-amber-600">Upload a resume in the section above.</p>}</div>
-                            </div>
-                            <div className={`flex items-center gap-3 p-3 rounded-lg ${hasVideo ? 'bg-emerald-50' : 'bg-slate-50'}`}>
-                                {hasVideo ? <CheckCircle className="h-5 w-5 text-emerald-500 shrink-0" /> : <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />}
-                                <div><p className="text-sm font-medium text-slate-900">Intro Video Recorded</p>{!hasVideo && <p className="text-xs text-amber-600">Record an intro video in the section above.</p>}</div>
-                            </div>
-                        </div>
-                        <button onClick={handleSubmit} disabled={!hasResume || !hasVideo || submitting}
-                            className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${hasResume && hasVideo && !submitting ? 'bg-gradient-to-r from-[#0B4F6C] to-[#159A9C] text-white shadow-lg hover:shadow-xl active:scale-95' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
-                            {submitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : <><Send className="w-4 h-4" /> Submit for Career Identity</>}
+            )}
+            {publishedId && (dashboard?.publishedRecording || pending) && (
+                <p className="text-sm text-slate-600">
+                    <span className="font-medium text-slate-900">Live profile:</span>{' '}
+                    {dashboard?.publishedRecording ? recordingLabel(dashboard.publishedRecording) : 'Published Career Identity'}
+                    {pending && ' stays live until the update is published.'}
+                </p>
+            )}
+            {!selection && !latest && !pending && <p className="text-sm text-slate-600">Upload a resume and finish recording an intro video on the same Digital Resume entry.</p>}
+            {!selection && !withdrawalId && !isFrozen && (
+                <div className="flex flex-wrap gap-3">
+                    <button type="button" onClick={openPicker} disabled={loadingPicker} className="rounded-lg bg-[#0B4F6C] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                        {loadingPicker ? 'Loading recordings…' : pending ? 'Replace pending submission' : publishedId ? 'Submit an update' : 'Choose Digital Resume'}
+                    </button>
+                    {pending && (
+                        <button type="button" disabled={loadingPicker} onClick={() => { setWithdrawalId(pending.id); setSubmitError(null); }}
+                            className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">
+                            Withdraw pending submission
                         </button>
-                        {submitError && <p className="mt-3 text-sm text-red-600 flex items-center gap-1"><AlertCircle className="w-4 h-4" /> {submitError}</p>}
+                    )}
+                </div>
+            )}
+            {withdrawalId && (
+                <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
+                    <h3 className="text-sm font-semibold text-slate-900">Withdraw this submission?</h3>
+                    <p className="text-sm text-slate-700">
+                        {publishedId
+                            ? 'The team will stop reviewing this update. Your published Career Identity stays live.'
+                            : 'The team will stop reviewing this request. You can submit a Digital Resume again when ready.'}
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                        <button type="button" disabled={withdrawing} onClick={handleWithdraw}
+                            className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                            {withdrawing ? 'Withdrawing…' : 'Confirm withdrawal'}
+                        </button>
+                        <button type="button" disabled={withdrawing} onClick={() => { setWithdrawalId(null); setSubmitError(null); }}
+                            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm">
+                            Keep submission
+                        </button>
                     </div>
-                );
-            case 'submitted':
-                return (
-                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-8 text-center">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4"><Clock className="h-8 w-8 text-blue-600" /></div>
-                        <h2 className="text-lg font-bold text-slate-900 mb-2">Submission Received</h2>
-                        <p className="text-sm text-slate-500 max-w-md mx-auto">Our team has received your request and is preparing your Career Identity. We'll notify you when it's ready.</p>
+                </div>
+            )}
+            {selection && (
+                <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+                    <label htmlFor="ci-resume-selection" className="block text-sm font-medium">Digital Resume to submit</label>
+                    <div className="relative">
+                        <select id="ci-resume-selection" value={selectionIndex ?? 0} disabled={submitting}
+                            onChange={event => { setSelectionIndex(Number(event.target.value)); setConfirmationKey(crypto.randomUUID()); setSubmitError(null); }}
+                            className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-3 pr-10 text-sm text-slate-900 focus-visible:border-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/30 disabled:opacity-60">
+                            {dashboard?.eligible.map((resume, index) => (
+                                <option key={`${resume.source}:${resume.castId}`} value={index}>
+                                    Recording-{resume.recordingNumber} · {recordingDate(resume.createdAt)}
+                                </option>
+                            ))}
+                        </select>
+                        <ChevronDown aria-hidden="true" size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
                     </div>
-                );
-            case 'in_progress':
-                return (
-                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-8 text-center">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-100 mb-4"><RefreshCw className="h-8 w-8 text-purple-600 animate-spin" /></div>
-                        <h2 className="text-lg font-bold text-slate-900 mb-2">In Progress</h2>
-                        <p className="text-sm text-slate-500 max-w-md mx-auto">Our team is currently creating your Career Identity. This usually takes 1–2 business days.</p>
+                    <div className="flex flex-wrap gap-4 text-sm">
+                        <a className="text-teal-700 underline" href={selection.resumeUrl} target="_blank" rel="noreferrer">Preview PDF</a>
+                        <a className="text-teal-700 underline" href={selection.videoUrl} target="_blank" rel="noreferrer">Preview intro video</a>
                     </div>
-                );
-            default: return null;
-        }
-    };
+                    {pending && <p className="text-sm text-amber-800">This replaces the submission the team is currently reviewing.</p>}
+                    <div className="flex flex-wrap gap-3">
+                        <button type="button" disabled={submitting} onClick={handleSubmit} className="rounded-lg bg-[#0B4F6C] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                            {submitting ? 'Submitting…' : 'Confirm submission'}
+                        </button>
+                        <button type="button" disabled={submitting} onClick={() => { setSelectionIndex(null); setSubmitError(null); }} className="rounded-lg border px-4 py-2 text-sm">Cancel</button>
+                    </div>
+                </div>
+            )}
+            {submitError && <p role="alert" className="text-sm text-red-600">{submitError}</p>}
+        </section>
+    );
 
-    const clarity = profile?.clarity;
-    const clarityStatus = profile?.clarityStatus || clarity?.status || 'disabled';
-    const clarityProjectId = profile?.clarityProjectId || clarity?.projectId;
+    const clarity = dashboard?.clarity;
+    const clarityStatus = clarity?.status || 'disabled';
+    const clarityProjectId = clarity?.projectId;
     const isConsentAccepted = !!clarity?.clientConsent?.accepted;
     const isRevoked = !isConsentAccepted && !!clarity?.clientConsent?.revokedAt;
 
@@ -358,7 +392,7 @@ export default function CareerIdentityDashboard() {
 
                 <p className="text-sm text-slate-600 mb-4 leading-relaxed">
                     {isRevoked
-                        ? 'Recruiter session recordings are currently paused on your Career Identity profile. Check the box below and confirm to re-enable them anytime.'
+                        ? 'Check the box and confirm to resume recruiter recordings. If setup is needed, our team will finish it.'
                         : 'Want to see how recruiters interact with your resume? With Microsoft Clarity, you can watch live screen recordings, see where recruiters scroll, what they read, and which links they click.'}
                 </p>
 
@@ -414,9 +448,57 @@ export default function CareerIdentityDashboard() {
     return (
         <div className="min-h-screen bg-slate-50">
             <header className="bg-white border-b border-slate-200 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-3">
                     <div><h1 className="text-xl font-bold text-slate-900">Career Identity</h1><p className="text-sm text-slate-500">Premium Profile Dashboard</p></div>
-                    <button onClick={() => navigate('/')} className="text-sm text-slate-600 hover:text-slate-900 transition-colors">Back to Home</button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <details
+                            className="relative"
+                            onBlur={(event) => {
+                                if (!event.currentTarget.contains(event.relatedTarget)) {
+                                    event.currentTarget.open = false;
+                                }
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Escape' && event.currentTarget.open) {
+                                    event.currentTarget.open = false;
+                                    event.currentTarget.querySelector('summary')?.focus();
+                                }
+                            }}
+                        >
+                            <summary className={`${headerActionClass} cursor-pointer list-none border-slate-200 text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden`}>
+                                <UserCircle size={16} aria-hidden="true" />
+                                Account
+                                <ChevronDown size={14} aria-hidden="true" />
+                            </summary>
+                            <nav aria-label="Account" className="absolute left-0 z-30 mt-2 w-48 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white px-1.5 shadow-lg">
+                                {accountLinkGroups.map((links) => (
+                                    <div key={links[0].to} className="py-1.5">
+                                        {links.map(({ to, label, icon: Icon }) => (
+                                            <Link key={to} to={to} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                                                <Icon size={16} aria-hidden="true" />
+                                                {label}
+                                            </Link>
+                                        ))}
+                                    </div>
+                                ))}
+                            </nav>
+                        </details>
+                        <Link to="/" className={`${headerActionClass} border-slate-200 text-slate-700 hover:bg-slate-50`}>
+                            <Home size={16} aria-hidden="true" />
+                            Back to Home
+                        </Link>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                await logout();
+                                navigate('/auth', { replace: true });
+                            }}
+                            className={`${headerActionClass} border-rose-200 text-rose-700 hover:bg-rose-50`}
+                        >
+                            <LogOut size={16} aria-hidden="true" />
+                            Logout
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -431,6 +513,65 @@ export default function CareerIdentityDashboard() {
                 </div>
             ) : (
                 <>
+                    <div className="bg-gray-50 px-4 pt-4 sm:px-8 sm:pt-6">
+                        <section aria-labelledby="ci-profile-summary"
+                            className="mx-auto flex max-w-7xl flex-col gap-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                            <div className="flex min-w-0 items-start gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50">
+                                    <UserCircle className="h-5 w-5 text-[#0B4F6C]" aria-hidden="true" />
+                                </div>
+                                <div className="min-w-0">
+                                    <h2 id="ci-profile-summary" className="break-words text-lg font-semibold text-slate-900">
+                                        {summary?.name || 'Your profile'}
+                                    </h2>
+                                    {accountEmail && <p className="break-words text-sm text-slate-500">{accountEmail}</p>}
+                                    {latest && (
+                                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-emerald-700">
+                                            <span className="inline-flex items-center gap-1"><CheckCircle size={13} aria-hidden="true" /> Resume uploaded</span>
+                                            <span className="inline-flex items-center gap-1"><CheckCircle size={13} aria-hidden="true" /> Video recorded</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="sm:shrink-0 sm:text-right">
+                                <div className="flex flex-wrap gap-2 sm:justify-end">
+                                    <button type="button" disabled={!latest} onClick={() => latest && navigate(`/final-result/${latest.castId}`)}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-[#0B4F6C] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                                        <FileText size={16} aria-hidden="true" /> View Digital Resume
+                                    </button>
+                                    <button type="button" disabled={!publishedId} onClick={() => publishedId && navigate(`/career-identity/${publishedId}`)}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                                        <Eye size={16} aria-hidden="true" /> View Career Identity
+                                    </button>
+                                    {dashboard?.appearance && !editingAppearance && (
+                                        <button type="button" onClick={() => { setAppearanceSaved(false); setEditingAppearance(true); }}
+                                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                            Edit Appearance
+                                        </button>
+                                    )}
+                                </div>
+                                {!publishedId && <p className="mt-2 text-xs text-slate-600">Career Identity is available after publication.</p>}
+                            </div>
+                        </section>
+                        {editingAppearance && dashboard?.appearance && (
+                            <div className="mx-auto max-w-7xl">
+                                <PublishedAppearanceEditor key={dashboard.appearance.submissionId}
+                                    appearance={dashboard.appearance} name={summary?.name || 'Your profile'}
+                                    onClose={() => setEditingAppearance(false)}
+                                    onSaved={appearance => {
+                                        setDashboard(previous => previous ? { ...previous, appearance } : previous);
+                                        setEditingAppearance(false);
+                                        setAppearanceSaved(true);
+                                    }} />
+                            </div>
+                        )}
+                        {appearanceSaved && (
+                            <p role="status" className="mx-auto mt-3 flex max-w-7xl items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">
+                                <CheckCircle size={16} className="shrink-0" aria-hidden="true" />
+                                Appearance updated on your live profile.
+                            </p>
+                        )}
+                    </div>
                     <ResumeWorkspace user={user} frozen={isFrozen} />
                     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
                         <div className="border-t border-slate-200 pt-8 mb-6">
@@ -440,37 +581,6 @@ export default function CareerIdentityDashboard() {
                         <div className="space-y-6">
                             {renderWorkflowSection()}
                             {renderClarityCard()}
-
-                            {derived && (
-                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                                        <h3 className="text-sm font-semibold text-slate-900">Profile Summary</h3>
-                                        {resumeId && (
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <button
-                                                    onClick={() => navigate(`/final-result/${resumeId}`)}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B4F6C] text-white rounded-lg text-xs font-semibold hover:bg-[#0B4F6C]/90 transition-all shadow-sm"
-                                                >
-                                                    <FileText className="w-3.5 h-3.5" /> View Digital Resume
-                                                </button>
-                                                <button
-                                                    onClick={() => navigate(`/career-identity/${resumeId}`)}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-xs font-semibold hover:brightness-105 transition-all shadow-sm"
-                                                >
-                                                    <Eye className="w-3.5 h-3.5" /> View Career Identity
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="space-y-2 text-sm">
-                                        {derived.candidateName && <p><span className="text-slate-500">Name:</span> <span className="font-medium text-slate-900">{derived.candidateName}</span></p>}
-                                        {derived.jobTitle && <p><span className="text-slate-500">Title:</span> <span className="font-medium text-slate-900">{derived.jobTitle}</span></p>}
-                                        {derived.email && <p><span className="text-slate-500">Email:</span> <span className="font-medium text-slate-900">{derived.email}</span></p>}
-                                        {derived.resumeUrl && <p><span className="text-slate-500">Resume:</span> <span className="text-emerald-600 font-medium">Uploaded</span></p>}
-                                        {derived.videoUrl && <p><span className="text-slate-500">Video:</span> <span className="text-emerald-600 font-medium">Recorded</span></p>}
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </main>
                 </>

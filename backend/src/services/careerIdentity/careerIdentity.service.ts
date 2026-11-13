@@ -1,8 +1,10 @@
+import { isDeepStrictEqual } from 'node:util';
+import { assetUrl, eligibleResumes, getProject, getSubmission, hasWithdrawnSubmission } from './submissions.service.js';
 import { subscriptionService } from '../subscription/subscription.service.js';
 import { crmJobRequestRepository } from '../../repositories/crmJobRequest.repository.js';
 import { jobRequestRepository } from '../../repositories/jobRequest.repository.js';
 import { profileRepository } from '../../repositories/profile.repository.js';
-import { NotFoundError, UnauthorizedError } from '../../types/errors.js';
+import { AppError, ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '../../types/errors.js';
 import { getDatabase } from '../../config/database.js';
 import { neatpassProvider } from '../wallet/providers/neatpass/neatpass.service.js';
 import { storageService } from '../storage/storage.service.js';
@@ -213,6 +215,7 @@ export class CareerIdentityService {
             status: ciData.status ?? 'draft',
             workflowStatus: ciData.workflowStatus ?? 'not_submitted',
             content: ciData.content ?? {},
+            ...(ciData.submissionId ? { submissionId: ciData.submissionId, walletPassUrl: ciData.walletPassUrl ?? null } : {}),
             createdAt: ciData.createdAt ?? null,
             updatedAt: ciData.updatedAt ?? null,
             clarity,
@@ -225,14 +228,122 @@ export class CareerIdentityService {
 
     // ── Customer Endpoints ──────────────────────────────────────────────
 
+    async getDashboard(userId: string) {
+        const { tier } = await subscriptionService.getEffectiveUserTier(userId);
+        if (tier !== 'career_identity') throw new ForbiddenError('Career Identity access required');
+
+        const [project, eligible, profile] = await Promise.all([
+            getProject(userId), eligibleResumes(userId), profileRepository.findById(userId),
+        ]);
+        const legacy = profile?.career_identity_data as any;
+        const [pending, published] = await Promise.all([
+            getSubmission(project?.pending_submission_id ?? null),
+            getSubmission(project?.published_submission_id ?? null),
+        ]);
+        const publishedHero = published
+            ? published.content?.hero
+            : legacy?.status === 'published' ? legacy.content?.hero : null;
+        const accountName = profile?.full_name?.trim()
+            || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim();
+        const publishedId = project?.published_submission_id
+            ? project.id : legacy?.status === 'published' ? legacy.castId || legacy.resumeId || eligible[0]?.castId : null;
+        const recordingFor = (submission: typeof pending) => {
+            const entry = submission && eligible.find(item =>
+                item.castId === submission.source_cast_id && item.source === submission.source_type);
+            return entry ? { number: entry.recordingNumber, createdAt: entry.createdAt } : null;
+        };
+        const legacyWorkflow = legacy?.workflowStatus ?? 'not_submitted';
+        const withdrawn = project && !pending && !publishedId && legacyWorkflow !== 'not_submitted'
+            && await hasWithdrawnSubmission(project.id);
+        return {
+            eligible,
+            publishedId,
+            publishedRecording: recordingFor(published),
+            appearance: published ? {
+                submissionId: published.id, themeId: published.theme_id,
+                avatar: publishedHero?.profileImageUrl ?? null,
+            } : null,
+            summary: {
+                name: publishedHero?.fullName?.trim() || accountName || null,
+                email: profile?.email ?? null,
+            },
+            workflowStatus: pending?.workflow_status ?? (publishedId ? 'published' : withdrawn ? 'not_submitted' : legacyWorkflow),
+            pending: pending ? {
+                id: pending.id, castId: pending.source_cast_id, submittedAt: pending.submitted_at,
+                recording: recordingFor(pending),
+                resumeUrl: await assetUrl(pending.resume_asset_ref), videoUrl: await assetUrl(pending.video_asset_ref),
+            } : null,
+            clarity: project?.clarity_settings ?? legacy?.clarity ?? null,
+        };
+    }
+
+    async updateConsent(userId: string, accepted: boolean) {
+        const { tier } = await subscriptionService.getEffectiveUserTier(userId);
+        if (tier !== 'career_identity') throw new ForbiddenError('Career Identity access required');
+        const { error } = await getDatabase().rpc('ci_update_consent', { p_user: userId, p_accepted: accepted });
+        if (error) throw error;
+    }
+
+    private async versionAssets(submission: any) {
+        const { data: job, error } = await getDatabase().from(submission.source_type)
+            .select('job_title, job_description').eq('id', submission.source_cast_id).maybeSingle();
+        if (error) throw error;
+        const [resumeUrl, introVideoUrl] = await Promise.all([
+            assetUrl(submission.resume_asset_ref), assetUrl(submission.video_asset_ref),
+        ]);
+        return {
+            resumeId: submission.source_cast_id, resumeUrl, introVideoUrl,
+            jobTitle: job?.job_title ?? null, jobDescription: job?.job_description ?? null,
+            recordingCreatedAt: null,
+        };
+    }
+
+    async getPublicAsset(castId: string, kind: string) {
+        if (kind !== 'resume' && kind !== 'video') return null;
+        const project = await getProject(castId, true);
+        if (!project?.published_submission_id) return null;
+        const { tier } = await subscriptionService.getEffectiveUserTier(project.user_id);
+        if (tier !== 'career_identity') return null;
+        const version = await getSubmission(project.published_submission_id);
+        return assetUrl(kind === 'resume' ? version.resume_asset_ref : version.video_asset_ref);
+    }
+
     async getPublicProfile(castId: string): Promise<CareerIdentityProfileResponse> {
-        const tier = await subscriptionService.getTier(castId);
+        const directProject = await getProject(castId, true);
+        const owner = directProject?.user_id ?? await resolveUserIdFromCastId(castId);
+        const project = directProject ?? (owner ? await getProject(owner) : null);
+        const tier = owner
+            ? (await subscriptionService.getEffectiveUserTier(owner)).tier
+            : await subscriptionService.getTier(castId);
+        if (project?.published_submission_id && tier === 'career_identity') {
+            const submission = await getSubmission(project.published_submission_id);
+            const [assets, profile, portfolio] = await Promise.all([
+                this.versionAssets(submission), profileRepository.findById(project.user_id),
+                getDatabase().from('portfolio_settings').select('url').eq('user_id', owner).maybeSingle(),
+            ]);
+            return {
+                tier,
+                profile: this.toProfileDTO({
+                    content: submission.content, themeId: submission.theme_id, status: 'published',
+                    workflowStatus: 'published', clarity: project.clarity_settings,
+                    submissionId: submission.id, walletPassUrl: submission.content?.walletPassUrl,
+                    createdAt: submission.submitted_at, updatedAt: submission.updated_at,
+                }, submission.source_cast_id, project.user_id),
+                derived: {
+                    candidateName: profile?.full_name || profile?.first_name || null, email: profile?.email ?? null,
+                    jobTitle: assets.jobTitle, resumeUrl: assets.resumeUrl, videoUrl: assets.introVideoUrl,
+                    portfolioUrl: portfolio.data?.url ?? null,
+                },
+            };
+        }
+        if (directProject) return { tier, profile: null, derived: null };
 
         if (tier !== 'career_identity') {
             return { tier, profile: null, derived: null };
         }
 
-        const ciData = await this.readCareerIdentityData(castId);
+        const legacy = await this.readCareerIdentityData(castId);
+        const ciData: Record<string, unknown> | null = legacy && project ? { ...legacy, clarity: project.clarity_settings } : legacy;
 
         if (!ciData) {
             return { tier, profile: null, derived: null };
@@ -306,8 +417,7 @@ export class CareerIdentityService {
         if (!hero.profileImageUrl) {
             try {
                 const crm = await crmUserRepository.findByEmailOrAppEmail(email);
-                const companyEmail = crm?.company_application_email;
-                const { gender } = await fetchClientGender(email, companyEmail);
+                const { gender } = await fetchClientGender(crm?.email || email, crm?.company_application_email || email);
                 if (gender) {
                     hero.gender = gender;
                     const avatar = assignRandomAvatar(gender);
@@ -561,10 +671,33 @@ export class CareerIdentityService {
 
         const results: any[] = [];
         for (const profile of profiles) {
+            const project = await getProject(profile.id);
+            if (project?.pending_submission_id || project?.published_submission_id) {
+                const submission = await getSubmission(project.pending_submission_id ?? project.published_submission_id);
+                const workflowStatus = submission.workflow_status;
+                const status = project.published_submission_id || (profile.career_identity_data as any)?.status === 'published' ? 'published' : 'draft';
+                const clarityStatus = project.clarity_settings?.status ?? 'disabled';
+                if ((filter?.workflowStatus && filter.workflowStatus !== workflowStatus) ||
+                    (filter?.status && filter.status !== status) || (filter?.clarityStatus && filter.clarityStatus !== clarityStatus)) continue;
+                results.push({
+                    userId: profile.id, email: profile.email, fullName: profile.full_name || profile.first_name,
+                    workflowStatus, status, themeId: submission.theme_id, submissionDate: submission.submitted_at,
+                    updatedAt: submission.updated_at, clarityStatus, submissionId: submission.id,
+                    clarityClientConsent: project.clarity_settings?.clientConsent?.accepted ?? false,
+                    assets: { resumeId: submission.source_cast_id },
+                });
+                continue;
+            }
+
             const ciData = (profile.career_identity_data as Record<string, unknown>) || {};
-            const workflowStatus = (ciData.workflowStatus as string) || 'not_submitted';
+            let workflowStatus = (ciData.workflowStatus as string) || 'not_submitted';
             const status = (ciData.status as string) || 'draft';
-            const clarityStatus = (ciData.clarity as any)?.status || 'disabled';
+            if (project && status !== 'published' && workflowStatus !== 'not_submitted'
+                && await hasWithdrawnSubmission(project.id)) {
+                workflowStatus = 'not_submitted';
+            }
+            const clarity = project?.clarity_settings ?? ciData.clarity as any;
+            const clarityStatus = clarity?.status || 'disabled';
 
             // Apply optional filters
             if (filter?.workflowStatus && workflowStatus !== filter.workflowStatus) continue;
@@ -616,11 +749,11 @@ export class CareerIdentityService {
                 workflowStatus,
                 status,
                 themeId: ciData.themeId || null,
-                submissionDate: ciData.createdAt || null,
+                submissionDate: workflowStatus === 'not_submitted' ? null : ciData.createdAt || null,
                 createdAt: profile.created_at,
                 updatedAt: ciData.updatedAt || profile.updated_at,
-                clarityStatus: (ciData.clarity as any)?.status || 'disabled',
-                clarityClientConsent: (ciData.clarity as any)?.clientConsent?.accepted || false,
+                clarityStatus,
+                clarityClientConsent: clarity?.clientConsent?.accepted || false,
                 assets: {
                     resumeUrl,
                     introVideoUrl,
@@ -758,6 +891,55 @@ export class CareerIdentityService {
         if (error) throw error;
         if (!profile) throw new NotFoundError('User', userId);
 
+        const project = await getProject(userId);
+        const submission = await getSubmission(project?.pending_submission_id ?? project?.published_submission_id ?? null);
+        if (submission) {
+            const live = project?.published_submission_id === submission.id ? submission
+                : await getSubmission(project?.published_submission_id ?? null);
+            const content = live && live.id !== submission.id ? {
+                ...submission.content,
+                hero: { ...submission.content?.hero, profileImageUrl: live.content?.hero?.profileImageUrl },
+            } : submission.content;
+            const comparison = live && live.id !== submission.id ? {
+                resumeChanged: submission.resume_asset_ref !== live.resume_asset_ref,
+                videoChanged: submission.video_asset_ref !== live.video_asset_ref,
+                contentSections: ['hero', 'about', 'skills', 'education', 'experience', 'projects', 'certifications', 'achievements', 'contact']
+                    .filter(section => {
+                        const draft = content?.[section];
+                        const published = live.content?.[section];
+                        if (section !== 'hero') return !isDeepStrictEqual(draft, published);
+                        // Both views use the same client-managed avatar.
+                        const withoutAvatar = (hero: Record<string, unknown> = {}) =>
+                            Object.fromEntries(Object.entries(hero ?? {}).filter(([key]) => key !== 'profileImageUrl'));
+                        return !isDeepStrictEqual(withoutAvatar(draft), withoutAvatar(published));
+                    }),
+            } : null;
+            return {
+                userId, email: profile.email, fullName: profile.full_name || profile.first_name,
+                tier: profile.tier, workflowStatus: submission.workflow_status,
+                status: project?.pending_submission_id ? 'draft' : 'published',
+                submissionId: submission.id, publicId: project?.published_submission_id ? project.id : null,
+                themeId: live?.theme_id ?? submission.theme_id,
+                content, submissionDate: submission.submitted_at,
+                versionNumber: submission.version_number,
+                publishedAt: submission.published_at,
+                publishedVersion: comparison ? {
+                    versionNumber: live.version_number, publishedAt: live.published_at,
+                    themeId: live.theme_id, content: live.content, submissionDate: live.submitted_at,
+                    updatedAt: live.updated_at, assets: await this.versionAssets(live),
+                } : null,
+                comparison,
+                createdAt: profile.created_at, updatedAt: submission.updated_at, clarity: project?.clarity_settings,
+                walletPassUrl: submission.content?.walletPassUrl ?? null,
+                assets: await this.versionAssets(submission),
+            };
+        }
+        const legacy = profile.career_identity_data as any;
+        if (legacy?.status !== 'published' && (
+            !legacy?.workflowStatus || legacy.workflowStatus === 'not_submitted' ||
+            (project && await hasWithdrawnSubmission(project.id))
+        )) throw new NotFoundError('Career Identity submission');
+
         const ciData = await this.ensureInitializedCareerIdentity(
             profile.id,
             profile.email,
@@ -812,7 +994,7 @@ export class CareerIdentityService {
             submissionDate: ciData.createdAt || null,
             createdAt: profile.created_at,
             updatedAt: ciData.updatedAt || profile.updated_at,
-            clarity: ciData.clarity || {
+            clarity: project?.clarity_settings ?? ciData.clarity ?? {
                 projectId: null,
                 accountEmail: null,
                 accountType: null,
@@ -843,7 +1025,7 @@ export class CareerIdentityService {
      * Integrates onboarding gender lookup to assign random avatar and theme if not already set.
      * NOTE: Does NOT write to database — only returns content & themeId for admin review in UI.
      */
-    async autoFillFromResume(userId: string): Promise<{ content: Record<string, unknown>; themeId: string }> {
+    async autoFillFromResume(userId: string, submissionId?: string): Promise<{ content: Record<string, unknown>; themeId: string }> {
         const db = getDatabase();
 
         // 1. Fetch user profile (using verified existing columns)
@@ -856,7 +1038,18 @@ export class CareerIdentityService {
         if (profileError) throw profileError;
         if (!profile) throw new NotFoundError('User', userId);
 
-        const existingCi = (profile.career_identity_data as Record<string, any>) || {};
+        const project = await getProject(userId);
+        if (submissionId || project?.pending_submission_id || project?.published_submission_id) {
+            if (!submissionId || submissionId !== project?.pending_submission_id) {
+                throw new ConflictError('The editable submission changed. Reopen the request.');
+            }
+        } else {
+            await this.getRequest(userId);
+        }
+        const submission = submissionId ? await getSubmission(submissionId) : null;
+        if (submission && submission.project_id !== project?.id) throw new NotFoundError('Career Identity submission');
+        const existingCi = submission ? { content: submission.content, themeId: submission.theme_id }
+            : (profile.career_identity_data as Record<string, any>) || {};
         const existingContact = existingCi.content?.contact || {};
         const existingHero = existingCi.content?.hero || {};
 
@@ -867,8 +1060,7 @@ export class CareerIdentityService {
         if (!assignedAvatar) {
             try {
                 const crm = await crmUserRepository.findByEmailOrAppEmail(profile.email);
-                const companyEmail = crm?.company_application_email;
-                const { gender } = await fetchClientGender(profile.email, companyEmail);
+                const { gender } = await fetchClientGender(crm?.email || profile.email, crm?.company_application_email || profile.email);
                 if (gender) {
                     assignedGender = gender;
                     assignedAvatar = assignRandomAvatar(gender);
@@ -907,17 +1099,19 @@ export class CareerIdentityService {
         }
 
         // 3. Find absolute latest resume across crm_job_requests and job_requests
-        const preferredCastId = (existingCi.castId as string) || (existingCi.resumeId as string) || null;
-        const { job: firstJob, resumeUrl } = await this.findLatestResume(userId, profile.email, preferredCastId);
+        const preferredCastId = existingCi.castId || existingCi.resumeId || null;
+        const { job: firstJob, resumeUrl } = submission
+            ? { job: null, resumeUrl: await assetUrl(submission.resume_asset_ref) }
+            : await this.findLatestResume(userId, profile.email, preferredCastId);
 
         const context: AutoFillContext = {
             profile: {
                 full_name: profile.full_name,
                 first_name: profile.first_name,
                 email: profile.email,
-                phone: existingContact.phone || null,
-                location: existingContact.location || null,
-                bio: existingCi.content?.about || null,
+                phone: submission ? null : existingContact.phone || null,
+                location: submission ? null : existingContact.location || null,
+                bio: submission ? null : existingCi.content?.about || null,
             },
             jobRequest: firstJob,
             portfolioUrl,
@@ -931,7 +1125,7 @@ export class CareerIdentityService {
 
         try {
             console.log(`[AutoFill] Downloading resume for user ${userId} from ${resumeUrl}`);
-            const res = await fetch(resumeUrl);
+            const res = await fetch(resumeUrl, submission ? { redirect: 'error', signal: AbortSignal.timeout(30_000) } : undefined);
             if (!res.ok) {
                 throw new Error(`Failed to download resume file (${res.status} ${res.statusText})`);
             }
@@ -943,6 +1137,7 @@ export class CareerIdentityService {
             return { content: attachHeroDetails(content), themeId: chosenTheme };
         } catch (err: any) {
             console.error(`[AutoFill] Parser failed for user ${userId}, falling back to DB context:`, err);
+            if (submission) throw new AppError(502, 'CI_AUTOFILL_FAILED', 'Could not read the submitted PDF. Try again or enter the content manually.');
             // Fallback gracefully so admin still gets pre-filled fields from database
             const fallbackContent = adaptParserResponse(null, context);
             return { content: attachHeroDetails(fallbackContent), themeId: chosenTheme };

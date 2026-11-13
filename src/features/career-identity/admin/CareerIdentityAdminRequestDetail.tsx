@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../../integrations/supabase/client';
 import {
     Loader2, ArrowLeft, Eye, Clock, CheckCircle, RefreshCw, Sparkles,
@@ -13,6 +13,12 @@ import { apiUrl } from '../../../lib/apiBase';
 
 interface RequestDetail {
     userId: string;
+    submissionId?: string;
+    publicId?: string | null;
+    versionNumber?: number;
+    publishedAt?: string | null;
+    publishedVersion?: Pick<RequestDetail, 'versionNumber' | 'publishedAt' | 'themeId' | 'content' | 'submissionDate' | 'updatedAt' | 'assets'> | null;
+    comparison?: { resumeChanged: boolean; videoChanged: boolean; contentSections: string[] } | null;
     email: string;
     fullName: string | null;
     tier: string;
@@ -52,6 +58,9 @@ const WORKFLOW_BADGES: Record<string, { bg: string; text: string; icon: React.Re
 export default function CareerIdentityAdminRequestDetail() {
     const { userId } = useParams<{ userId: string }>();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const openedSubmissionId = searchParams.get('submissionId');
+    const [view, setView] = useState<'pending' | 'published'>('pending');
     const [request, setRequest] = useState<RequestDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -77,13 +86,13 @@ export default function CareerIdentityAdminRequestDetail() {
                 return;
             }
 
-            const res = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
+            const res = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}${openedSubmissionId ? `?submissionId=${encodeURIComponent(openedSubmissionId)}` : ''}`), {
                 headers: { Authorization: `Bearer ${session.access_token}` },
             });
 
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
-                throw new Error(body?.message || `Failed to fetch (${res.status})`);
+                throw new Error(body?.error?.message || body?.message || `Failed to fetch (${res.status})`);
             }
 
             const body = await res.json();
@@ -94,7 +103,7 @@ export default function CareerIdentityAdminRequestDetail() {
         } finally {
             setLoading(false);
         }
-    }, [userId]);
+    }, [userId, openedSubmissionId]);
 
     useEffect(() => {
         fetchRequest();
@@ -117,18 +126,6 @@ export default function CareerIdentityAdminRequestDetail() {
         }
     }, [request]);
 
-    // Store asset URLs in localStorage so Preview can access them
-    useEffect(() => {
-        if (request?.assets) {
-            if (request.assets.introVideoUrl) {
-                localStorage.setItem('ci_preview_video_url', request.assets.introVideoUrl);
-            }
-            if (request.assets.resumeUrl) {
-                localStorage.setItem('ci_preview_resume_url', request.assets.resumeUrl);
-            }
-        }
-    }, [request?.assets?.introVideoUrl, request?.assets?.resumeUrl]);
-
     const updateWorkflow = async (workflowStatus: string) => {
         if (!userId) return;
         setUpdating(true);
@@ -142,16 +139,19 @@ export default function CareerIdentityAdminRequestDetail() {
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,
                     'Content-Type': 'application/json',
+                    ...(request?.submissionId ? { 'X-CI-Submission-Id': request.submissionId } : {}),
                 },
                 body: JSON.stringify({ workflowStatus }),
             });
 
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
-                throw new Error(body?.message || `Failed to update (${res.status})`);
+                const message = body?.error?.message || body?.message || `Failed to update (${res.status})`;
+                throw new Error(body?.requestId ? `${message} Reference: ${body.requestId}` : message);
             }
 
-            await fetchRequest();
+            const body = await res.json();
+            setRequest(body.data);
         } catch (err: any) {
             setUpdateError(err?.message || 'Failed to update workflow');
         } finally {
@@ -172,13 +172,14 @@ export default function CareerIdentityAdminRequestDetail() {
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,
                     'Content-Type': 'application/json',
+                    ...(request?.submissionId ? { 'X-CI-Submission-Id': request.submissionId } : {}),
                 },
                 body: JSON.stringify({ status: 'published' }),
             });
 
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
-                throw new Error(body?.message || `Failed to publish (${res.status})`);
+                throw new Error(body?.error?.message || body?.message || `Failed to publish (${res.status})`);
             }
 
             await fetchRequest();
@@ -269,7 +270,7 @@ export default function CareerIdentityAdminRequestDetail() {
                     accountType: clarityAccountType,
                     status: clarityStatus,
                     notes: clarityNotes.trim() || null,
-                    clientConsent: clarityClientConsent,
+                    ...(!request?.submissionId ? { clientConsent: clarityClientConsent } : {}),
                 },
             };
 
@@ -278,13 +279,14 @@ export default function CareerIdentityAdminRequestDetail() {
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,
                     'Content-Type': 'application/json',
+                    ...(request?.submissionId ? { 'X-CI-Submission-Id': request.submissionId } : {}),
                 },
                 body: JSON.stringify(body),
             });
 
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
-                throw new Error(errBody?.message || `Failed to save Clarity config (${res.status})`);
+                throw new Error(errBody?.error?.message || errBody?.message || `Failed to save Clarity config (${res.status})`);
             }
 
             setClaritySaveMessage({ text: 'Clarity configuration saved successfully.', type: 'success' });
@@ -324,13 +326,14 @@ export default function CareerIdentityAdminRequestDetail() {
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,
                     'Content-Type': 'application/json',
+                    ...(request?.submissionId ? { 'X-CI-Submission-Id': request.submissionId } : {}),
                 },
                 body: JSON.stringify(body),
             });
 
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
-                throw new Error(errBody?.message || `Failed to update Clarity consent (${res.status})`);
+                throw new Error(errBody?.error?.message || errBody?.message || `Failed to update Clarity consent (${res.status})`);
             }
 
             setClaritySaveMessage({
@@ -368,13 +371,14 @@ export default function CareerIdentityAdminRequestDetail() {
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,
                     'Content-Type': 'application/json',
+                    ...(request?.submissionId ? { 'X-CI-Submission-Id': request.submissionId } : {}),
                 },
                 body: JSON.stringify(body),
             });
 
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
-                throw new Error(errBody?.message || `Failed to save (${res.status})`);
+                throw new Error(errBody?.error?.message || errBody?.message || `Failed to save (${res.status})`);
             }
 
             await fetchRequest();
@@ -412,8 +416,14 @@ export default function CareerIdentityAdminRequestDetail() {
         );
     }
 
-    const hasContent = request.content && Object.keys(request.content).length > 0;
     const isPublished = request.status === 'published';
+    const publishedProfileId = request.publicId ?? (isPublished ? request.assets.resumeId : null);
+    const viewingPublished = view === 'published' && !!request.publishedVersion;
+    const displayed = viewingPublished ? request.publishedVersion! : request;
+    const hasContent = Object.keys(displayed.content ?? {}).length > 0;
+    const viewTitle = viewingPublished || isPublished ? 'Published Profile'
+        : request.publishedVersion ? 'Pending Update' : 'Submitted Profile';
+    const versionLabel = (version?: number) => version ? ` v${version}` : '';
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -434,14 +444,18 @@ export default function CareerIdentityAdminRequestDetail() {
                                 <h1 className="text-xl font-bold text-slate-900">
                                     {request.fullName || 'Unknown Candidate'}
                                 </h1>
-                                <div className="flex items-center gap-3 mt-1">
-                                    {getWorkflowBadge(request.workflowStatus)}
-                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${isPublished
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : 'bg-gray-100 text-gray-600'
-                                        }`}>
-                                        <Shield className="w-3.5 h-3.5" />
-                                        {request.status}
+                                <p className="mt-0.5 text-sm text-slate-600">{request.email}</p>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    {!isPublished && <>
+                                        <span className="text-sm text-slate-700">
+                                            {request.publishedVersion ? 'Update' : 'Submission'}{versionLabel(request.versionNumber)}
+                                        </span>
+                                        {getWorkflowBadge(request.workflowStatus)}
+                                    </>}
+                                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${publishedProfileId ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                                        {publishedProfileId
+                                            ? `Published${versionLabel(request.publishedVersion?.versionNumber ?? (isPublished ? request.versionNumber : undefined))} · Live`
+                                            : 'Not published yet'}
                                     </span>
                                 </div>
                             </div>
@@ -450,12 +464,26 @@ export default function CareerIdentityAdminRequestDetail() {
                 </div>
             </header>
 
+            {request.publishedVersion && (
+                <div className="border-b border-slate-200 bg-white">
+                    <div role="group" aria-label="Career Identity version" className="mx-auto flex max-w-7xl flex-wrap gap-2 px-4 py-3 sm:px-6 lg:px-8">
+                        {(['pending', 'published'] as const).map(option => (
+                            <button key={option} type="button" aria-controls="ci-version-details" aria-pressed={view === option} disabled={editing || updating}
+                                onClick={() => { setView(option); setUpdateError(null); }}
+                                className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 aria-pressed:bg-[#0B4F6C] aria-pressed:text-white disabled:opacity-60">
+                                {option === 'pending' ? 'Pending Update' : 'Published Profile'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Workflow Actions Bar */}
             <div className="bg-white border-b border-slate-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-3">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center gap-3">
                     <span className="text-sm font-medium text-slate-500 mr-2">Actions:</span>
 
-                    {request.workflowStatus === 'submitted' && (
+                    {!viewingPublished && request.workflowStatus === 'submitted' && (
                         <button
                             onClick={() => updateWorkflow('in_progress')}
                             disabled={updating}
@@ -466,7 +494,7 @@ export default function CareerIdentityAdminRequestDetail() {
                         </button>
                     )}
 
-                    {request.workflowStatus === 'in_progress' && (
+                    {!viewingPublished && request.workflowStatus === 'in_progress' && (
                         <button
                             onClick={() => updateWorkflow('ready_for_review')}
                             disabled={updating}
@@ -477,7 +505,7 @@ export default function CareerIdentityAdminRequestDetail() {
                         </button>
                     )}
 
-                    {request.workflowStatus === 'ready_for_review' && (
+                    {!viewingPublished && request.workflowStatus === 'ready_for_review' && (
                         <>
                             <button
                                 onClick={() => updateWorkflow('changes_requested')}
@@ -493,12 +521,12 @@ export default function CareerIdentityAdminRequestDetail() {
                                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
                             >
                                 {updating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                                Publish
+                                {request.publishedVersion ? 'Publish Update' : 'Publish'}
                             </button>
                         </>
                     )}
 
-                    {request.workflowStatus === 'changes_requested' && (
+                    {!viewingPublished && request.workflowStatus === 'changes_requested' && (
                         <button
                             onClick={() => updateWorkflow('in_progress')}
                             disabled={updating}
@@ -509,22 +537,35 @@ export default function CareerIdentityAdminRequestDetail() {
                         </button>
                     )}
 
-                    {!editing && (
+                    {!viewingPublished && !editing && (!request.submissionId || !isPublished) && (
                         <button
                             onClick={() => setEditing(true)}
                             className="flex items-center gap-2 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg text-sm font-medium hover:bg-[#0a3d54] transition-colors"
                         >
                             <Edit3 className="w-4 h-4" />
-                            Edit Career Identity
+                            {isPublished ? 'Edit Career Identity' : 'Edit Draft'}
                         </button>
                     )}
 
-                    {request.assets?.resumeId && !editing && (
+                    {publishedProfileId && (
+                        <a
+                            href={`/career-identity/${encodeURIComponent(publishedProfileId)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-[#0B4F6C] hover:bg-slate-50"
+                        >
+                            <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                            View Published Career Identity
+                            <span className="sr-only"> (opens in a new tab)</span>
+                        </a>
+                    )}
+
+                    {displayed.assets?.resumeId && !editing && (
                         <div className="ml-auto flex items-center gap-2">
                             <button
                                 type="button"
-                                onClick={() => handleCopyCastId(request.assets.resumeId!)}
-                                title="Copy Cast ID"
+                                onClick={() => handleCopyCastId(displayed.assets.resumeId!)}
+                                title={viewingPublished || isPublished ? 'Copy Published Cast ID' : 'Copy Submitted Cast ID'}
                                 className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-sm font-medium transition-colors"
                             >
                                 {copiedCastId ? (
@@ -535,7 +576,7 @@ export default function CareerIdentityAdminRequestDetail() {
                                 ) : (
                                     <>
                                         <Copy className="w-4 h-4 text-slate-500" />
-                                        <span>Copy ID</span>
+                                        <span>{viewingPublished || isPublished ? 'Copy Published Cast ID' : 'Copy Submitted Cast ID'}</span>
                                     </>
                                 )}
                             </button>
@@ -551,14 +592,31 @@ export default function CareerIdentityAdminRequestDetail() {
             </div>
 
             {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <main id="ci-version-details" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {!viewingPublished && !editing && request.comparison && (
+                    <section className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
+                        <h2 className="text-sm font-semibold text-slate-900">What changed from the published profile</h2>
+                        <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-700">
+                            <li>Resume: {request.comparison.resumeChanged ? 'Changed' : 'Unchanged'}</li>
+                            <li>Intro video: {request.comparison.videoChanged ? 'Changed' : 'Unchanged'}</li>
+                            <li>Profile content: {request.comparison.contentSections.length
+                                ? request.comparison.contentSections.map(section => section === 'hero' ? 'Identity' : section[0].toUpperCase() + section.slice(1)).join(', ')
+                                : 'Matches published profile'}</li>
+                        </ul>
+                    </section>
+                )}
                 {editing ? (
                     <CareerIdentityAdminEditor
                         userId={userId || request.userId}
+                        submissionId={request.submissionId}
                         initialContent={request.content as CareerIdentityContent}
                         initialThemeId={request.themeId}
                         initialStatus={request.status as CareerIdentityProfileStatus}
                         resumeId={request.assets.resumeId}
+                        resumeUrl={request.assets.resumeUrl}
+                        videoUrl={request.assets.introVideoUrl}
+                        appearanceLocked={!!request.publicId}
+                        canPublish={!request.submissionId || request.workflowStatus === 'ready_for_review'}
                         onSave={handleSave}
                         onCancel={() => setEditing(false)}
                         saving={saving}
@@ -572,7 +630,7 @@ export default function CareerIdentityAdminRequestDetail() {
                             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                                 <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
                                     <User className="w-4 h-4 text-slate-500" />
-                                    Candidate Information
+                                    {viewTitle}{versionLabel(displayed.versionNumber)}
                                 </h2>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
@@ -588,14 +646,14 @@ export default function CareerIdentityAdminRequestDetail() {
                                         <p className="text-sm text-slate-600 font-mono text-xs">{request.userId}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-slate-500 font-medium">Cast ID</p>
+                                        <p className="text-xs text-slate-500 font-medium">{viewingPublished || isPublished ? 'Published Cast ID' : 'Submitted Cast ID'}</p>
                                         <div className="flex items-center gap-1.5 mt-0.5">
-                                            <p className="text-sm text-slate-600 font-mono text-xs">{request.assets?.resumeId || '—'}</p>
-                                            {request.assets?.resumeId && (
+                                            <p className="text-sm text-slate-600 font-mono text-xs">{displayed.assets?.resumeId || '—'}</p>
+                                            {displayed.assets?.resumeId && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleCopyCastId(request.assets.resumeId!)}
-                                                    title="Copy Cast ID"
+                                                    onClick={() => handleCopyCastId(displayed.assets.resumeId!)}
+                                                    title={viewingPublished || isPublished ? 'Copy Published Cast ID' : 'Copy Submitted Cast ID'}
                                                     className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
                                                 >
                                                     {copiedCastId ? (
@@ -612,31 +670,353 @@ export default function CareerIdentityAdminRequestDetail() {
                                         <p className="text-sm font-semibold text-slate-900 capitalize">{request.tier}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-slate-500 font-medium">Submission Date</p>
-                                        <p className="text-sm text-slate-900">{formatDate(request.submissionDate)}</p>
+                                        <p className="text-xs text-slate-500 font-medium">{displayed.publishedAt ? 'Published on' : 'Submitted on'}</p>
+                                        <p className="text-sm text-slate-900">{formatDate(displayed.publishedAt ?? displayed.submissionDate)}</p>
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-500 font-medium">Last Updated</p>
-                                        <p className="text-sm text-slate-900">{formatDate(request.updatedAt)}</p>
+                                        <p className="text-sm text-slate-900">{formatDate(displayed.updatedAt)}</p>
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-500 font-medium">Theme</p>
                                         <div className="flex items-center gap-1.5 mt-0.5">
                                             <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{
-                                                backgroundColor: request.themeId === 'zenith' ? '#0f766e' : request.themeId === 'atlas' ? '#881337' : '#2563eb'
+                                                backgroundColor: displayed.themeId === 'zenith' ? '#0f766e' : displayed.themeId === 'atlas' ? '#881337' : '#2563eb'
                                             }} />
                                             <p className="text-sm font-semibold text-slate-900 capitalize">
-                                                {request.themeId || 'Not assigned'}
+                                                {displayed.themeId || 'Not assigned'}
                                             </p>
                                         </div>
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-500 font-medium">Job Title</p>
-                                        <p className="text-sm text-slate-900">{request.assets.jobTitle || '—'}</p>
+                                        <p className="text-sm text-slate-900">{displayed.assets.jobTitle || '—'}</p>
                                     </div>
                                 </div>
                             </div>
 
+                            {/* Resume Preview Card */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-slate-500" />
+                                    Resume
+                                </h2>
+                                {displayed.assets.resumeUrl ? (
+                                    <div className="space-y-3">
+                                        <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden" style={{ height: '500px' }}>
+                                            <iframe
+                                                src={displayed.assets.resumeUrl}
+                                                className="w-full h-full"
+                                                title="Resume Preview"
+                                            />
+                                        </div>
+                                        <a
+                                            href={displayed.assets.resumeUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-2 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg text-sm font-medium hover:bg-[#0a3d54] transition-colors"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Download Resume
+                                        </a>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-slate-400">
+                                        <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                                        <p className="text-sm font-medium">No resume uploaded</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Intro Video Card */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                                    <Video className="w-4 h-4 text-slate-500" />
+                                    Intro Video
+                                </h2>
+                                {displayed.assets.introVideoUrl ? (
+                                    <div className="space-y-3">
+                                        <div className="bg-black rounded-lg overflow-hidden">
+                                            <video
+                                                controls
+                                                className="w-full h-auto"
+                                                style={{ maxHeight: '400px' }}
+                                                src={displayed.assets.introVideoUrl}
+                                            >
+                                                <source src={displayed.assets.introVideoUrl} type="video/webm" />
+                                                <source src={displayed.assets.introVideoUrl} type="video/mp4" />
+                                            </video>
+                                        </div>
+                                        {displayed.assets.recordingCreatedAt && (
+                                            <p className="text-xs text-slate-500">
+                                                Recorded: {formatDate(displayed.assets.recordingCreatedAt)}
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-slate-400">
+                                        <Video className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                                        <p className="text-sm font-medium">No intro video recorded</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Right Column — Career Identity Summary */}
+                        <div className="space-y-6">
+                            {/* Career Identity Summary Card */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-amber-500" />
+                                    Career Identity Summary
+                                </h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <p className="text-xs text-slate-500 font-medium mb-1">Workflow Status</p>
+                                        {getWorkflowBadge(viewingPublished ? 'published' : request.workflowStatus)}
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 font-medium mb-1">Publish Status</p>
+                                        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${(isPublished || viewingPublished)
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : 'bg-gray-100 text-gray-600'
+                                            }`}>
+                                            <Shield className="w-3.5 h-3.5" />
+                                            {viewingPublished ? 'published' : request.status}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 font-medium mb-1">Theme</p>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{
+                                                backgroundColor: displayed.themeId === 'zenith' ? '#0f766e' : displayed.themeId === 'atlas' ? '#881337' : '#2563eb'
+                                            }} />
+                                            <p className="text-sm font-semibold text-slate-900 capitalize">
+                                                {displayed.themeId || 'Not assigned'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 font-medium mb-1">Profile Content</p>
+                                        <p className="text-sm text-slate-900">
+                                            {hasContent ? 'Content exists' : 'No content yet'}
+                                        </p>
+                                    </div>
+                                    {displayed.assets.jobDescription && (
+                                        <div>
+                                            <p className="text-xs text-slate-500 font-medium mb-1">AI Script</p>
+                                            <p className="text-sm text-slate-600 line-clamp-4">
+                                                {displayed.assets.jobDescription}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Content preview */}
+                            {hasContent && (
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                    <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                                        <Eye className="w-4 h-4 text-slate-500" />
+                                        {viewingPublished || isPublished ? 'Published Content' : 'Draft Content'}
+                                    </h2>
+                                    <div className="space-y-3 text-sm">
+                                        {(displayed.content.about as string) && (
+                                            <div>
+                                                <p className="text-xs text-slate-500 font-medium">About</p>
+                                                <p className="mt-0.5 whitespace-pre-wrap break-words text-slate-700">{displayed.content.about as string}</p>
+                                            </div>
+                                        )}
+                                        {Array.isArray(displayed.content.experience) && (displayed.content.experience as any[]).length > 0 && (
+                                            <div>
+                                                <p className="text-xs text-slate-500 font-medium">Experience</p>
+                                                <p className="text-slate-700 mt-0.5">{(displayed.content.experience as any[]).length} entries</p>
+                                            </div>
+                                        )}
+                                        {Array.isArray(displayed.content.education) && (displayed.content.education as any[]).length > 0 && (
+                                            <div>
+                                                <p className="text-xs text-slate-500 font-medium">Education</p>
+                                                <ul className="mt-1 space-y-1 text-slate-700">
+                                                    {(displayed.content as CareerIdentityContent).education?.map(entry => (
+                                                        <li key={entry.id}>{[entry.degree, entry.institution].filter(Boolean).join(' · ')}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                        {Array.isArray(displayed.content.skills) && (displayed.content.skills as any[]).length > 0 && (
+                                            <div>
+                                                <p className="text-xs text-slate-500 font-medium">Skills</p>
+                                                <p className="mt-1 break-words text-slate-700">
+                                                    {(displayed.content as CareerIdentityContent).skills?.map(skill => skill.name).join(', ')}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── Apple Wallet Card ─────────────────────────────────────── */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                                    <Wallet className="w-4 h-4 text-blue-600" />
+                                    Apple Wallet
+                                </h2>
+                                <div className="space-y-4">
+                                    {request.submissionId ? (
+                                        (isPublished || viewingPublished) && request.publicId ? (
+                                            <a href={apiUrl(`/api/v1/wallet/${request.publicId}/card`)}
+                                                className="inline-flex items-center gap-2 rounded-lg bg-[#0B4F6C] px-4 py-2 text-sm font-medium text-white">
+                                                <Download className="w-4 h-4" /> Download published wallet card
+                                            </a>
+                                        ) : <p className="text-sm text-slate-600">{request.publishedVersion ? 'Find the live wallet card in Published Profile.' : 'The wallet card is available after publication.'}</p>
+                                    ) : <>
+                                    {/* Wallet Card Status */}
+                                    <div>
+                                        <p className="text-xs text-slate-500 font-medium mb-1">Wallet Card Status</p>
+                                        <div className="flex items-center gap-2">
+                                            {walletCardStatus === 'generating' && (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-100 text-blue-700">
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating
+                                                </span>
+                                            )}
+                                            {walletCardStatus === 'generated' && (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-100 text-emerald-700">
+                                                    <CheckCircle className="w-3.5 h-3.5" /> Generated
+                                                </span>
+                                            )}
+                                            {walletCardStatus === 'failed' && (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-100 text-red-700">
+                                                    <AlertCircle className="w-3.5 h-3.5" /> Failed
+                                                </span>
+                                            )}
+                                            {walletCardStatus === 'idle' && !walletCardUrl && (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-600">
+                                                    Not yet generated
+                                                </span>
+                                            )}
+                                            {walletCardStatus === 'idle' && walletCardUrl && (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-100 text-emerald-700">
+                                                    <CheckCircle className="w-3.5 h-3.5" /> Generated
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            Wallet Card PDF is automatically generated when wallet-related content changes.
+                                        </p>
+                                    </div>
+
+                                    {/* Preview & Download Wallet Card PDF */}
+                                    <div className="flex flex-wrap gap-2">
+                                        <a
+                                            href={walletCardUrl ? `${walletCardUrl}${walletCardUrl.includes('?') ? '&' : '?'}_t=${Date.now()}` : '#'}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${walletCardUrl
+                                                ? 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100'
+                                                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                                }`}
+                                            onClick={(e) => { if (!walletCardUrl) e.preventDefault(); }}
+                                        >
+                                            <FilePdf className="w-4 h-4" />
+                                            Preview Wallet Card PDF
+                                        </a>
+                                        <button
+                                            disabled={!walletCardUrl}
+                                            onClick={async () => {
+                                                if (!walletCardUrl) return;
+                                                try {
+                                                    // Fetch the PDF as a Blob
+                                                    const response = await fetch(walletCardUrl);
+                                                    const blob = await response.blob();
+                                                    const blobUrl = URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = blobUrl;
+                                                    a.download = `${request?.fullName?.replace(/\s+/g, '_') || 'CareerIdentity'}_WalletCard.pdf`;
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    document.body.removeChild(a);
+                                                    URL.revokeObjectURL(blobUrl);
+                                                } catch (err) {
+                                                    console.error('Failed to download wallet card:', err);
+                                                }
+                                            }}
+                                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${walletCardUrl
+                                                ? 'bg-[#0B4F6C] text-white hover:bg-[#0a3d54]'
+                                                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                                }`}
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Download Wallet Card PDF
+                                        </button>
+                                    </div>
+
+                                    </>}
+
+                                    {/* Wallet Pass URL Editable Field */}
+                                    {!viewingPublished && <div>
+                                        <label className="block text-xs text-slate-500 font-medium mb-1">
+                                            Wallet Pass URL (from NeatPass)
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="url"
+                                                value={walletPassUrl}
+                                                onChange={(e) => setWalletPassUrl(e.target.value)}
+                                                placeholder="https://neatpass.com/pass/..."
+                                                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0B4F6C]/10 focus:border-[#0B4F6C] outline-none"
+                                            />
+                                            <button
+                                                onClick={async () => {
+                                                    if (!userId) return;
+                                                    setSavingWalletUrl(true);
+                                                    try {
+                                                        const { data: { session } } = await supabase.auth.getSession();
+                                                        if (!session?.access_token) throw new Error('Not authenticated');
+                                                        const response = await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
+                                                            method: 'PATCH',
+                                                            headers: {
+                                                                Authorization: `Bearer ${session.access_token}`,
+                                                                'Content-Type': 'application/json',
+                                                                ...(request.submissionId ? { 'X-CI-Submission-Id': request.submissionId } : {}),
+                                                            },
+                                                            body: JSON.stringify({ walletPassUrl }),
+                                                        });
+                                                        if (!response.ok) {
+                                                            const body = await response.json().catch(() => ({}));
+                                                            throw new Error(body.error?.message || 'Failed to save the wallet URL.');
+                                                        }
+                                                        await fetchRequest();
+                                                    } catch (err: any) {
+                                                        setWalletCardError(err.message || 'Failed to save the wallet URL.');
+                                                    } finally {
+                                                        setSavingWalletUrl(false);
+                                                    }
+                                                }}
+                                                disabled={savingWalletUrl}
+                                                className="px-4 py-2 bg-[#0B4F6C] text-white rounded-lg text-sm font-medium hover:bg-[#0a3d54] transition-colors disabled:opacity-50"
+                                            >
+                                                {savingWalletUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+                                            </button>
+                                        </div>
+                                    </div>}
+
+                                    {walletCardError && (
+                                        <p className="text-xs text-red-500 flex items-center gap-1">
+                                            <AlertCircle className="w-3 h-3" /> {walletCardError}
+                                        </p>
+                                    )}
+
+                                    {walletCardUpdatedAt && (
+                                        <p className="text-xs text-slate-400">
+                                            Last generated: {formatDate(walletCardUpdatedAt)}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {!editing && <section className="mt-8" aria-label="Project settings">
                             {/* Microsoft Clarity Integration Card */}
                             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
@@ -934,7 +1314,7 @@ export default function CareerIdentityAdminRequestDetail() {
                                             {clarityStatus === 'active' && clarityProjectId ? (
                                                 <p className="text-emerald-700 flex items-center gap-1 font-medium">
                                                     <CheckCircle className="w-3.5 h-3.5" />
-                                                    Active: Public page (/career-identity/{request.assets?.resumeId || '...'}) is streaming recordings to this project ID.
+                                                    Active: Public page (/career-identity/{publishedProfileId || displayed.assets?.resumeId || '...'}) is streaming recordings to this project ID.
                                                 </p>
                                             ) : clarityStatus === 'pending' ? (
                                                 <p className="text-amber-700 flex items-center gap-1">
@@ -980,305 +1360,7 @@ export default function CareerIdentityAdminRequestDetail() {
                                 )}
                             </div>
 
-                            {/* Resume Preview Card */}
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                                    <FileText className="w-4 h-4 text-slate-500" />
-                                    Resume
-                                </h2>
-                                {request.assets.resumeUrl ? (
-                                    <div className="space-y-3">
-                                        <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden" style={{ height: '500px' }}>
-                                            <iframe
-                                                src={request.assets.resumeUrl}
-                                                className="w-full h-full"
-                                                title="Resume Preview"
-                                            />
-                                        </div>
-                                        <a
-                                            href={request.assets.resumeUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-2 px-4 py-2 bg-[#0B4F6C] text-white rounded-lg text-sm font-medium hover:bg-[#0a3d54] transition-colors"
-                                        >
-                                            <Download className="w-4 h-4" />
-                                            Download Resume
-                                        </a>
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8 text-slate-400">
-                                        <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                                        <p className="text-sm font-medium">No resume uploaded</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Intro Video Card */}
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                                    <Video className="w-4 h-4 text-slate-500" />
-                                    Intro Video
-                                </h2>
-                                {request.assets.introVideoUrl ? (
-                                    <div className="space-y-3">
-                                        <div className="bg-black rounded-lg overflow-hidden">
-                                            <video
-                                                controls
-                                                className="w-full h-auto"
-                                                style={{ maxHeight: '400px' }}
-                                                src={request.assets.introVideoUrl}
-                                            >
-                                                <source src={request.assets.introVideoUrl} type="video/webm" />
-                                                <source src={request.assets.introVideoUrl} type="video/mp4" />
-                                            </video>
-                                        </div>
-                                        {request.assets.recordingCreatedAt && (
-                                            <p className="text-xs text-slate-500">
-                                                Recorded: {formatDate(request.assets.recordingCreatedAt)}
-                                            </p>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8 text-slate-400">
-                                        <Video className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                                        <p className="text-sm font-medium">No intro video recorded</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Right Column — Career Identity Summary */}
-                        <div className="space-y-6">
-                            {/* Career Identity Summary Card */}
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4 text-amber-500" />
-                                    Career Identity Summary
-                                </h2>
-                                <div className="space-y-4">
-                                    <div>
-                                        <p className="text-xs text-slate-500 font-medium mb-1">Workflow Status</p>
-                                        {getWorkflowBadge(request.workflowStatus)}
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-slate-500 font-medium mb-1">Publish Status</p>
-                                        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${isPublished
-                                            ? 'bg-emerald-100 text-emerald-700'
-                                            : 'bg-gray-100 text-gray-600'
-                                            }`}>
-                                            <Shield className="w-3.5 h-3.5" />
-                                            {request.status}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-slate-500 font-medium mb-1">Theme</p>
-                                        <div className="flex items-center gap-1.5">
-                                            <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{
-                                                backgroundColor: request.themeId === 'zenith' ? '#0f766e' : request.themeId === 'atlas' ? '#881337' : '#2563eb'
-                                            }} />
-                                            <p className="text-sm font-semibold text-slate-900 capitalize">
-                                                {request.themeId || 'Not assigned'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-slate-500 font-medium mb-1">Profile Content</p>
-                                        <p className="text-sm text-slate-900">
-                                            {hasContent ? 'Content exists' : 'No content yet'}
-                                        </p>
-                                    </div>
-                                    {request.assets.jobDescription && (
-                                        <div>
-                                            <p className="text-xs text-slate-500 font-medium mb-1">AI Script</p>
-                                            <p className="text-sm text-slate-600 line-clamp-4">
-                                                {request.assets.jobDescription}
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Existing Content Preview (read-only) */}
-                            {hasContent && (
-                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                                    <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                                        <Eye className="w-4 h-4 text-slate-500" />
-                                        Existing Content
-                                    </h2>
-                                    <div className="space-y-3 text-sm">
-                                        {(request.content.about as string) && (
-                                            <div>
-                                                <p className="text-xs text-slate-500 font-medium">About</p>
-                                                <p className="text-slate-700 mt-0.5 line-clamp-3">{request.content.about as string}</p>
-                                            </div>
-                                        )}
-                                        {Array.isArray(request.content.experience) && (request.content.experience as any[]).length > 0 && (
-                                            <div>
-                                                <p className="text-xs text-slate-500 font-medium">Experience</p>
-                                                <p className="text-slate-700 mt-0.5">{(request.content.experience as any[]).length} entries</p>
-                                            </div>
-                                        )}
-                                        {Array.isArray(request.content.education) && (request.content.education as any[]).length > 0 && (
-                                            <div>
-                                                <p className="text-xs text-slate-500 font-medium">Education</p>
-                                                <p className="text-slate-700 mt-0.5">{(request.content.education as any[]).length} entries</p>
-                                            </div>
-                                        )}
-                                        {Array.isArray(request.content.skills) && (request.content.skills as any[]).length > 0 && (
-                                            <div>
-                                                <p className="text-xs text-slate-500 font-medium">Skills</p>
-                                                <p className="text-slate-700 mt-0.5">{(request.content.skills as any[]).length} skills</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* ── Apple Wallet Card ─────────────────────────────────────── */}
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                                    <Wallet className="w-4 h-4 text-blue-600" />
-                                    Apple Wallet
-                                </h2>
-                                <div className="space-y-4">
-                                    {/* Wallet Card Status */}
-                                    <div>
-                                        <p className="text-xs text-slate-500 font-medium mb-1">Wallet Card Status</p>
-                                        <div className="flex items-center gap-2">
-                                            {walletCardStatus === 'generating' && (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-100 text-blue-700">
-                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating
-                                                </span>
-                                            )}
-                                            {walletCardStatus === 'generated' && (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-100 text-emerald-700">
-                                                    <CheckCircle className="w-3.5 h-3.5" /> Generated
-                                                </span>
-                                            )}
-                                            {walletCardStatus === 'failed' && (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-100 text-red-700">
-                                                    <AlertCircle className="w-3.5 h-3.5" /> Failed
-                                                </span>
-                                            )}
-                                            {walletCardStatus === 'idle' && !walletCardUrl && (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-600">
-                                                    Not yet generated
-                                                </span>
-                                            )}
-                                            {walletCardStatus === 'idle' && walletCardUrl && (
-                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-100 text-emerald-700">
-                                                    <CheckCircle className="w-3.5 h-3.5" /> Generated
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-slate-400 mt-1">
-                                            Wallet Card PDF is automatically generated when wallet-related content changes.
-                                        </p>
-                                    </div>
-
-                                    {/* Preview & Download Wallet Card PDF */}
-                                    <div className="flex flex-wrap gap-2">
-                                        <a
-                                            href={walletCardUrl ? `${walletCardUrl}${walletCardUrl.includes('?') ? '&' : '?'}_t=${Date.now()}` : '#'}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${walletCardUrl
-                                                ? 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100'
-                                                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                                }`}
-                                            onClick={(e) => { if (!walletCardUrl) e.preventDefault(); }}
-                                        >
-                                            <FilePdf className="w-4 h-4" />
-                                            Preview Wallet Card PDF
-                                        </a>
-                                        <button
-                                            disabled={!walletCardUrl}
-                                            onClick={async () => {
-                                                if (!walletCardUrl) return;
-                                                try {
-                                                    // Fetch the PDF as a Blob
-                                                    const response = await fetch(walletCardUrl);
-                                                    const blob = await response.blob();
-                                                    const blobUrl = URL.createObjectURL(blob);
-                                                    const a = document.createElement('a');
-                                                    a.href = blobUrl;
-                                                    a.download = `${request?.fullName?.replace(/\s+/g, '_') || 'CareerIdentity'}_WalletCard.pdf`;
-                                                    document.body.appendChild(a);
-                                                    a.click();
-                                                    document.body.removeChild(a);
-                                                    URL.revokeObjectURL(blobUrl);
-                                                } catch (err) {
-                                                    console.error('Failed to download wallet card:', err);
-                                                }
-                                            }}
-                                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${walletCardUrl
-                                                ? 'bg-[#0B4F6C] text-white hover:bg-[#0a3d54]'
-                                                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                                }`}
-                                        >
-                                            <Download className="w-4 h-4" />
-                                            Download Wallet Card PDF
-                                        </button>
-                                    </div>
-
-                                    {/* Wallet Pass URL Editable Field */}
-                                    <div>
-                                        <label className="block text-xs text-slate-500 font-medium mb-1">
-                                            Wallet Pass URL (from NeatPass)
-                                        </label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="url"
-                                                value={walletPassUrl}
-                                                onChange={(e) => setWalletPassUrl(e.target.value)}
-                                                placeholder="https://neatpass.com/pass/..."
-                                                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0B4F6C]/10 focus:border-[#0B4F6C] outline-none"
-                                            />
-                                            <button
-                                                onClick={async () => {
-                                                    if (!userId) return;
-                                                    setSavingWalletUrl(true);
-                                                    try {
-                                                        const { data: { session } } = await supabase.auth.getSession();
-                                                        if (!session?.access_token) throw new Error('Not authenticated');
-                                                        await fetch(apiUrl(`/api/v1/career-identity/admin/requests/${userId}`), {
-                                                            method: 'PATCH',
-                                                            headers: {
-                                                                Authorization: `Bearer ${session.access_token}`,
-                                                                'Content-Type': 'application/json',
-                                                            },
-                                                            body: JSON.stringify({ walletPassUrl }),
-                                                        });
-                                                    } catch (err: any) {
-                                                        console.error('Failed to save wallet URL:', err);
-                                                    } finally {
-                                                        setSavingWalletUrl(false);
-                                                    }
-                                                }}
-                                                disabled={savingWalletUrl}
-                                                className="px-4 py-2 bg-[#0B4F6C] text-white rounded-lg text-sm font-medium hover:bg-[#0a3d54] transition-colors disabled:opacity-50"
-                                            >
-                                                {savingWalletUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {walletCardError && (
-                                        <p className="text-xs text-red-500 flex items-center gap-1">
-                                            <AlertCircle className="w-3 h-3" /> {walletCardError}
-                                        </p>
-                                    )}
-
-                                    {walletCardUpdatedAt && (
-                                        <p className="text-xs text-slate-400">
-                                            Last generated: {formatDate(walletCardUpdatedAt)}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                </section>}
             </main>
 
         </div>

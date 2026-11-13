@@ -33,7 +33,7 @@ export function createApp(): express.Application {
             callback(null, false);
         },
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'x-admin-email', 'X-Admin-Email'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'x-admin-email', 'X-Admin-Email', 'X-CI-Submission-Id'],
         exposedHeaders: ['X-Request-Id'],
         credentials: true,
     }));

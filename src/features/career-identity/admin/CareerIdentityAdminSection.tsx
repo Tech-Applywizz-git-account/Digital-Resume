@@ -6,6 +6,7 @@ import { apiUrl } from '../../../lib/apiBase';
 
 interface CIRequest {
     userId: string;
+    submissionId?: string;
     email: string;
     fullName: string | null;
     workflowStatus: string;
@@ -23,10 +24,11 @@ interface CIRequest {
     };
 }
 
-type FilterTab = 'all' | 'submitted' | 'in_progress' | 'ready_for_review' | 'published' | 'clarity_pending' | 'clarity_active';
+type FilterTab = 'all' | 'not_submitted' | 'submitted' | 'in_progress' | 'ready_for_review' | 'published' | 'clarity_pending' | 'clarity_active';
 
 const FILTER_TABS: { key: FilterTab; label: string }[] = [
     { key: 'all', label: 'All' },
+    { key: 'not_submitted', label: 'Not Submitted' },
     { key: 'submitted', label: 'Pending' },
     { key: 'in_progress', label: 'In Progress' },
     { key: 'ready_for_review', label: 'Ready for Review' },
@@ -259,6 +261,8 @@ export default function CareerIdentityAdminSection() {
                     <p className="text-sm text-slate-500">
                         {activeFilter === 'all'
                             ? 'No Career Identity requests have been submitted yet.'
+                            : activeFilter === 'not_submitted'
+                            ? 'All Career Identity clients have submitted a request.'
                             : activeFilter === 'clarity_pending'
                             ? 'No clients are currently waiting for Microsoft Clarity project setup.'
                             : activeFilter === 'clarity_active'
@@ -331,9 +335,9 @@ export default function CareerIdentityAdminSection() {
                                         <td className="py-3 px-4 text-slate-500 text-xs">{formatDate(req.submissionDate)}</td>
                                         <td className="py-3 px-4 text-slate-500 text-xs">{formatDate(req.updatedAt)}</td>
                                         <td className="py-3 px-4 text-center">
-                                            <div className="inline-flex items-center gap-2">
+                                            {(req.workflowStatus !== 'not_submitted' || req.status === 'published') && <div className="inline-flex items-center gap-2">
                                                 <button
-                                                    onClick={() => navigate(`/career-identity-admin/request/${req.userId}`)}
+                                                    onClick={() => navigate(`/career-identity-admin/request/${req.userId}${req.submissionId ? `?submissionId=${req.submissionId}` : ''}`)}
                                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B4F6C] text-white rounded-lg text-xs font-medium hover:bg-[#0a3d54] transition-colors"
                                                 >
                                                     <Eye className="w-3.5 h-3.5" />
@@ -360,7 +364,7 @@ export default function CareerIdentityAdminSection() {
                                                         )}
                                                     </button>
                                                 )}
-                                            </div>
+                                            </div>}
                                         </td>
                                     </tr>
                                 ))}

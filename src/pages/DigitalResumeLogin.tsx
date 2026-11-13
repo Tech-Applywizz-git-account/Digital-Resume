@@ -60,7 +60,7 @@ export default function DigitalResumeLogin() {
             // 3. Set session flag and navigate
             sessionStorage.setItem('digital_resume_admin_access', 'true');
             sessionStorage.setItem('admin_email', normalizedEmail);
-            navigate('/digital-resume-dashboard');
+            navigate('/digital-resume-dashboard', { replace: true });
         } catch (err: any) {
             setError(err.message);
         } finally {

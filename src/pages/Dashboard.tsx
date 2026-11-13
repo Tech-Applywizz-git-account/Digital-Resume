@@ -55,8 +55,8 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [user]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
@@ -78,7 +78,7 @@ export default function Dashboard() {
         className={`fixed lg:static inset-y-0 left-0 z-50 w-auto transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } lg:translate-x-0 transition-[width,transform] duration-300 ease-in-out`}
       >
-        <Sidebar userEmail={user?.email || ''} onLogout={handleLogout} />
+        <Sidebar userEmail={user?.email || ''} onLogout={() => navigate('/')} />
       </div>
 
       {/* Main Section */}

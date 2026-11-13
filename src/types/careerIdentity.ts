@@ -50,6 +50,7 @@ export interface CareerIdentityClarityConfig {
 export interface CareerIdentityProfile {
     id: string;
     resumeId: string;
+    submissionId?: string;
     userId: string | null;
     /** Key of the assigned theme — see themes/themeRegistry.ts */
     themeId: string;

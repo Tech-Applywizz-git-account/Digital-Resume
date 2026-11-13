@@ -207,7 +207,8 @@ export class SubscriptionService {
         } else if (params.email) {
             query = query.ilike('email', params.email);
         } else {
-            query = query.contains('tier_change_logs', [{ operation: 'tier_switch' }]);
+            // The client encodes JS arrays as PostgreSQL arrays. This column expects JSONB.
+            query = query.contains('tier_change_logs', JSON.stringify([{ operation: 'tier_switch' }]));
         }
 
         const { data, error } = await query;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { getCustomerDashboardPath } from "../features/subscription/services/subscriptionService";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -15,7 +16,8 @@ const Step2: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const mode = new URLSearchParams(location.search).get('mode');
-  const { user, logout } = useAuth();
+  const uploadedFileName = location.state?.uploadedFileName;
+  const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [teleprompterText, setTeleprompterText] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -28,10 +30,7 @@ const Step2: React.FC = () => {
     return saved ? parseFloat(saved) : 1;
   });
 
-  const handleLogout = () => {
-    logout();
-    navigate("/");
-  };
+  const handleLogout = () => navigate("/");
 
   useEffect(() => {
     const checkRecording = async () => {
@@ -227,12 +226,14 @@ const Step2: React.FC = () => {
     navigate(`/record${mode ? `?mode=${mode}` : ''}`);
   };
 
+  const exitToDashboard = async () => navigate(await getCustomerDashboardPath());
+
   const handleFinishAndSave = () => {
     if (!hasRecording) {
       setShowExitModal(true);
     } else {
       showToast("Digital Resume progress saved!", "success");
-      navigate("/dashboard");
+      void exitToDashboard();
     }
   };
 
@@ -249,7 +250,7 @@ const Step2: React.FC = () => {
             <p className="text-gray-600 mb-6">You <strong className="text-red-600">haven't recorded</strong> your video yet. Do you really want to exit without finishing your <strong>video</strong> for <strong>Digital Resume?</strong></p>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowExitModal(false)}>No, Stay</Button>
-              <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white" onClick={() => navigate("/dashboard")}>Yes, Exit</Button>
+              <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white" onClick={exitToDashboard}>Yes, Exit</Button>
             </div>
           </div>
         </div>
@@ -273,6 +274,11 @@ const Step2: React.FC = () => {
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-gray-50">
           <div className="max-w-4xl mx-auto">
+            {typeof uploadedFileName === "string" && uploadedFileName && (
+              <p role="status" className="mb-4 break-words rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                Uploaded <strong>{uploadedFileName}</strong> successfully.
+              </p>
+            )}
             <Card className="w-full">
               <CardHeader>
                 <div className="flex justify-center items-center mb-10 relative gap-x-20 sm:gap-x-32 max-w-4xl mx-auto">

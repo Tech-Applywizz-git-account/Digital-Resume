@@ -1,8 +1,50 @@
+import { verifyAdmin } from './careerIdentityAdmin.controller.js';
+import { ConflictError, ForbiddenError, NotFoundError } from '../types/errors.js';
+import { getProject, submitCareerIdentity, updatePublishedAppearance, withdrawCareerIdentitySubmission } from '../services/careerIdentity/submissions.service.js';
 import { Request, Response } from 'express';
 import { careerIdentityService } from '../services/careerIdentity/careerIdentity.service.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 export const careerIdentityController = {
+    getPublicAsset: asyncHandler(async (req: Request, res: Response) => {
+        const kind = req.params.kind;
+        const url = await careerIdentityService.getPublicAsset(req.params.castId as string, kind as string);
+        if (!url) throw new NotFoundError('Published Career Identity asset');
+        res.set('Cache-Control', 'no-store').redirect(302, url);
+    }),
+    viewer: asyncHandler(async (req: Request, res: Response) => {
+        let isAdmin = true;
+        try {
+            await verifyAdmin(req.user!.email);
+        } catch (error) {
+            if (!(error instanceof ForbiddenError)) throw error;
+            isAdmin = false;
+        }
+        res.json({ success: true, data: { isAdmin } });
+    }),
+    dashboard: asyncHandler(async (req: Request, res: Response) => {
+        const data = await careerIdentityService.getDashboard(req.user!.id);
+        res.json({ success: true, data });
+    }),
+    submit: asyncHandler(async (req: Request, res: Response) => {
+        const data = await submitCareerIdentity(req.user!.id, req.body ?? {});
+        res.status(201).json({ success: true, data });
+    }),
+    withdraw: asyncHandler(async (req: Request, res: Response) => {
+        await withdrawCareerIdentitySubmission(req.user!.id, req.params.submissionId as string);
+        res.status(204).end();
+    }),
+    appearance: asyncHandler(async (req: Request, res: Response) => {
+        await updatePublishedAppearance(req.user!.id, req.body ?? {});
+        res.status(204).end();
+    }),
+    consent: asyncHandler(async (req: Request, res: Response) => {
+        if (typeof req.body?.accepted !== 'boolean') {
+            return res.status(422).json({ success: false, message: 'Consent must be true or false.' });
+        }
+        await careerIdentityService.updateConsent(req.user!.id, req.body.accepted);
+        return res.json({ success: true });
+    }),
     /**
      * Public endpoint — no authentication required.
      * Returns the Career Identity profile for recruiters to view.
@@ -16,6 +58,7 @@ export const careerIdentityController = {
         }
 
         const result = await careerIdentityService.getPublicProfile(castId);
+        res.set('Cache-Control', 'no-store');
         return res.status(200).json({ success: true, data: result });
     }),
 
@@ -51,6 +94,10 @@ export const careerIdentityController = {
             return res.status(401).json({ success: false, message: 'Unauthorized' });
         }
 
+        const project = await getProject(userId);
+        if (project || req.body?.workflowStatus === 'submitted') {
+            throw new ConflictError('Use the Career Identity dashboard to submit or manage your project.');
+        }
         const { resume_id, content, status, workflowStatus, clientConsent } = req.body;
         if (!resume_id) {
             return res.status(400).json({ success: false, message: 'resume_id is required' });

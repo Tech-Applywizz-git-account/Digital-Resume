@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { crmResumeRepository } from '../../repositories/crmResume.repository.js';
+import { logger } from '../../logger/index.js';
 import { crmJobRequestRepository } from '../../repositories/crmJobRequest.repository.js';
 import { jobRequestRepository } from '../../repositories/jobRequest.repository.js';
 import { profileRepository } from '../../repositories/profile.repository.js';
@@ -6,7 +9,7 @@ import { crmRecordingRepository, recordingRepository } from '../../repositories/
 import { crmUserRepository } from '../../repositories/crmUser.repository.js';
 import { subscriptionService } from '../subscription/subscription.service.js';
 import { storageService } from '../storage/storage.service.js';
-import { NotFoundError } from '../../types/errors.js';
+import { ForbiddenError, NotFoundError } from '../../types/errors.js';
 
 export interface ResolvedResume {
     castId: string;
@@ -34,6 +37,7 @@ export interface UploadResumeParams {
     originalName: string;
     mimeType: string;
     jobRequestId: string;
+    replace?: boolean;
 }
 
 export class ResumeService {
@@ -168,13 +172,20 @@ export class ResumeService {
      * Verifies job request ownership before updating.
      */
     async uploadResume(params: UploadResumeParams): Promise<{ resumeUrl: string; fileName: string }> {
-        const { userId, email, fileBuffer, originalName, mimeType, jobRequestId } = params;
-        const isCRM = await this.resolveCrmStatus(email);
+        const { userId, email, fileBuffer, originalName, mimeType, jobRequestId, replace } = params;
+        const crmUser = replace ? await crmUserRepository.findByEmailOrAppEmail(email) : null;
+        const isCRM = replace ? !!crmUser : await this.resolveCrmStatus(email);
+        const crmEmail = crmUser?.email ?? email;
 
         // Verify ownership: the job request must belong to this user
         if (isCRM) {
             const existing = await crmJobRequestRepository.findOne({ id: jobRequestId } as any);
             if (!existing) throw new Error('Job request not found');
+            if (replace && existing.user_id !== userId &&
+                (existing.user_id || crmUser?.user_id !== userId ||
+                    existing.email.toLowerCase() !== crmEmail.toLowerCase())) {
+                throw new ForbiddenError('You do not own this resume.');
+            }
             // For CRM records, verify user_id matches
             if ((existing as any).user_id && (existing as any).user_id !== userId) {
                 throw new Error('Unauthorized: job request does not belong to this user');
@@ -182,16 +193,18 @@ export class ResumeService {
         } else {
             const existing = await jobRequestRepository.findOne({ id: jobRequestId } as any);
             if (!existing) throw new Error('Job request not found');
+            if (replace && existing.user_id !== userId) {
+                throw new ForbiddenError('You do not own this resume.');
+            }
             if ((existing as any).user_id && (existing as any).user_id !== userId) {
                 throw new Error('Unauthorized: job request does not belong to this user');
             }
         }
 
         const bucket = isCRM ? 'CRM_users_resumes' : 'resumes';
-        const fileExt = originalName.split('.').pop()?.toLowerCase() || 'pdf';
-        const storagePath = isCRM
-            ? `${email}/${jobRequestId}_${Date.now()}.${fileExt}`
-            : `${userId}/${jobRequestId}_${Date.now()}.${fileExt}`;
+        const fileExt = replace ? 'pdf' : originalName.split('.').pop()?.toLowerCase() || 'pdf';
+        const fileId = replace ? randomUUID() : Date.now();
+        const storagePath = `${isCRM ? crmEmail : userId}/${jobRequestId}_${fileId}.${fileExt}`;
 
         const uploadedPath = await storageService.uploadFile(bucket, storagePath, fileBuffer, mimeType);
         if (!uploadedPath) throw new Error('Failed to upload file');
@@ -202,12 +215,26 @@ export class ResumeService {
         if (isCRM) {
             await crmJobRequestRepository.update(
                 { id: jobRequestId } as any,
-                { resume_url: resumeUrl, application_status: 'ready' },
+                replace
+                    ? { resume_url: resumeUrl, updated_at: new Date().toISOString() }
+                    : { resume_url: resumeUrl, application_status: 'ready' },
             );
+            if (replace) {
+                try {
+                    await crmResumeRepository.create({
+                        email: crmEmail, user_id: userId, resume_name: originalName,
+                        resume_url: resumeUrl, file_type: 'pdf', file_size: fileBuffer.length,
+                    });
+                } catch (error) {
+                    logger.warn({ err: error, jobRequestId }, 'Could not record CRM resume replacement history');
+                }
+            }
         } else {
             await jobRequestRepository.update(
                 { id: jobRequestId } as any,
-                { resume_path: resumeUrl, status: 'ready' },
+                replace
+                    ? { resume_path: resumeUrl, resume_original_name: originalName, updated_at: new Date().toISOString() }
+                    : { resume_path: resumeUrl, status: 'ready' },
             );
         }
 
