@@ -16,6 +16,7 @@
 !supabase/migrations/20261112123000_career_identity_withdraw_submission.sql
 !supabase/migrations/20261112130000_career_identity_resume_clarity.sql
 !supabase/migrations/20261113100000_career_identity_live_appearance.sql
+!supabase/migrations/20261116100000_protect_crm_admin_roles.sql
 !supabase-functions/migrations/add_azure_token_usage_daily_upsert.sql
 # misc
 .DS_Store

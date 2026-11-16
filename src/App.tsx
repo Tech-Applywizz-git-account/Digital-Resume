@@ -1,3 +1,4 @@
+import BusinessOverview from './features/admin/BusinessOverview';
 import React, { useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -71,6 +72,7 @@ function App() {
           element={<EmailCorrection />}
         />
 
+        <Route path="/admin/overview" element={<BusinessOverview />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route
           path="/digital-resume-dashboard"

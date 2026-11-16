@@ -1,3 +1,4 @@
+import { resolveSignedInDestination } from '../services/signInDestination';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../integrations/supabase/client';
@@ -26,22 +27,6 @@ export default function DigitalResumeLogin() {
         try {
             const normalizedEmail = email.trim().toLowerCase();
 
-            // 1. Check if the user is listed in crm_admins table
-            try {
-                const { data: adminData, error: adminCheckError } = await supabase
-                    .from('crm_admins')
-                    .select('email')
-                    .ilike('email', normalizedEmail)
-                    .maybeSingle();
-
-                if (adminCheckError || !adminData) {
-                    throw new Error('Unauthorized access. Your email is not registered as a CRM Dashboard admin.');
-                }
-            } catch (err: any) {
-                throw new Error(err.message || 'Verification failed. Please ensure the admin table is set up.');
-            }
-
-            // 2. Perform regular Auth login
             const { data, error: authError } = await supabase.auth.signInWithPassword({
                 email: normalizedEmail,
                 password: password,
@@ -57,10 +42,8 @@ export default function DigitalResumeLogin() {
                 throw authError;
             }
 
-            // 3. Set session flag and navigate
-            sessionStorage.setItem('digital_resume_admin_access', 'true');
-            sessionStorage.setItem('admin_email', normalizedEmail);
-            navigate('/digital-resume-dashboard', { replace: true });
+            if (!data.session) throw new Error('Sign in to continue.');
+            navigate(await resolveSignedInDestination(data.session), { replace: true });
         } catch (err: any) {
             setError(err.message);
         } finally {

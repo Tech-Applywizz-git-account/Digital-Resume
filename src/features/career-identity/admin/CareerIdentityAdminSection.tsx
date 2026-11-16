@@ -59,8 +59,11 @@ const PUBLISH_BADGES: Record<string, { bg: string; text: string }> = {
  */
 export default function CareerIdentityAdminSection() {
     const navigate = useNavigate();
+    const [refreshCount, setRefreshCount] = useState(0);
     const [requests, setRequests] = useState<CIRequest[]>([]);
     const [loading, setLoading] = useState(true);
+    const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10);
+    const [currentPage, setCurrentPage] = useState(1);
     const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
     const [error, setError] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -88,11 +91,12 @@ export default function CareerIdentityAdminSection() {
         }
     }, []);
 
-    const fetchRequests = useCallback(async () => {
+    const fetchRequests = useCallback(async (signal?: AbortSignal) => {
         setLoading(true);
         setError(null);
         try {
             const { data: { session } } = await supabase.auth.getSession();
+            if (signal?.aborted) return;
             if (!session?.access_token) {
                 setError('Not authenticated');
                 setLoading(false);
@@ -114,6 +118,7 @@ export default function CareerIdentityAdminSection() {
 
             const url = apiUrl(`/api/v1/career-identity/admin/requests${params.toString() ? `?${params.toString()}` : ''}`);
             const res = await fetch(url, {
+                signal,
                 headers: { Authorization: `Bearer ${session.access_token}` },
             });
 
@@ -124,6 +129,7 @@ export default function CareerIdentityAdminSection() {
 
             const body = await res.json();
             const data: CIRequest[] = body.data || [];
+            if (signal?.aborted) return;
             setRequests(data);
 
             if (activeFilter === 'all') {
@@ -133,16 +139,29 @@ export default function CareerIdentityAdminSection() {
                 setPendingClarityCount(data.length);
             }
         } catch (err: any) {
+            if (signal?.aborted) return;
             console.error('[CareerIdentityAdmin] Failed to fetch requests:', err);
             setError(err?.message || 'Failed to load requests');
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) setLoading(false);
         }
     }, [activeFilter]);
 
     useEffect(() => {
-        fetchRequests();
-    }, [fetchRequests]);
+        const controller = new AbortController();
+        fetchRequests(controller.signal);
+        return () => controller.abort();
+    }, [fetchRequests, refreshCount]);
+
+    const totalPages = itemsPerPage === 'all' ? 1 : Math.max(1, Math.ceil(requests.length / itemsPerPage));
+    const page = Math.min(currentPage, totalPages);
+    const visibleRequests = itemsPerPage === 'all'
+        ? requests
+        : requests.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
+    useEffect(() => {
+        setCurrentPage(previous => Math.min(previous, totalPages));
+    }, [totalPages]);
 
     useEffect(() => {
         fetchClarityCount();
@@ -190,7 +209,7 @@ export default function CareerIdentityAdminSection() {
                     </p>
                 </div>
                 <button
-                    onClick={fetchRequests}
+                    onClick={() => setRefreshCount(count => count + 1)}
                     disabled={loading}
                     className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
                 >
@@ -220,7 +239,12 @@ export default function CareerIdentityAdminSection() {
                     return (
                         <button
                             key={tab.key}
-                            onClick={() => setActiveFilter(tab.key)}
+                            onClick={() => {
+                                if (isSelected) return;
+                                setCurrentPage(1);
+                                setLoading(true);
+                                setActiveFilter(tab.key);
+                            }}
                             className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap ${tabClass}`}
                         >
                             <span>{tab.label}</span>
@@ -235,6 +259,24 @@ export default function CareerIdentityAdminSection() {
                     );
                 })}
             </div>
+
+            {!loading && !error && requests.length > 0 && (
+                <div className="flex justify-end">
+                    <label className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Show</span>
+                        <select value={itemsPerPage} onChange={event => {
+                            const value = event.target.value;
+                            setItemsPerPage(value === 'all' ? 'all' : Number(value));
+                            setCurrentPage(1);
+                        }} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-[#0B4F6C]/10">
+                            {[10, 30, 50, 100, 200, 300, 500, 1000].map(size => (
+                                <option key={size} value={size}>{size} per page</option>
+                            ))}
+                            <option value="all">All records</option>
+                        </select>
+                    </label>
+                </div>
+            )}
 
             {/* Error State */}
             {error && (
@@ -290,7 +332,7 @@ export default function CareerIdentityAdminSection() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {requests.map((req) => (
+                                {visibleRequests.map((req) => (
                                     <tr key={req.userId} className="hover:bg-slate-50 transition-colors">
                                         <td className="py-3 px-4">
                                             <div className="flex items-center gap-2">
@@ -371,6 +413,23 @@ export default function CareerIdentityAdminSection() {
                             </tbody>
                         </table>
                     </div>
+                    {totalPages > 1 && (
+                        <nav aria-label="Career Identity pagination" className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
+                            <p className="text-xs font-medium text-slate-500" aria-live="polite">
+                                Showing page <span className="font-bold text-slate-900">{page}</span> of <span className="font-bold text-slate-900">{totalPages}</span>
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <button type="button" onClick={() => setCurrentPage(page - 1)} disabled={page === 1}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                                    Previous
+                                </button>
+                                <button type="button" onClick={() => setCurrentPage(page + 1)} disabled={page === totalPages}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                                    Next
+                                </button>
+                            </div>
+                        </nav>
+                    )}
                 </div>
             )}
         </div>

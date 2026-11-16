@@ -1,26 +1,18 @@
+import { adminDestination, getAdminRole } from '../features/admin/adminApi';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../integrations/supabase/client';
 import { apiUrl } from '../lib/apiBase';
 
 export async function resolveSignedInDestination(session: Session): Promise<string> {
   const email = session.user.email?.trim().toLowerCase();
-  if (email) {
-    try {
-      const { data: admin } = await supabase
-        .from('crm_admins')
-        .select('email')
-        .ilike('email', email)
-        .maybeSingle();
-
-      if (admin || email === 'dinesh@applywizz.com') {
-        sessionStorage.setItem('digital_resume_admin_access', 'true');
-        sessionStorage.setItem('admin_email', email);
-        return '/digital-resume-dashboard';
-      }
-    } catch (error) {
-      console.warn('Admin check failed, proceeding to customer tier lookup:', error);
-    }
+  const role = await getAdminRole(session.access_token);
+  if (role) {
+    sessionStorage.setItem('digital_resume_admin_access', 'true');
+    if (email) sessionStorage.setItem('admin_email', email);
+    return adminDestination(role);
   }
+  sessionStorage.removeItem('digital_resume_admin_access');
+  sessionStorage.removeItem('admin_email');
 
   try {
     const response = await fetch(apiUrl('/api/v1/subscription/me'), {

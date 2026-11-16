@@ -5,6 +5,7 @@ import profileRouter from './profile.routes.js';
 import { walletRouter } from './wallet.routes.js';
 import { subscriptionRouter } from './subscription.routes.js';
 import careerIdentityRouter from './careerIdentity.routes.js';
+import { adminRouter } from './admin.routes.js';
 
 const v1Router = Router();
 
@@ -13,6 +14,7 @@ v1Router.use('/resumes', resumesRouter);
 v1Router.use('/profile', profileRouter);
 v1Router.use('/wallet', walletRouter);
 v1Router.use('/subscription', subscriptionRouter);
+v1Router.use('/admin', adminRouter);
 
 // Placeholder routes (to be implemented):
 // v1Router.use('/users', usersRouter);

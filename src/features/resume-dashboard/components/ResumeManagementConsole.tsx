@@ -1,3 +1,4 @@
+import { adminRequest, getAdminRole, type AdminRole, type AdminAccount } from '../../admin/adminApi';
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../integrations/supabase/client';
 import {
@@ -91,10 +92,7 @@ interface CRMUser {
     tier_change_logs?: TierChangeLogEntry[];
 }
 
-interface CRMAdmin {
-    email: string;
-    created_at: string;
-}
+type CRMAdmin = AdminAccount;
 
 interface UsageLog {
     id: string;
@@ -128,6 +126,10 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
         } catch (e) { return []; }
     });
     const [searchTerm, setSearchTerm] = useState(() => sessionStorage.getItem('admin_dashboard_searchTerm') || '');
+    const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
+    const [adminAccessError, setAdminAccessError] = useState('');
+    const [newAdminRole, setNewAdminRole] = useState<AdminRole>('admin');
+    const [roleChange, setRoleChange] = useState<{ email: string; role: AdminRole } | null>(null);
     const [showAddAdminModal, setShowAddAdminModal] = useState(false);
     const [showAddUserModal, setShowAddUserModal] = useState(false);
     const [isAdminAdding, setIsAdminAdding] = useState(false);
@@ -252,61 +254,37 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
     }, [loading]);
 
     useEffect(() => {
+        let cancelled = false;
         const checkAccess = async () => {
-            console.log('--- Admin Access Check ---');
-            const hasSessionAccess = sessionStorage.getItem('digital_resume_admin_access') === 'true';
-            const adminEmail = sessionStorage.getItem('admin_email')?.toLowerCase();
-            const authEmail = user?.email?.toLowerCase();
-
-            const currentUserEmail = adminEmail || authEmail;
-
-            if (!hasSessionAccess && !currentUserEmail) {
-                navigate('/DigitalResumeLogin');
-                return;
-            }
-
-            // --- Skip sync if coming back from a "View" action ---
-            const shouldSkipSync = sessionStorage.getItem('skip_admin_sync') === 'true';
-            if (shouldSkipSync) {
-                sessionStorage.removeItem('skip_admin_sync');
-                setLoading(false);
-                return;
-            }
-
-            // Only check DB if we have an email but it's not the primary admin
-            if (currentUserEmail) {
-                try {
-                    const { data, error } = await supabase
-                        .from('crm_admins')
-                        .select('email')
-                        .eq('email', currentUserEmail)
-                        .maybeSingle();
-
-                    if (error) {
-                        console.error('Database check error:', error);
-                        if (hasSessionAccess) {
-                            loadData(!!sessionStorage.getItem('cached_crm_users'));
-                            return;
-                        }
-                    }
-
-                    if (!data && !hasSessionAccess) {
-                        navigate('/DigitalResumeLogin');
-                        return;
-                    }
-                } catch (err) {
-                    if (!hasSessionAccess) {
-                        navigate('/DigitalResumeLogin');
-                        return;
-                    }
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (cancelled) return;
+                if (!session) {
+                    navigate('/DigitalResumeLogin', { replace: true });
+                    return;
                 }
+                const role = await getAdminRole(session.access_token);
+                if (cancelled) return;
+                if (!role) {
+                    navigate('/auth', { replace: true });
+                    return;
+                }
+                setAdminRole(role);
+                sessionStorage.setItem('digital_resume_admin_access', 'true');
+                sessionStorage.setItem('admin_email', session.user.email ?? '');
+                if (sessionStorage.getItem('skip_admin_sync') === 'true') {
+                    sessionStorage.removeItem('skip_admin_sync');
+                    setLoading(false);
+                    return;
+                }
+                void loadData(!!sessionStorage.getItem('cached_crm_users'));
+            } catch (error) {
+                if (!cancelled) setAdminAccessError(error instanceof Error ? error.message : 'Could not verify admin access.');
             }
-
-            loadData(!!sessionStorage.getItem('cached_crm_users'));
         };
-
-        checkAccess();
-    }, [user, navigate]);
+        void checkAccess();
+        return () => { cancelled = true; };
+    }, [user?.id, navigate]);
 
     const loadData = async (background = false) => {
         if (!background) setLoading(true);
@@ -541,24 +519,7 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
 
     const fetchAdmins = async () => {
         try {
-            const { data, error } = await supabase
-                .from('crm_admins')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-
-            // Filter out any duplicates from the database result by email
-            const seenAdminsSet = new Set();
-            const uniqueAdmins = (data || []).filter(a => {
-                const email = a.email?.toLowerCase();
-                if (!email || seenAdminsSet.has(email)) return false;
-                seenAdminsSet.add(email);
-                return true;
-            });
-
-            setAdmins(uniqueAdmins);
-            if (data) sessionStorage.setItem('cached_crm_admins', JSON.stringify(uniqueAdmins));
+            setAdmins(await adminRequest<AdminAccount[]>('/accounts'));
         } catch (error: any) {
             console.error('Error fetching admins:', error);
         }
@@ -829,62 +790,15 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
             setIsAdminAdding(true);
             setMessage(null);
 
-            const normalizedEmail = newAdminEmail.trim().toLowerCase();
-
-            // 0. Pre-check for duplicates in current list
-            const isDuplicate = admins.some(a => a.email.toLowerCase() === normalizedEmail);
-
-            if (isDuplicate) {
-                setMessage({ type: 'error', text: 'This email is already an authorized admin.' });
-                setIsAdminAdding(false);
-                return;
-            }
-
-            // 1. Create a transient supabase client to sign up the new admin 
-            // without affecting the current admin's session.
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-            const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-            const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-                auth: {
-                    persistSession: false,
-                    autoRefreshToken: false,
-                    detectSessionInUrl: false
-                }
+            const account = await adminRequest<AdminAccount>('/accounts', {
+                method: 'POST',
+                body: JSON.stringify({
+                    email: newAdminEmail, ...(newAdminPassword ? { password: newAdminPassword } : {}),
+                    role: adminRole === 'super_admin' ? newAdminRole : 'admin',
+                }),
             });
-
-            // 2. Attempt to create the user in Supabase Auth
-            const { error: authError } = await authClient.auth.signUp({
-                email: normalizedEmail,
-                password: newAdminPassword,
-            });
-
-            if (authError) {
-                // If user already exists, we continue to check/add to crm_admins
-                if (authError.message.toLowerCase().includes('already registered') || authError.message.toLowerCase().includes('already been registered')) {
-                    console.log('User already exists in Auth, checking crm_admins...');
-                } else {
-                    throw authError;
-                }
-            }
-
-            // 3. Add to crm_admins table to grant dashboard access
-            const { error: dbError } = await supabase
-                .from('crm_admins')
-                .insert({
-                    email: normalizedEmail,
-                    added_by: user?.email || sessionStorage.getItem('admin_email')
-                });
-
-            if (dbError) {
-                if (dbError.code === '23505') throw new Error('This email is already an authorized admin.');
-                throw dbError;
-            }
-
-            setMessage({
-                type: 'success',
-                text: `${normalizedEmail} is now a CRM Dashboard Admin. Note: If they don't see an email, they may need to check spam or you might need to disable "Email Confirmation" in Supabase Auth settings.`
-            });
+            setMessage({ type: 'success', text: `Admin access granted to ${account.email}.` });
+            setNewAdminRole('admin');
             setNewAdminEmail('');
             setNewAdminPassword('');
             setShowAddAdminModal(false);
@@ -892,6 +806,24 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
         } catch (error: any) {
             console.error('Error adding admin:', error);
             setMessage({ type: 'error', text: error.message || 'Failed to add admin' });
+        } finally {
+            setIsAdminAdding(false);
+        }
+    };
+
+    const changeAdminRole = async () => {
+        if (!roleChange || isAdminAdding) return;
+        setIsAdminAdding(true);
+        setMessage(null);
+        try {
+            await adminRequest(`/accounts/${encodeURIComponent(roleChange.email)}/role`, {
+                method: 'PATCH', body: JSON.stringify({ role: roleChange.role }),
+            });
+            setMessage({ type: 'success', text: `Role updated for ${roleChange.email}.` });
+            setRoleChange(null);
+            await fetchAdmins();
+        } catch (error) {
+            setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Role change failed.' });
         } finally {
             setIsAdminAdding(false);
         }
@@ -1234,6 +1166,13 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
 
     const currentUserEmail = sessionStorage.getItem('admin_email') || user?.email;
 
+    if (!adminRole) return (
+        <main className="grid min-h-screen place-content-center gap-3 bg-slate-50 p-6 text-center">
+            <p role={adminAccessError ? 'alert' : 'status'}>{adminAccessError || 'Checking admin access…'}</p>
+            {adminAccessError && <button type="button" onClick={() => window.location.reload()} className="underline">Retry</button>}
+        </main>
+    );
+
     return (
         <div
             data-console-tier={tier}
@@ -1251,6 +1190,12 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                 </div>
 
                 <div className="flex items-center gap-2 md:gap-4">
+                    {adminRole === 'super_admin' && (
+                        <button type="button" onClick={() => navigate('/admin/overview')}
+                            className="rounded-lg border border-white/30 px-3 py-1.5 text-xs font-semibold text-white">
+                            Business Overview
+                        </button>
+                    )}
                     <button
                         onClick={() => setShowAddUserModal(true)}
                         className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 md:px-4 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shadow-sm"
@@ -1260,7 +1205,7 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                     </button>
 
                     <button
-                        onClick={() => setShowAddAdminModal(true)}
+                        onClick={() => { setShowAddAdminModal(true); void fetchAdmins(); }}
                         className="bg-[#159A9C] hover:bg-[#159A9C]/90 text-white px-3 md:px-4 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shadow-sm"
                     >
                         <ShieldCheck className="w-3.5 h-3.5" />
@@ -2212,16 +2157,17 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
             {
                 showAddAdminModal && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
-                        <div className="bg-white w-full max-w-md rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                        <div role="dialog" aria-modal="true" aria-labelledby="grant-admin-title" className="bg-white w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-2xl sm:rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300">
                             <div className="p-6 sm:p-8 border-b border-slate-100 flex justify-between items-center bg-[#0f172a] text-white">
                                 <div>
-                                    <h3 className="text-xl font-bold flex items-center gap-2">
+                                    <h3 id="grant-admin-title" className="text-xl font-bold flex items-center gap-2">
                                         <ShieldCheck className="w-6 h-6" />
                                         Grant Admin Access
                                     </h3>
-                                    <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mt-1">Permission Control Portal</p>
                                 </div>
                                 <button
+                                    type="button"
+                                    aria-label="Close Grant Admin Access"
                                     onClick={() => !isAdminAdding && setShowAddAdminModal(false)}
                                     className="hover:bg-white/10 p-2 rounded-xl transition-colors"
                                 >
@@ -2252,8 +2198,7 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                                             <ShieldCheck className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-[#0B4F6C] transition-colors" />
                                             <input
                                                 type="password"
-                                                required
-                                                placeholder="Set a password"
+                                                placeholder="Required for new accounts"
                                                 className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#0B4F6C]/5 focus:border-[#0B4F6C] outline-none transition-all placeholder:text-slate-300 font-medium"
                                                 value={newAdminPassword}
                                                 onChange={(e) => setNewAdminPassword(e.target.value)}
@@ -2262,19 +2207,56 @@ export default function ResumeManagementConsole({ tier, title }: ResumeManagemen
                                     </div>
                                 </div>
 
-                                <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100/50">
-                                    <div className="flex gap-4">
-                                        <div className="bg-blue-100 p-2 rounded-xl flex-shrink-0 w-10 h-10 flex items-center justify-center">
-                                            <AlertCircle className="w-5 h-5 text-blue-600" />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-xs font-bold text-blue-900 mb-1 uppercase tracking-wide">Privilege Information</h4>
-                                            <p className="text-[11px] text-blue-800 leading-relaxed">
-                                                New admins will have full read/write access to this dashboard, including credit management and admin enrollment privileges.
-                                            </p>
-                                        </div>
+                                {adminRole === 'super_admin' ? (
+                                    <label className="block text-sm font-semibold text-slate-700">
+                                        Admin role
+                                        <select
+                                            value={newAdminRole}
+                                            disabled={isAdminAdding}
+                                            onChange={event => setNewAdminRole(event.target.value as AdminRole)}
+                                            aria-describedby="grant-admin-permissions"
+                                            className="mt-2 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-900"
+                                        >
+                                            <option value="admin">Admin</option>
+                                            <option value="super_admin">Super Admin</option>
+                                        </select>
+                                    </label>
+                                ) : (
+                                    <div className="text-sm text-slate-700">
+                                        <p className="font-semibold">Assigned role</p>
+                                        <p className="mt-2">Admin</p>
+                                        <p className="mt-1 text-xs text-slate-600">Only Super Admins can grant Super Admin access.</p>
                                     </div>
+                                )}
+                                <div id="grant-admin-permissions" className="space-y-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-slate-700">
+                                    <p className="font-semibold text-slate-900">Role permissions</p>
+                                    <p><strong>Admin</strong> can manage clients, credits, and Career Identity requests, and grant Admin access.</p>
+                                    <p><strong>Super Admin</strong> also has access to Business Overview and can grant either role and change existing roles.</p>
                                 </div>
+                                <p className="text-xs text-slate-600">Existing accounts keep their current password.</p>
+                                {message && <p role={message.type === 'error' ? 'alert' : 'status'} className="text-sm">{message.text}</p>}
+                                {admins.length > 0 && (
+                                    <section aria-label="Existing admins" className="max-h-40 space-y-2 overflow-y-auto">
+                                        {admins.map(account => (
+                                            <div key={account.email} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                                <span className="break-all">{account.email}</span>
+                                                <span className="rounded bg-slate-100 px-2 py-1">{account.role === 'super_admin' ? 'Super Admin' : 'Admin'}</span>
+                                                {adminRole === 'super_admin' && account.email.toLowerCase() !== currentUserEmail?.toLowerCase() && (
+                                                    <button type="button" onClick={() => setRoleChange({ email: account.email, role: account.role === 'admin' ? 'super_admin' : 'admin' })} className="font-semibold text-[#0B4F6C] underline">
+                                                        Change role
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </section>
+                                )}
+                                {roleChange && (
+                                    <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+                                        <p>Change {roleChange.email} to {roleChange.role === 'admin' ? 'Admin' : 'Super Admin'}?</p>
+                                        <button type="button" disabled={isAdminAdding} onClick={changeAdminRole} className="mr-3 font-semibold underline">Confirm role change</button>
+                                        <button type="button" disabled={isAdminAdding} onClick={() => setRoleChange(null)}>Cancel</button>
+                                    </div>
+                                )}
 
                                 <div className="flex gap-4 pt-4">
                                     <button
