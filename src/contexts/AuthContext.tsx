@@ -15,7 +15,7 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: SignupData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   sendOTP: (email: string) => Promise<void>;
   verifyOTP: (email: string, otp: string) => Promise<boolean>;
   isOTPVerified: (email: string) => boolean;
@@ -32,6 +32,45 @@ interface SignupData {
 
 // ✅ Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// ✅ Resolve the email that should actually be used to sign in with Supabase.
+// A user may type their primary email, company_email (from public.users),
+// or legacy alternate email (from digital_resume_by_crm).
+// All resolve to the primary auth.users email.
+async function resolveLoginEmail(enteredEmail: string): Promise<string> {
+  const normalizedEmail = enteredEmail.trim().toLowerCase();
+
+  // 1. Check users table via RPC (matches email or company_email)
+  try {
+    const { data: resolvedEmail, error: rpcError } = await supabase.rpc(
+      'get_auth_email_by_company_email',
+      { input_email: normalizedEmail }
+    );
+    if (!rpcError && resolvedEmail) {
+      return resolvedEmail;
+    }
+  } catch (rpcErr) {
+    console.warn('Error resolving login email via users table RPC:', rpcErr);
+  }
+
+  // 2. Fallback: check legacy alternate/company application email in digital_resume_by_crm
+  try {
+    const { data: crmMatch } = await supabase
+      .from('digital_resume_by_crm')
+      .select('email')
+      .eq('company_application_email', normalizedEmail)
+      .maybeSingle();
+
+    if (crmMatch?.email) {
+      return crmMatch.email;
+    }
+  } catch (crmErr) {
+    console.warn('Error checking legacy CRM email:', crmErr);
+  }
+
+  // 3. Not an alternate email - use what was entered
+  return normalizedEmail;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -83,13 +122,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     clearError();
     clearSessionCache(); // Clear everything BEFORE logging in as a new user
+    let loginEmail = normalizedEmail;
     try {
-      console.log('Attempting login for:', normalizedEmail);
-      const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+      loginEmail = await resolveLoginEmail(normalizedEmail);
+      console.log('Attempting login for:', loginEmail);
+      const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
       if (error) throw error;
 
       const uid = data.user?.id;
       if (!uid) throw new Error('User ID missing after login');
+
+      // Update last_login in public.users
+      try {
+        await supabase
+          .from('users')
+          .update({ last_login: new Date().toISOString() })
+          .eq('id', uid);
+      } catch (lastLoginErr) {
+        console.warn('Could not update last_login in users table:', lastLoginErr);
+      }
 
       // Check if CRM user (we do this again to ensure we get the right crmData)
       const { data: crmData } = await supabase
@@ -127,13 +178,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(true);
       setUser(mockUser);
     } catch (err: any) {
-      const normalizedEmail = email.trim().toLowerCase();
       if (err.message && err.message.toLowerCase().includes('invalid login credentials')) {
         // Double check if the user exists in profiles, crm_admins, or digital_resume_by_crm
+        // (use loginEmail so an alternate email that resolved to a primary email is checked correctly)
         const [{ data: profileUser }, { data: adminUser }, { data: crmUser }] = await Promise.all([
-          supabase.from('profiles').select('email').eq('email', normalizedEmail).maybeSingle(),
-          supabase.from('crm_admins').select('email').eq('email', normalizedEmail).maybeSingle(),
-          supabase.from('digital_resume_by_crm').select('email').eq('email', normalizedEmail).maybeSingle()
+          supabase.from('profiles').select('email').eq('email', loginEmail).maybeSingle(),
+          supabase.from('crm_admins').select('email').eq('email', loginEmail).maybeSingle(),
+          supabase.from('digital_resume_by_crm').select('email').eq('email', loginEmail).maybeSingle()
         ]);
 
         if (profileUser || adminUser || crmUser) {
@@ -258,7 +309,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const isOTPVerified = (email: string): boolean => verifiedEmails.has(email);
-  
+
   const clearSessionCache = () => {
     // 1. Identify current user info for specific cache clearing
     const userDataStr = localStorage.getItem('userData');
@@ -267,30 +318,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const pd = JSON.parse(userDataStr);
         if (pd.email) emailKey = pd.email.replace(/[^a-zA-Z0-9]/g, '_');
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 2. Define global keys to clear
     const globalKeys = [
-      'authToken', 
-      'userData', 
-      'is_crm_user', 
+      'authToken',
+      'userData',
+      'is_crm_user',
       'crm_user_email',
-      'last_careercasts', 
-      'last_premium_active', 
+      'last_careercasts',
+      'last_premium_active',
       'last_credits',
-      'current_job_request_id', 
-      'uploadedResumeUrl', 
-      'resumeFileName', 
+      'current_job_request_id',
+      'uploadedResumeUrl',
+      'resumeFileName',
       'resumeFullText',
-      'teleprompterText', 
+      'teleprompterText',
       'teleprompterSpeed',
-      'careercast_jobTitle', 
+      'careercast_jobTitle',
       'careercast_jobDescription',
       'recordedVideoUrl',
       'userCountry'
     ];
-    
+
     globalKeys.forEach(key => localStorage.removeItem(key));
 
     // 3. Define user-specific keys to clear if we found an email
@@ -304,7 +355,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) console.warn('Supabase sign-out failed:', error);
+    sessionStorage.removeItem('digital_resume_admin_access');
+    sessionStorage.removeItem('admin_email');
     clearSessionCache();
     setIsAuthenticated(false);
     setUser(null);

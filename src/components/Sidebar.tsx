@@ -253,6 +253,7 @@ import {
   Search
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { getCustomerDashboardPath } from "../features/subscription/services/subscriptionService";
 
 interface SidebarProps {
   userEmail?: string;
@@ -381,7 +382,9 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
       <nav className="flex-1 overflow-y-auto px-2 pt-2 pb-4 space-y-1">
         {/* Dashboard */}
         <button
-          onClick={() => navigate("/dashboard")}
+          onClick={async () => {
+            navigate(await getCustomerDashboardPath());
+          }}
           className={`${baseItemClasses} ${isActive("/dashboard")
             ? "bg-slate-900 text-white"
             : "text-slate-600 hover:bg-slate-100"
@@ -554,8 +557,8 @@ export default function Sidebar({ userEmail, onLogout }: SidebarProps) {
       {/* Logout */}
       <div className="px-2 pb-4 border-t border-slate-100 pt-3">
         <button
-          onClick={() => {
-            logout();
+          onClick={async () => {
+            await logout();
             onLogout();
           }}
           className={`${baseItemClasses} ${collapsed ? "justify-center" : ""

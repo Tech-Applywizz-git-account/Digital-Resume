@@ -1,0 +1,876 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useParams } from 'react-router-dom';
+import {
+    Mail, Layers, BadgeCheck,
+    MapPin, Lightbulb, User,
+    Linkedin, Menu, Loader2, AlertCircle,
+    Sparkles, GraduationCap, X, Share2, Download, Play, FileText
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../../../integrations/supabase/client';
+import { useAuth } from '../../../contexts/AuthContext';
+import { VideoPlayer } from '../components/VideoPlayer';
+import { ResumeModals } from '../components/ResumeModals';
+import { ShareModal } from '../components/ShareModal';
+import { Scribble, Shimmer } from '../components/CommonElements';
+import { HeroSection } from '../components/HeroSection';
+import { SkillsSection } from '../components/ResumeSections';
+import { ExperienceSection } from '../components/ExperienceSection';
+import { ProjectsSection } from '../components/ProjectsSection';
+import type { CareerIdentityProfileResponse } from '../../../types/careerIdentity';
+import {
+    CareerIdentityThemeKey,
+    getThemeTokens,
+} from '../themes/themeRegistry';
+import {
+    downloadWalletCard,
+    fetchGoogleWalletUrl,
+    fetchWalletStatus,
+    fetchCareerIdentityViewer,
+    getAppleWalletPassUrl,
+} from '../services/careerIdentityService';
+import { trackEvent, trackSessionEnd } from '../../../utils/tracking';
+import { apiUrl } from '../../../lib/apiBase';
+import {
+    mountClientClarity,
+    detectAndForceClearClarityData,
+    trackClaritySmartEvent,
+    resolveTrafficSource,
+} from '../../../utils/clarity';
+
+const getValidLink = (url?: string | null) => {
+    if (!url) return undefined;
+    return url.startsWith("http") ? url : `https://${url}`;
+};
+
+const CareerIdentityPage: React.FC = () => {
+    const location = useLocation();
+    const { castId: routeCastId } = useParams<{ castId?: string }>();
+    const searchParams = new URLSearchParams(location.search);
+    const emailParam = searchParams.get('email');
+    const userIdParam = searchParams.get('userId');
+    const resumeUrlParam = searchParams.get('resumeUrl');
+    const jobTitleParam = searchParams.get('jobTitle') || searchParams.get('title') || searchParams.get('headline');
+    const canChangeAvatarParam = searchParams.get('canChangeAvatar') === 'true';
+    const candidateNameParam = searchParams.get('candidateName') || searchParams.get('name');
+    const castIdParam = routeCastId || searchParams.get('castId') || location.pathname.split('/').filter(Boolean).pop() || null;
+    const videoUrlParam = searchParams.get('videoUrl');
+    const autoPlayVideoParam = searchParams.get('autoPlayVideo') === 'true';
+    const sourceParam = (searchParams.get('source') === 'pdf' ? 'pdf' : 'website');
+    const openContactParam = searchParams.get('openContact') === 'true';
+
+    const { user } = useAuth();
+
+    const isPreviewMode = searchParams.get('preview') === 'true';
+    const previewId = isPreviewMode ? searchParams.get('previewId') : null;
+    const [preview] = useState(() => {
+        if (!previewId) return null;
+        try {
+            return JSON.parse(localStorage.getItem(`ci_preview_${previewId}`) || 'null');
+        } catch {
+            return null;
+        }
+    });
+    const previewContent = preview?.content ? JSON.stringify(preview.content) : null;
+    const previewTheme = preview?.theme ?? null;
+    const previewAvatar = preview?.avatar ?? null;
+    const previewVideoUrl = preview?.videoUrl ?? null;
+    const previewResumeUrl = preview?.resumeUrl ?? null;
+
+    useEffect(() => {
+        if (previewId) localStorage.removeItem(`ci_preview_${previewId}`);
+    }, [previewId]);
+
+    const themeParam = searchParams.get('theme');
+
+    const cachedProfileRaw = (!isPreviewMode && castIdParam) ? localStorage.getItem(`ci_profile_${castIdParam}`) : null;
+    let initialCachedProfile: CareerIdentityProfileResponse | null = null;
+    if (cachedProfileRaw) {
+        try {
+            const cached = JSON.parse(cachedProfileRaw);
+            if (!cached?.profile?.submissionId) initialCachedProfile = cached;
+        } catch { }
+    }
+    const cachedTheme = (!isPreviewMode && castIdParam)
+        ? (localStorage.getItem(`ci_theme_${castIdParam}`) as CareerIdentityThemeKey | null)
+        : null;
+
+    const [profile, setProfile] = useState<CareerIdentityProfileResponse | null>(() => {
+        if (previewContent) {
+            try {
+                const parsed = JSON.parse(previewContent);
+                return {
+                    tier: 'career_identity',
+                    profile: {
+                        id: 'preview',
+                        resumeId: castIdParam || 'preview',
+                        userId: null,
+                        themeId: previewTheme || 'aurora',
+                        status: 'draft',
+                        content: parsed,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    },
+                    derived: {
+                        candidateName: parsed?.hero?.fullName || null,
+                        email: parsed?.contact?.email || null,
+                        jobTitle: parsed?.hero?.headline || null,
+                        resumeUrl: previewResumeUrl,
+                        videoUrl: previewVideoUrl,
+                        portfolioUrl: null,
+                    },
+                } as CareerIdentityProfileResponse;
+            } catch {
+                return null;
+            }
+        }
+        return initialCachedProfile;
+    });
+    const [dataLoading, setDataLoading] = useState(!previewContent && !initialCachedProfile);
+    const [dataError, setDataError] = useState<string | null>(null);
+
+    // Primary source: career_identity_data content (what admin edits)
+    // Fallback: derived data (from profiles/job_requests tables)
+    const displayName = profile?.profile?.content?.hero?.fullName || profile?.derived?.candidateName || candidateNameParam || 'Professional';
+    const displayTitle = profile?.profile?.content?.hero?.headline || jobTitleParam || profile?.derived?.jobTitle || '';
+    const displayEmail = emailParam || profile?.derived?.email || '';
+    const displayLocation = profile?.profile?.content?.contact?.location || '';
+    const displayEducation = (profile?.profile?.content?.education || []).map((e: any) => e.degree).filter(Boolean).join(', ');
+    const displayOpenToRelocate = profile?.profile?.content?.hero?.openToRelocate || false;
+    const videoUrl = (profile?.profile?.submissionId ? profile.derived?.videoUrl : videoUrlParam || profile?.derived?.videoUrl) || null;
+    const portfolioUrl = profile?.derived?.portfolioUrl || null;
+    const resumeUrl = (profile?.profile?.submissionId ? profile.derived?.resumeUrl : resumeUrlParam || profile?.derived?.resumeUrl) || null;
+    const shareUrl = `${window.location.origin}${location.pathname}${location.search}`;
+
+    const content = profile?.profile?.content;
+    const skillGroups = content?.skills?.length
+        ? [{ category: 'Skills', items: content.skills.map((s: any) => s.name) }]
+        : [{ category: 'Skills', items: [] }];
+
+    const displaySummary = content?.about || '';
+    const linkedinUrl = profile?.profile?.content?.contact?.linkedin ? getValidLink(profile.profile.content.contact.linkedin) : undefined;
+    const activeThemeKey: CareerIdentityThemeKey = (
+        profile?.profile?.themeId || 
+        previewTheme || 
+        themeParam || 
+        cachedTheme || 
+        'zenith'
+    ) as CareerIdentityThemeKey;
+    const themeTokens = getThemeTokens(activeThemeKey);
+
+    const [isIntroVideoOpen, setIsIntroVideoOpen] = useState(false);
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+    const [isVideoMuted, setIsVideoMuted] = useState(false);
+    const [isVideoExpanded, setIsVideoExpanded] = useState(false);
+    const [isVideoMinimized, setIsVideoMinimized] = useState(false);
+    const [showControls, setShowControls] = useState(false);
+    const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [isHireMeModalOpen, setIsHireMeModalOpen] = useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [isDownloadingResume, setIsDownloadingResume] = useState(false);
+    const [scrolled, setScrolled] = useState(false);
+    const [isHumanMode, setIsHumanMode] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [scheduleStep, setScheduleStep] = useState<1 | 2 | 3>(1);
+    const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+    const [statusMessage, setStatusMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
+    const [formData, setFormData] = useState({ name: '', email: '', date: '', time: '', subject: '', message: '', jobUrl: '' });
+
+    const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+    const [videoDuration, setVideoDuration] = useState(0);
+    const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+    const [hasAutoPlayed, setHasAutoPlayed] = useState(false);
+    const [candidatePhone] = useState<string | null>(null);
+    const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
+    const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+    const [walletPassUrl, setWalletPassUrl] = useState<string | null>(null);
+    const [walletCardUrl, setWalletCardUrl] = useState<string | null>(null);
+    const [appleWalletReady, setAppleWalletReady] = useState(false);
+    const [googleWalletReady, setGoogleWalletReady] = useState(false);
+    const [walletLoading, setWalletLoading] = useState(false);
+    const [showWalletUnavailable, setShowWalletUnavailable] = useState(false);
+    const [walletActionLoading, setWalletActionLoading] = useState<'apple' | 'google' | 'card' | null>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+
+    useEffect(() => {
+        const handleScroll = () => setScrolled(window.scrollY > 20);
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    useEffect(() => {
+        if (isPreviewMode) return;
+
+        const loadData = async () => {
+            if (!initialCachedProfile) {
+                setDataLoading(true);
+            }
+            try {
+                const castId = castIdParam;
+                if (!castId) { setDataLoading(false); return; }
+
+                // Load from Express backend public endpoint (same backend that handles publishing)
+                const response = await fetch(apiUrl(`/api/v1/career-identity/profile/public/${encodeURIComponent(castId)}`));
+                if (!response.ok) {
+                    const body = await response.json().catch(() => ({}));
+                    throw new Error(body?.error?.message || body?.message || `Failed to load Career Identity profile (${response.status})`);
+                }
+                const body = await response.json();
+                if (body?.data) {
+                    setProfile(body.data);
+                    if (castId) {
+                        try {
+                            if (body.data.profile?.submissionId) {
+                                localStorage.removeItem(`ci_profile_${castId}`);
+                            } else {
+                                localStorage.setItem(`ci_profile_${castId}`, JSON.stringify(body.data));
+                            }
+                            if (body.data.profile?.themeId) {
+                                localStorage.setItem(`ci_theme_${castId}`, body.data.profile.themeId);
+                            }
+                        } catch { }
+                    }
+                }
+            } catch (err: any) {
+                console.error('[CareerIdentityPage] Failed to load data:', err);
+                setDataError(err.message || 'Failed to load data');
+            } finally { setDataLoading(false); }
+        };
+        loadData();
+        const currentId = castIdParam || "profile";
+        trackEvent('page_load', currentId, { source: sourceParam });
+        if (openContactParam) setTimeout(() => setIsContactModalOpen(true), 800);
+        return () => trackSessionEnd(currentId);
+    }, [castIdParam, openContactParam, isPreviewMode]);
+
+    // Sync avatar from profile data (published) or localStorage (preview)
+    useEffect(() => {
+        if (isPreviewMode) {
+            setSelectedAvatar(previewAvatar || null);
+        } else {
+            setSelectedAvatar(profile?.profile?.content?.hero?.profileImageUrl || null);
+        }
+    }, [profile, isPreviewMode, previewAvatar]);
+
+    // Extract wallet links from published profile JSON
+    useEffect(() => {
+        if (profile?.profile) {
+            setWalletPassUrl(profile.profile.walletPassUrl || null);
+            setWalletCardUrl(profile.profile.walletCardUrl || null);
+        }
+    }, [profile]);
+
+    useEffect(() => {
+        const castId = castIdParam;
+        if (!castId || isPreviewMode) return;
+
+        let cancelled = false;
+        const loadWallet = async () => {
+            try {
+                setWalletLoading(true);
+                const status = await fetchWalletStatus(castId);
+                if (cancelled) return;
+                setAppleWalletReady(status.apple);
+                setGoogleWalletReady(status.google);
+                if (status.walletPassUrl) setWalletPassUrl(status.walletPassUrl);
+                if (status.walletCardUrl) setWalletCardUrl(status.walletCardUrl);
+            } catch {
+                if (!cancelled) {
+                    setAppleWalletReady(false);
+                    setGoogleWalletReady(false);
+                }
+            } finally {
+                if (!cancelled) setWalletLoading(false);
+            }
+        };
+
+        loadWallet();
+        return () => { cancelled = true; };
+    }, [castIdParam, isPreviewMode]);
+
+    // Microsoft Clarity Dynamic Per-Client Integration
+    useEffect(() => {
+        if (isPreviewMode || !castIdParam) return;
+
+        const profileData = profile?.profile;
+        if (!profileData) return;
+
+        const clarityStatus = (profileData as any).clarityStatus;
+        const clarityProjectId = (profileData as any).clarityProjectId;
+
+        if (clarityStatus !== 'active' || !clarityProjectId) {
+            detectAndForceClearClarityData();
+            return;
+        }
+
+        let isCancelled = false;
+
+        const resolveViewerRoleAndMount = async () => {
+            // Determine 4-tier viewer role
+            let viewerRole: 'owner' | 'admin' | 'other_client' | 'unknown_visitor' = 'unknown_visitor';
+            if (user) {
+                const currentUserId = user.id;
+                const profileOwnerId = profileData.userId;
+                const userEmail = (user.email || '').toLowerCase().trim();
+
+                // 1. Is this the profile owner?
+                if (
+                    (profileOwnerId && currentUserId === profileOwnerId) ||
+                    (userEmail && (profileData as any).email && userEmail === ((profileData as any).email || '').toLowerCase().trim())
+                ) {
+                    viewerRole = 'owner';
+                } else {
+                    // 2. Is this user in the crm_admins table?
+                    let isAdmin = false;
+                    const cachedAdmin = sessionStorage.getItem(`is_crm_admin_${currentUserId}`);
+                    if (cachedAdmin !== null) {
+                        isAdmin = cachedAdmin === 'true';
+                    } else if (userEmail) {
+                        try {
+                            isAdmin = (await fetchCareerIdentityViewer()).isAdmin;
+                            sessionStorage.setItem(`is_crm_admin_${currentUserId}`, String(isAdmin));
+                        } catch (err) {
+                            console.warn('[Clarity] Failed to verify admin status:', err);
+                        }
+                    }
+
+                    if (isAdmin) {
+                        viewerRole = 'admin';
+                    } else {
+                        // 3. Authenticated user who is neither owner nor admin
+                        viewerRole = 'other_client';
+                    }
+                }
+            }
+
+            if (isCancelled) return;
+
+            const source = resolveTrafficSource();
+            const theme = profileData.themeId || activeThemeKey;
+
+            mountClientClarity(clarityProjectId, {
+                castId: castIdParam,
+                candidateId: profileData.userId,
+                viewerRole,
+                source,
+                theme,
+            });
+        };
+
+        resolveViewerRoleAndMount();
+
+        return () => {
+            isCancelled = true;
+            detectAndForceClearClarityData();
+        };
+    }, [isPreviewMode, castIdParam, profile?.profile?.clarityStatus, profile?.profile?.clarityProjectId, user, activeThemeKey]);
+
+    useEffect(() => {
+        if (isContactModalOpen) {
+            trackClaritySmartEvent('contact_open');
+        }
+    }, [isContactModalOpen]);
+
+    useEffect(() => {
+        if (videoUrl && !isIntroVideoOpen && !hasAutoPlayed) {
+            const timer = setTimeout(() => {
+                setIsIntroVideoOpen(true);
+                // Do NOT autoplay — show the floating player with Play button
+                // User must click Play or Watch Intro to start
+                setHasAutoPlayed(true);
+            }, 800);
+            return () => clearTimeout(timer);
+        }
+    }, [videoUrl]);
+
+    useEffect(() => {
+        if (autoPlayVideoParam && videoUrl && !isIntroVideoOpen && !hasAutoPlayed) {
+            const timer = setTimeout(() => {
+                setIsIntroVideoOpen(true); setIsVideoPlaying(true);
+                setAutoplayBlocked(false); setHasAutoPlayed(true);
+                trackEvent('play_intro', castIdParam || "profile", { source: sourceParam, mode: 'autoplay' });
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [autoPlayVideoParam, videoUrl, isIntroVideoOpen, hasAutoPlayed]);
+
+    useEffect(() => {
+        if (isIntroVideoOpen && isVideoPlaying && videoRef.current) {
+            const vid = videoRef.current;
+            vid.muted = true;
+            vid.play().then(() => {
+                setTimeout(() => { if (videoRef.current) { videoRef.current.muted = false; setIsVideoMuted(false); } }, 300);
+            }).catch(() => { setIsVideoPlaying(false); setAutoplayBlocked(true); });
+        }
+    }, [isIntroVideoOpen, isVideoPlaying]);
+
+    const handlePlayIntro = () => {
+        trackEvent('play_intro', castIdParam || "profile", { source: sourceParam });
+        trackClaritySmartEvent('video_play');
+        setIsIntroVideoOpen(true);
+    };
+
+    const handleAvatarSelect = (avatarPath: string) => {
+        setSelectedAvatar(avatarPath);
+        if (castIdParam) localStorage.setItem(`avatar_${castIdParam}`, avatarPath);
+        setIsAvatarModalOpen(false);
+    };
+
+    const handleDownloadResume = async () => {
+        if (!resumeUrl) return;
+        setIsDownloadingResume(true);
+        trackEvent('pdf_download', castIdParam || "profile", { source: sourceParam });
+        trackClaritySmartEvent('resume_download');
+        try {
+            const fileName = `${(displayName || 'Resume').replace(/\s+/g, '_')}_resume.pdf`;
+            const response = await fetch(resumeUrl);
+            if (!response.ok) throw new Error('Fetch failed');
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+        } catch {
+            const link = document.createElement('a');
+            link.href = resumeUrl;
+            link.setAttribute('download', `${(displayName || 'Resume').replace(/\s+/g, '_')}_resume.pdf`);
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } finally {
+            setIsDownloadingResume(false);
+        }
+    };
+
+    const handleDownloadWalletCard = async () => {
+        if (!castIdParam) return;
+        try {
+            setWalletActionLoading('card');
+            trackClaritySmartEvent('wallet_card_png_download');
+            const blob = await downloadWalletCard(castIdParam);
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${displayName.replace(/\s+/g, '_')}_career_identity_card.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch {
+            setShowWalletUnavailable(true);
+            setTimeout(() => setShowWalletUnavailable(false), 3000);
+        } finally {
+            setWalletActionLoading(null);
+        }
+    };
+
+    const handleGoogleWallet = async () => {
+        if (!castIdParam) return;
+        try {
+            setWalletActionLoading('google');
+            trackClaritySmartEvent('wallet_google_click');
+            const saveUrl = await fetchGoogleWalletUrl(castIdParam);
+            window.open(saveUrl, '_blank', 'noopener,noreferrer');
+        } catch {
+            setShowWalletUnavailable(true);
+            setTimeout(() => setShowWalletUnavailable(false), 3000);
+        } finally {
+            setWalletActionLoading(null);
+        }
+    };
+
+    const handleAppleWallet = () => {
+        if (!castIdParam) return;
+        trackClaritySmartEvent('wallet_apple_click');
+        if (appleWalletReady) {
+            setWalletActionLoading('apple');
+            window.open(getAppleWalletPassUrl(castIdParam), '_blank', 'noopener,noreferrer');
+            setTimeout(() => setWalletActionLoading(null), 1000);
+            return;
+        }
+        if (walletPassUrl) {
+            window.open(walletPassUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
+        setShowWalletUnavailable(true);
+        setTimeout(() => setShowWalletUnavailable(false), 3000);
+    };
+
+    const handleEmailCandidate = () => {
+        trackEvent('play_intro', castIdParam || "profile", { source: sourceParam });
+        window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${displayEmail}&su=${encodeURIComponent("Regarding Interview")}&body=${encodeURIComponent("Hi, I would like to connect regarding your profile.")}`, "_blank");
+        setIsContactModalOpen(false);
+    };
+
+    const handleWhatsAppCandidate = () => {
+        if (!candidatePhone) return;
+        trackEvent('play_intro', castIdParam || "profile", { source: sourceParam });
+        window.open(`https://wa.me/${candidatePhone}?text=${encodeURIComponent("Hi, I would like to connect regarding your interview.")}`, "_blank");
+        setIsContactModalOpen(false);
+    };
+
+    const handleScheduleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setFormStatus('submitting');
+        if (!formData.jobUrl || formData.jobUrl.trim() === '') {
+            setStatusMessage({ type: 'error', text: 'Meeting link is required' });
+            setTimeout(() => setStatusMessage(null), 3000); setFormStatus('idle'); return;
+        }
+        try {
+            const meetingTime = `${formData.date}T${formData.time}`;
+            const { error } = await supabase.from('scheduled_calls').insert({
+                candidate_email: displayEmail, candidate_name: displayName, hr_email: formData.email,
+                meeting_time: meetingTime, meeting_link: formData.jobUrl,
+            });
+            if (error) throw error;
+            await supabase.from('notifications').insert({
+                user_email: displayEmail, is_read: false,
+                message: `New interview scheduled with HR (${formData.email}) for ${new Date(formData.date).toLocaleDateString()}.`
+            });
+            trackEvent('play_intro', castIdParam || "profile", { source: sourceParam });
+            setFormStatus('success');
+            setTimeout(() => { setIsScheduleModalOpen(false); setFormStatus('idle'); setFormData({ name: '', email: '', date: '', time: '', subject: '', message: '', jobUrl: '' }); setScheduleStep(1); }, 3000);
+        } catch { setFormStatus('error'); }
+    };
+
+    const getDynamicIcon = () => <BadgeCheck size={20} />;
+
+    return (
+        <div className={`min-h-screen transition-all duration-1000 ${isHumanMode ? 'bg-amber-50/30 selection:bg-amber-100 selection:text-amber-900' : `${themeTokens.pageBg} ${themeTokens.selection}`} overflow-x-clip`}>
+            {dataError && (
+                <div className="fixed bottom-4 left-4 z-[200] flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-xl shadow-md text-xs">
+                    <AlertCircle size={14} /> {dataError}
+                </div>
+            )}
+
+            {/* Header */}
+            <header className={`sticky top-0 z-50 w-full border-b transition-all duration-300 ${scrolled ? `${themeTokens.headerBg} ${themeTokens.headerBorder} shadow-sm` : 'bg-transparent border-transparent'}`}>
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center justify-between h-16 md:h-20">
+                        <div className="flex items-center gap-4 md:gap-8">
+                            <div className={`flex items-center gap-2 transition-all duration-700 ${isHumanMode ? 'text-orange-600' : themeTokens.logoAccentText}`}>
+                                <div className={`p-1.5 rounded-lg text-white shadow-lg ${isHumanMode ? 'bg-orange-600 shadow-orange-200/40' : themeTokens.logoIconBg}`}><Layers size={20} /></div>
+                                <h2 className={`text-lg md:text-xl font-normal tracking-tighter ${isHumanMode ? 'font-hand text-xl md:text-2xl text-stone-900' : themeTokens.heading}`}>
+                                    {dataLoading && !content ? (
+                                        <Shimmer className="h-6 w-36 rounded-md inline-block align-middle" />
+                                    ) : (
+                                        <>{displayName}<span className={isHumanMode ? 'text-orange-600' : themeTokens.logoAccentText}>.</span></>
+                                    )}
+                                </h2>
+                            </div>
+                            <nav className="hidden sm:flex items-center gap-3">
+                                {linkedinUrl && (
+                                    <a href={linkedinUrl} target="_blank" rel="noopener noreferrer"
+                                        className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-xl border transition-all ${isHumanMode ? 'bg-amber-100/30 border-amber-200/50 text-amber-800 hover:bg-amber-100' : themeTokens.navButton}`}>
+                                        <Linkedin size={16} />
+                                    </a>
+                                )}
+                                {portfolioUrl && (
+                                    <a href={getValidLink(portfolioUrl)} target="_blank" rel="noopener noreferrer"
+                                        onClick={() => {
+                                            trackEvent('portfolio_click', castIdParam || "profile", { source: sourceParam });
+                                            trackClaritySmartEvent('portfolio_click');
+                                        }}
+                                        className={`flex items-center gap-2 h-9 md:h-10 px-3 md:px-4 rounded-xl border text-xs font-medium transition-all ${isHumanMode ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' : themeTokens.navButton}`}>
+                                        Portfolio
+                                    </a>
+                                )}
+                            </nav>
+                        </div>
+                        <div className="flex items-center gap-2 md:gap-4">
+                            <button onClick={() => setIsHumanMode(!isHumanMode)}
+                                className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-normal uppercase tracking-widest ${isHumanMode ? 'bg-orange-50 text-orange-700 border border-orange-200' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'}`}>
+                                <Sparkles size={12} /> Creative
+                            </button>
+                            <button onClick={() => setIsShareModalOpen(true)}
+                                className={`hidden sm:inline-flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-xs font-normal uppercase tracking-widest transition-all ${isHumanMode ? 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-50 font-hand text-base tracking-normal' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>
+                                <Share2 size={14} /> Share
+                            </button>
+                            <button onClick={handleDownloadResume} disabled={isDownloadingResume}
+                                className={`hidden sm:inline-flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-xs font-normal uppercase tracking-widest transition-all ${isHumanMode ? 'bg-orange-100 text-orange-800 hover:bg-orange-200 font-hand text-base tracking-normal border border-orange-300' : `${themeTokens.buttonSecondary} border`}`}>
+                                {isDownloadingResume ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Resume
+                            </button>
+                            <button onClick={() => setIsContactModalOpen(true)}
+                                className={`px-5 md:px-6 py-2 rounded-xl text-xs font-normal uppercase tracking-widest shadow-lg ${isHumanMode ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-200/40' : themeTokens.buttonPrimary}`}>Contact</button>
+                            <button onClick={() => setIsSidebarOpen(true)} className="sm:hidden p-2 text-slate-600"><Menu size={24} /></button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            {/* Mobile Sidebar */}
+            <AnimatePresence>
+                {isSidebarOpen && (
+                    <>
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60]" />
+                        <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="fixed top-0 right-0 h-full w-[280px] z-[70] bg-white shadow-2xl p-6 flex flex-col">
+                            <div className="flex items-center justify-between mb-8">
+                                <div className="flex items-center gap-2">
+                                    <Layers size={20} className="text-orange-600" />
+                                    <span className="font-normal tracking-tighter text-slate-900">{displayName}<span className="text-orange-600">.</span></span>
+                                </div>
+                                <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl"><X size={20} /></button>
+                            </div>
+                            <div className="space-y-4 pt-6 border-t border-slate-100">
+                                <button onClick={() => setIsHumanMode(!isHumanMode)}
+                                    className={`flex items-center gap-3 w-full p-4 rounded-2xl ${isHumanMode ? 'bg-amber-100 text-amber-900' : 'bg-slate-50 text-slate-900'}`}>
+                                    <Sparkles className={`w-5 h-5 ${isHumanMode ? 'fill-amber-500' : ''}`} /> Creative Mode
+                                </button>
+                                <button onClick={() => { setIsContactModalOpen(true); setIsSidebarOpen(false); }}
+                                    className="flex items-center gap-3 w-full p-4 rounded-2xl shadow-lg bg-slate-900 text-white hover:bg-slate-800">
+                                    <Mail className="w-5 h-5" /> Contact Me
+                                </button>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+
+            {/* Main Content */}
+            <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10 lg:py-12">
+                <div className="flex flex-col lg:flex-row gap-6 md:gap-8 lg:gap-12">
+                    <div className="w-full lg:flex-1 space-y-6 md:space-y-8 min-w-0">
+                        <HeroSection
+                            dataLoading={dataLoading}
+                            parsed={profile?.profile?.content}
+                            isHumanMode={isHumanMode}
+                            displayName={displayName}
+                            displayTitle={displayTitle}
+                            displayEducation={displayEducation || ''}
+                            displayYears=""
+                            displayKeyMetric=""
+                            displayOpenToRelocate={displayOpenToRelocate}
+                            videoUrl={videoUrl}
+                            selectedAvatar={selectedAvatar}
+                            onAvatarClick={canChangeAvatarParam ? () => setIsAvatarModalOpen(true) : () => { }}
+                            canChangeAvatar={canChangeAvatarParam}
+                            setIsIntroVideoOpen={handlePlayIntro}
+                            setIsContactModalOpen={() => { setIsContactModalOpen(true); trackEvent('lets_talk', castIdParam || "profile", { source: sourceParam, type: 'hero_contact' }); }}
+                            themeTokens={themeTokens}
+                        />
+
+                        {displaySummary && (
+                            <div className={`transition-all ${isHumanMode ? 'p-6 md:p-8 rounded-[2rem] border bg-white border-amber-200 shadow-amber-50' : `${themeTokens.card} ${themeTokens.cardHover}`}`}>
+                                <h3 className={`text-lg font-bold flex items-center gap-2 mb-4 ${isHumanMode ? 'text-stone-800 font-hand text-2xl tracking-normal' : themeTokens.heading}`}>
+                                    <Lightbulb size={20} className={isHumanMode ? 'text-amber-600' : themeTokens.sectionIcon} />
+                                    About Me
+                                    {isHumanMode && <Scribble className="-bottom-2 left-0 w-full text-amber-500/40" />}
+                                </h3>
+                                <p className={`text-sm md:text-base leading-relaxed whitespace-pre-line ${isHumanMode ? 'text-stone-700 font-hand text-lg tracking-normal' : themeTokens.bodyText}`}>{displaySummary}</p>
+                            </div>
+                        )}
+
+                        <SkillsSection
+                            isHumanMode={isHumanMode}
+                            dataLoading={dataLoading}
+                            parsed={profile?.profile?.content}
+                            skillGroups={skillGroups}
+                            getDynamicIcon={getDynamicIcon}
+                            themeTokens={themeTokens}
+                        />
+
+                        {content?.experience && content.experience.length > 0 && (
+                            <ExperienceSection
+                                isHumanMode={isHumanMode}
+                                experience={content.experience}
+                                themeTokens={themeTokens}
+                            />
+                        )}
+
+                        {content?.projects && content.projects.length > 0 && (
+                            <ProjectsSection
+                                isHumanMode={isHumanMode}
+                                projects={content.projects as any}
+                                themeTokens={themeTokens}
+                            />
+                        )}
+                    </div>
+
+                    {/* Right Sidebar */}
+                    <div className="w-full lg:w-[340px] xl:w-[380px] shrink-0 lg:sticky lg:top-24 self-start">
+                        <motion.div
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className={`rounded-2xl border overflow-hidden ${isHumanMode ? 'bg-white border-amber-300 shadow-amber-200/50 rounded-[3rem]' : themeTokens.sidebarCard}`}
+                        >
+                            <div className={`p-5 md:p-6 text-white ${isHumanMode ? 'bg-amber-600' : themeTokens.sidebarHeaderBg}`}>
+                                <h3 className={`font-normal flex items-center gap-2 text-sm uppercase tracking-widest ${isHumanMode ? 'font-hand text-2xl' : ''}`}>
+                                    <User size={18} className={isHumanMode ? 'text-amber-200' : 'opacity-80'} />Profile Overview
+                                </h3>
+                            </div>
+                            <div className="p-5 md:p-6 space-y-4">
+                                {dataLoading && !content ? (
+                                    <>
+                                        <div className="space-y-4">
+                                            <div className="flex items-start gap-3 md:gap-4">
+                                                <Shimmer className="h-10 w-10 rounded-xl shrink-0" />
+                                                <div className="space-y-1.5 flex-1">
+                                                    <Shimmer className="h-2.5 w-16" />
+                                                    <Shimmer className="h-4 w-32" />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-start gap-3 md:gap-4">
+                                                <Shimmer className="h-10 w-10 rounded-xl shrink-0" />
+                                                <div className="space-y-1.5 flex-1">
+                                                    <Shimmer className="h-2.5 w-16" />
+                                                    <Shimmer className="h-4 w-28" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-3 pt-2">
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
+                                            <Shimmer className="h-12 w-full rounded-2xl" />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="space-y-4">
+                                            {displayTitle && (
+                                                <div className="flex items-start gap-3 md:gap-4">
+                                                    <div className={`p-2.5 rounded-xl shrink-0 ${isHumanMode ? 'bg-amber-100 text-amber-600' : themeTokens.secondaryBadge}`}><BadgeCheck size={18} /></div>
+                                                    <div className="min-w-0">
+                                                        <p className={`text-[10px] font-normal uppercase tracking-widest mb-1 ${isHumanMode ? 'text-amber-700 font-hand text-sm' : 'text-slate-500'}`}>Headline</p>
+                                                        <p className={`text-sm font-medium break-words ${isHumanMode ? 'text-stone-800 font-hand text-lg' : themeTokens.statValue}`}>{displayTitle}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {displayEducation && (
+                                                <div className="flex items-start gap-3 md:gap-4">
+                                                    <div className={`p-2.5 rounded-xl shrink-0 ${isHumanMode ? 'bg-amber-100 text-amber-600' : themeTokens.secondaryBadge}`}><GraduationCap size={18} /></div>
+                                                    <div className="min-w-0">
+                                                        <p className={`text-[10px] font-normal uppercase tracking-widest mb-1 ${isHumanMode ? 'text-amber-700 font-hand text-sm' : 'text-slate-500'}`}>Education</p>
+                                                        <p className={`text-sm font-medium break-words ${isHumanMode ? 'text-stone-800 font-hand text-lg' : themeTokens.statValue}`}>{displayEducation}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {displayLocation && (
+                                                <div className="flex items-start gap-3 md:gap-4">
+                                                    <div className={`p-2.5 rounded-xl shrink-0 ${isHumanMode ? 'bg-amber-100 text-amber-600' : themeTokens.accentBg}`}><MapPin size={18} /></div>
+                                                    <div className="min-w-0">
+                                                        <p className={`text-[10px] font-normal uppercase tracking-widest mb-1 ${isHumanMode ? 'text-amber-700 font-hand text-sm' : 'text-slate-500'}`}>Location</p>
+                                                        <p className={`text-sm font-medium break-words ${isHumanMode ? 'text-amber-700 font-hand text-lg' : themeTokens.accentText}`}>{displayLocation}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="space-y-3 pt-2">
+                                            {videoUrl && (
+                                                <button onClick={() => { setIsIntroVideoOpen(true); setIsVideoMinimized(false); }}
+                                                    className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${isHumanMode ? 'bg-[#0e121b] text-white hover:bg-slate-800' : themeTokens.buttonPrimary}`}>
+                                                    <Play size={18} /> Watch Intro
+                                                </button>
+                                            )}
+                                            <button onClick={() => { setIsContactModalOpen(true); trackEvent('lets_talk', castIdParam || "profile", { source: sourceParam, type: 'contact_modal' }); }}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${isHumanMode ? 'bg-amber-600 text-white hover:bg-amber-700' : themeTokens.actionButton}`}>
+                                                <Mail size={18} />Contact
+                                            </button>
+                                            <button
+                                                onClick={() => window.open(`/final-result/${profile?.profile?.resumeId || castIdParam || 'profile'}`, '_blank')}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 border shadow-sm active:scale-[0.98] transition-all ${
+                                                    isHumanMode
+                                                        ? 'bg-white text-stone-800 hover:bg-stone-50 border-amber-300'
+                                                        : `${themeTokens.buttonSecondary}`
+                                                }`}
+                                            >
+                                                <FileText size={18} className={isHumanMode ? 'text-amber-600' : themeTokens.accentText} />
+                                                View Digital Resume
+                                            </button>
+                                            <button
+                                                onClick={handleAppleWallet}
+                                                disabled={walletLoading || walletActionLoading === 'apple'}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${
+                                                    appleWalletReady || walletPassUrl
+                                                        ? 'bg-black text-white hover:bg-slate-900'
+                                                        : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                {walletActionLoading === 'apple'
+                                                    ? <Loader2 size={18} className="animate-spin" />
+                                                    : <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" /></svg>}
+                                                {appleWalletReady ? 'Add to Apple Wallet' : walletPassUrl ? 'Open Apple Wallet Link' : 'Add to Apple Wallet'}
+                                            </button>
+                                            <button
+                                                onClick={handleGoogleWallet}
+                                                disabled={!googleWalletReady || walletLoading || walletActionLoading === 'google'}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${googleWalletReady ? 'bg-[#0F9D58] text-white hover:bg-[#0B8043]' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
+                                            >
+                                                {walletActionLoading === 'google' ? <Loader2 size={18} className="animate-spin" /> : <Layers size={18} />}
+                                                Add to Google Wallet
+                                            </button>
+                                            <button
+                                                onClick={handleDownloadWalletCard}
+                                                disabled={walletLoading || walletActionLoading === 'card'}
+                                                className={`w-full py-4 rounded-2xl font-normal text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all ${isHumanMode ? 'bg-[#0e121b] text-white hover:bg-slate-800' : themeTokens.buttonPrimary}`}
+                                            >
+                                                {walletActionLoading === 'card' ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                                                Download Career Identity Card
+                                            </button>
+                                            {showWalletUnavailable && (
+                                                <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+                                                    Wallet option not available yet. Please check the pass configuration.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                </div>
+            </main>
+
+            <VideoPlayer
+                videoUrl={videoUrl}
+                isIntroVideoOpen={isIntroVideoOpen} setIsIntroVideoOpen={setIsIntroVideoOpen}
+                isVideoPlaying={isVideoPlaying} setIsVideoPlaying={setIsVideoPlaying}
+                isVideoMuted={isVideoMuted} setIsVideoMuted={setIsVideoMuted}
+                isVideoExpanded={isVideoExpanded} setIsVideoExpanded={setIsVideoExpanded}
+                isVideoMinimized={isVideoMinimized} setIsVideoMinimized={setIsVideoMinimized}
+                videoCurrentTime={videoCurrentTime} setVideoCurrentTime={setVideoCurrentTime}
+                videoDuration={videoDuration} setVideoDuration={setVideoDuration}
+                showControls={showControls} setShowControls={setShowControls}
+                autoplayBlocked={autoplayBlocked} setAutoplayBlocked={setAutoplayBlocked}
+                isHumanMode={isHumanMode} displayName={displayName}
+            />
+
+            <ShareModal
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
+                shareUrl={shareUrl}
+                candidateName={candidateNameParam}
+                displayName={displayName}
+                themeId={activeThemeKey}
+            />
+
+            <ResumeModals
+                themeId={activeThemeKey}
+                themeTokens={themeTokens}
+                isHireMeModalOpen={isHireMeModalOpen} setIsHireMeModalOpen={setIsHireMeModalOpen}
+                isContactModalOpen={isContactModalOpen} setIsContactModalOpen={setIsContactModalOpen}
+                isScheduleModalOpen={isScheduleModalOpen} setIsScheduleModalOpen={setIsScheduleModalOpen}
+                displayName={displayName} displayTitle={displayTitle} displayEmail={displayEmail}
+                candidatePhone={candidatePhone} isHumanMode={isHumanMode}
+                handleDownloadResume={handleDownloadResume}
+                handleEmailCandidate={handleEmailCandidate} handleWhatsAppCandidate={handleWhatsAppCandidate}
+                handleScheduleSubmit={handleScheduleSubmit}
+                formData={formData} setFormData={setFormData}
+                scheduleStep={scheduleStep} setScheduleStep={setScheduleStep}
+                formStatus={formStatus} statusMessage={statusMessage}
+                isAvatarModalOpen={isAvatarModalOpen} setIsAvatarModalOpen={setIsAvatarModalOpen}
+                onAvatarSelect={handleAvatarSelect}
+                initialGender={profile?.profile?.content?.hero?.gender || (displayName.toLowerCase().endsWith('a') || displayName.toLowerCase().includes('female') || displayName.toLowerCase().includes('she') ? 'Female' : 'Male')}
+            />
+        </div>
+    );
+};
+
+export default CareerIdentityPage;

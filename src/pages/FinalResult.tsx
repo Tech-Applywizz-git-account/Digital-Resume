@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button";
-import { Download, Play, ArrowLeft, LogOut, MessageSquare, Link, Copy, CheckCircle, Loader2, X, AlertCircle, Link2, Pencil } from "lucide-react";
+import { Download, Play, ArrowLeft, LogOut, MessageSquare, Link, Copy, CheckCircle, Loader2, X, AlertCircle, Link2, Pencil, Sparkles } from "lucide-react";
 import { useAuthContext } from "../contexts/AuthContext";
 import { PDFDocument, PDFName, PDFNumber, PDFArray, PDFString, rgb } from "pdf-lib";
 import { supabase } from "../integrations/supabase/client";
@@ -10,6 +10,7 @@ import ResumeChatPanel from "../components/ResumeChatPanel";
 import type { ResumeChatPanelProps } from "../components/ResumeChatPanel";
 import { trackEvent, trackSessionEnd } from "../utils/tracking";
 import { extractTextFromBuffer } from "../utils/textExtraction";
+import { useSubscriptionTier } from "../features/subscription/hooks/useSubscriptionTier";
 import { isSafeUUID } from "../utils/uuidHelpers";
 import { resolveRecordingUrl } from "../utils/recordingHelpers";
 
@@ -143,13 +144,22 @@ const FinalResult: React.FC = () => {
   const urlFromQuery = searchParams.get('resumeUrl');
   const emailParam = searchParams.get('email');
 
+  // Resolves the tier for THIS resume (not the dashboard the visitor came
+  // from — tier is a property of the resume/profile). Defaults to
+  // "digital_resume" while loading and on any error, so Tier 1 behavior
+  // below is guaranteed unchanged for every resume until a resume is
+  // explicitly assigned "career_identity" tier.
+  const { tier } = useSubscriptionTier(castId || idFromQuery);
+
   const [resumeUrl, setResumeUrl] = useState<string | null>(
     urlFromQuery ? decodeURIComponent(urlFromQuery) : null
   );
   const [resumeFileName, setResumeFileName] = useState<string>(
     urlFromQuery ? (decodeURIComponent(urlFromQuery).split('/').pop()?.split('?')[0] || "Resume.pdf") : "Resume.pdf"
   );
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const videoTarget = JSON.stringify([castId || idFromQuery, emailParam]);
+  const [resolvedVideo, setResolvedVideo] = useState<{ target: string; url: string | null } | null>(null);
+  const videoUrl = resolvedVideo?.target === videoTarget ? resolvedVideo.url : null;
   const [jobTitle, setJobTitle] = useState<string>("");
   const [loading, setLoading] = useState(!urlFromQuery && !!(castId || idFromQuery));
   const nameParamFromUrl = searchParams.get('candidateName') || searchParams.get('name');
@@ -236,6 +246,12 @@ const FinalResult: React.FC = () => {
 
   // ✅ Load data from localStorage or Supabase
   useEffect(() => {
+    let cancelled = false;
+    const setVideoUrl = (url: string | null) => {
+      if (!cancelled) setResolvedVideo({ target: videoTarget, url });
+    };
+
+    setVideoUrl(null);
     const loadData = async () => {
       // Only show top-level loader if we don't have enough initial data
       if (!resumeUrl) {
@@ -276,26 +292,32 @@ const FinalResult: React.FC = () => {
                 }
               });
             setJobTitle('Resume');
-            const video = await resolveRecordingUrl({
-              isCRM: true,
-              email: decodedEmail,
-              userId: user?.id,
-            }) || await resolveRecordingUrl({
-              isCRM: false,
-              email: decodedEmail,
-              userId: user?.id,
-            });
-            if (video) setVideoUrl(video);
+            const findCandidateVideo = async (userId?: string | null) =>
+              await resolveRecordingUrl({ isCRM: true, email: decodedEmail, userId }) ||
+              await resolveRecordingUrl({ isCRM: false, email: decodedEmail, userId });
+
+            let video = await findCandidateVideo();
+            if (!video && !cancelled) {
+              const { data: owner } = await supabase
+                .from('digital_resume_by_crm')
+                .select('user_id')
+                .eq('email', decodedEmail)
+                .maybeSingle();
+              if (owner?.user_id && !cancelled) {
+                video = await findCandidateVideo(owner.user_id);
+              }
+            }
+            setVideoUrl(video);
           } else {
             // No email in URL — fall back to localStorage
-            await loadLocalData();
+            await loadLocalData(setVideoUrl);
           }
         } else if (effectiveId) {
           // If we have an ID (from path or query), load that specific record
-          await loadExternalData(effectiveId);
+          await loadExternalData(effectiveId, setVideoUrl);
         } else {
           // Otherwise load from localStorage (fallback for legacy or incomplete flows)
-          await loadLocalData();
+          await loadLocalData(setVideoUrl);
         }
       } catch (error) {
         console.error("Error loading data:", error);
@@ -305,7 +327,8 @@ const FinalResult: React.FC = () => {
     };
 
     loadData();
-  }, [user, castId, location.search]);
+    return () => { cancelled = true; };
+  }, [user, videoTarget]);
 
   // ✅ Auto-Download Logic — Fires when data is ready and name is resolved (or timeout)
   useEffect(() => {
@@ -316,7 +339,7 @@ const FinalResult: React.FC = () => {
       pendingAutoDownload.current = false;
       console.log("📥 Auto-downloading for:", candidateName);
       handleDownloadEnhanced();
-      
+
       const newParams = new URLSearchParams(location.search);
       newParams.delete('autoDownload');
       navigate(`${location.pathname}?${newParams.toString()}`, { replace: true });
@@ -349,12 +372,12 @@ const FinalResult: React.FC = () => {
           const res = await fetch(resumeUrl);
           const buffer = await res.arrayBuffer();
           const text = await extractTextFromBuffer(buffer, resumeFileName);
-          
+
           if (text) {
             // Heuristic for name: first 30 characters often contain the name
             // We split by space and take the first few chunks, filtering out non-alpha characters
             const words = text.split(/\s+/).filter(w => w.length > 1);
-            
+
             // Common resume headers to skip
             const stopWords = ['resume', 'profile', 'summary', 'contact', 'curriculum', 'vitae', 'cv'];
             let startIndex = 0;
@@ -367,12 +390,12 @@ const FinalResult: React.FC = () => {
             const extractedName = nameWords.join(" ").trim();
 
             if (extractedName.length > 3 && extractedName.length < 50) {
-               console.log("✨ Best guess name from resume:", extractedName);
-               // Sanitize name: remove non-alphanumeric (keep spaces)
-               const sanitized = extractedName.replace(/[^a-zA-Z\s]/g, '').trim();
-               if (sanitized.length > 3) {
-                 setCandidateName(sanitized);
-               }
+              console.log("✨ Best guess name from resume:", extractedName);
+              // Sanitize name: remove non-alphanumeric (keep spaces)
+              const sanitized = extractedName.replace(/[^a-zA-Z\s]/g, '').trim();
+              if (sanitized.length > 3) {
+                setCandidateName(sanitized);
+              }
             }
           }
         } catch (err) {
@@ -524,7 +547,7 @@ const FinalResult: React.FC = () => {
     fetchVercelDetails();
   }, [resumeOwnerEmail, resumeOwnerAppEmail, user, resumeOwnerUserId, castId, idFromQuery]);
 
-  const loadLocalData = async () => {
+  const loadLocalData = async (setVideoUrl: (url: string | null) => void) => {
     // First try to get data from localStorage
     const uploadedResumeUrl = localStorage.getItem("uploadedResumeUrl");
     const fileName = localStorage.getItem("resumeFileName");
@@ -682,7 +705,7 @@ const FinalResult: React.FC = () => {
     if (jobTitleValue) setJobTitle(jobTitleValue);
   };
 
-  const loadExternalData = async (id: string) => {
+  const loadExternalData = async (id: string, setVideoUrl: (url: string | null) => void) => {
     try {
       console.log("🚀 loadExternalData fetching with ID:", id);
 
@@ -793,21 +816,13 @@ const FinalResult: React.FC = () => {
           }
         }
 
-        // --- Fetch Video URL (table row, then the storage bucket) ---
-        let finalVideoUrl = await resolveRecordingUrl({
+        const finalVideoUrl = await resolveRecordingUrl({
           isCRM: !!crmResult.data,
           jobRequestId: id,
-          email: ownerEmail,
-          userId: data.user_id,
+        }) || await resolveRecordingUrl({
+          isCRM: !crmResult.data,
+          jobRequestId: id,
         });
-        if (!finalVideoUrl) {
-          finalVideoUrl = await resolveRecordingUrl({
-            isCRM: !crmResult.data,
-            jobRequestId: id,
-            email: ownerEmail,
-            userId: data.user_id,
-          });
-        }
 
         setVideoUrl(finalVideoUrl);
       } else {
@@ -866,6 +881,38 @@ const FinalResult: React.FC = () => {
       // ✅ Save portfolio specifically for this job request (request_id)
       console.log("🔄 Saving portfolio to Supabase for request_id:", currentJobRequestId);
 
+      // ✅ Upsert portfolio to Supabase (Source of Truth includes manual overrides)
+      if (targetUserId || resumeOwnerEmail) {
+        console.log("🔄 Saving portfolio to Supabase");
+
+        // 1️⃣ Check existing record (user_id OR email)
+        const { data: existing } = await supabase
+          .from('portfolio_settings')
+          .select('id')
+          .or(`user_id.eq.${targetUserId},email.eq.${resumeOwnerEmail}`)
+          .maybeSingle();
+
+        const payload = {
+          url: trimmedUrl,
+          user_id: targetUserId || null,
+          email: resumeOwnerEmail || null
+        };
+
+        if (existing) {
+          await supabase
+            .from('portfolio_settings')
+            .update(payload)
+            .or(`user_id.eq.${targetUserId},email.eq.${resumeOwnerEmail}`);
+
+          console.log("✅ Updated portfolio in Supabase");
+        } else {
+          await supabase
+            .from('portfolio_settings')
+            .insert(payload);
+
+          console.log("✅ Inserted new portfolio record in Supabase");
+        }
+      }
       // Check if a row exists specifically for this request_id
       const { data: existingByReqId } = await supabase
         .from('portfolio_settings')
@@ -919,8 +966,8 @@ const FinalResult: React.FC = () => {
     navigate(`${location.pathname}?${params.toString()}`, { replace: true });
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/");
   };
   const enhancePDF = async (resumeUrlStr: string, currentRequestId: string) => {
@@ -935,9 +982,12 @@ const FinalResult: React.FC = () => {
         ? `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}${resumeUrlParam}&portfolio=${encodeURIComponent(portfolioUrl)}&mode=chat`
         : `${window.location.origin}/chat?resumeId=${currentRequestId}${emailParam}${resumeUrlParam}&source=pdf&mode=chat`;
 
-      // Play Intro button → this app's final-result page
+      // Play Intro button → Career Identity page if career_identity, else final-result page
+      const isCareerIdentity = tier === 'career_identity';
       const portfolioParam = hasPortfolio ? `&portfolio=${encodeURIComponent(portfolioUrl)}` : '';
-      const playIntroUrl = `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}${resumeUrlParam}${portfolioParam}`;
+      const playIntroUrl = isCareerIdentity
+        ? `${window.location.origin}/career-identity/${currentRequestId}?source=pdf&autoPlayVideo=true${emailParam}${resumeUrlParam}`
+        : `${window.location.origin}/final-result/${currentRequestId}?from=pdf&mode=video&source=pdf${emailParam}${resumeUrlParam}${portfolioParam}`;
 
       const hasVideo = !!videoUrl;
 
@@ -977,7 +1027,7 @@ const FinalResult: React.FC = () => {
 
             // 1. Check if the link is physically in the top-right "button zone"
             const isInZone = rx1 > (width * 0.4) && ry1 > (height - 150);
-            
+
             // 2. Precise Dimension Matching: Our buttons are strictly 28px high.
             // Resume text links are typically 10-14px.
             const h = ry2 - ry1;
@@ -986,8 +1036,8 @@ const FinalResult: React.FC = () => {
 
             // 3. Fingerprint URI Check: Match our exact internal link schema
             const uriStr = uri instanceof PDFString ? uri.asString().toLowerCase() : "";
-            const isOurExactLink = 
-              (uriStr.includes("final-result") && uriStr.includes("mode=video") && uriStr.includes("source=pdf")) || 
+            const isOurExactLink =
+              (uriStr.includes("final-result") && uriStr.includes("mode=video") && uriStr.includes("source=pdf")) ||
               (uriStr.includes("/chat") && uriStr.includes("mode=chat") && (uriStr.includes("resumeid=") || uriStr.includes("castid=")));
 
             // Only remove if it's in the zone AND matches our physical size AND matches our URL fingerprint
@@ -1031,13 +1081,16 @@ const FinalResult: React.FC = () => {
 
       const topMargin = 5;
 
-      const totalW = (hasVideo ? (btnW_play + gap) : 0) + (hasPortfolio ? btnW_chat : 0);
+      // Always render both buttons when their respective conditions are met
+      // Chat button always draws regardless of portfolio
+      const totalW = (hasVideo ? (btnW_play + gap) : 0) + btnW_chat;
       let currentX = width - totalW - margin;
 
       const btnY = height - btnH - topMargin;
 
       // Draw Chat Button (Let's talk) — w=97px, h=28px, align-items: flex-end, icon 15x13
-      if (hasPortfolio) {
+      // Always render regardless of portfolio — the chat URL already handles both cases
+      {
         const chatButtonDataUrl = await generateLetsTalkImage("Let's Talk", "/Vector.svg");
         if (chatButtonDataUrl) {
           const chatBytes = await fetch(chatButtonDataUrl).then(r => r.arrayBuffer());
@@ -1109,16 +1162,16 @@ const FinalResult: React.FC = () => {
         ? candidateName
         : (resumeFileName && resumeFileName !== "Resume.pdf"
           ? resumeFileName.split('.')[0].split('?')[0]
-              .replace(/^user_careercast_\d+(_|$)/i, '')
-              .replace(/_Digitalresume|_resume/gi, '')
+            .replace(/^user_careercast_\d+(_|$)/i, '')
+            .replace(/_Digitalresume|_resume/gi, '')
           : "Candidate");
-      
+
       if (!resolvedName || resolvedName.trim() === "" || resolvedName === "_") {
-        resolvedName = resumeFileName && resumeFileName !== "Resume.pdf" 
-          ? resumeFileName.split('.')[0].split('?')[0] 
+        resolvedName = resumeFileName && resumeFileName !== "Resume.pdf"
+          ? resumeFileName.split('.')[0].split('?')[0]
           : "Candidate";
       }
-      
+
       let safeFileName = resolvedName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
       if (!safeFileName || safeFileName === "" || safeFileName === "_") {
         safeFileName = "resume";
@@ -1169,10 +1222,10 @@ const FinalResult: React.FC = () => {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(downloadUrl);
-        setShowDownloadPrompt(true); 
+        setShowDownloadPrompt(true);
       } catch (enhanceErr) {
         console.error("❌ Enhancement failed, trying proxied original download:", enhanceErr);
-        
+
         try {
           const proxiedUrl = getProxiedUrl(resumeUrl);
           const response = await fetch(proxiedUrl);
@@ -1301,107 +1354,122 @@ const FinalResult: React.FC = () => {
 
           {/* Primary Action Group: Visible to both owner and visitor */}
           {(user || isExternalVisitor) && (
-                <div className="flex items-center gap-2 md:contents">
-                  <Button
-                    variant="outline"
-                    onClick={handleDownloadEnhanced}
-                    className="flex items-center gap-1.5 border-blue-500 text-blue-600 h-9 md:h-10 px-2.5 md:px-4 shrink-0 transition-opacity"
-                    disabled={!resumeUrl || loading || isSyncingWithVercel}
-                  >
-                    {loading || isSyncingWithVercel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                    <span className="text-xs md:text-sm font-semibold hidden lg:inline">Download Enhanced Resume</span>
-                    <span className="text-xs md:text-sm font-semibold lg:hidden">Download</span>
-                  </Button>
+            <div className="flex items-center gap-2 md:contents">
+              <Button
+                variant="outline"
+                onClick={handleDownloadEnhanced}
+                className="flex items-center gap-1.5 border-blue-500 text-blue-600 h-9 md:h-10 px-2.5 md:px-4 shrink-0 transition-opacity"
+                disabled={!resumeUrl || loading || isSyncingWithVercel}
+              >
+                {loading || isSyncingWithVercel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <span className="text-xs md:text-sm font-semibold hidden lg:inline">Download Enhanced Resume</span>
+                <span className="text-xs md:text-sm font-semibold lg:hidden">Download</span>
+              </Button>
 
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const currentCastId = castId || idFromQuery || localStorage.getItem("current_job_request_id");
-                      const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
-                      const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
-                      const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
-                      
-                      navigator.clipboard.writeText(shareableLink).then(() => {
-                        setCopied(true);
-                        showToast('Link copied to clipboard! Share the link.', 'success');
-                        setTimeout(() => setCopied(false), 2000);
-                      }).catch(err => {
-                        console.error('Copy failed:', err);
-                        showToast('Failed to copy link. Please try again.', 'error');
-                      });
-                    }}
-                    className={`flex items-center gap-1.5 h-9 md:h-10 px-2.5 md:px-4 shrink-0 transition-all duration-300 ${
-                      copied 
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-600 shadow-inner' 
-                      : 'border-green-500 text-green-600 hover:bg-green-50'
-                    }`}
-                  >
-                    {copied ? <CheckCircle className="h-4 w-4 animate-in zoom-in" /> : <Link className="h-4 w-4" />}
-                    <span className="text-xs md:text-sm font-semibold hidden sm:inline">
-                      {copied ? 'Copied!' : 'Copy Link'}
-                    </span>
-                    <span className="text-xs md:text-sm font-semibold sm:hidden">
-                      {copied ? 'Copied' : 'Copy'}
-                    </span>
-                  </Button>
-                </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const currentCastId = castId || idFromQuery || localStorage.getItem("current_job_request_id");
+                  const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+                  const emailParamValue = emailsToTry[0] ? `?email=${encodeURIComponent(emailsToTry[0])}` : '';
+                  const shareableLink = `${window.location.origin}/final-result/${currentCastId || "profile"}${emailParamValue}`;
+
+                  navigator.clipboard.writeText(shareableLink).then(() => {
+                    setCopied(true);
+                    showToast('Link copied to clipboard! Share the link.', 'success');
+                    setTimeout(() => setCopied(false), 2000);
+                  }).catch(err => {
+                    console.error('Copy failed:', err);
+                    showToast('Failed to copy link. Please try again.', 'error');
+                  });
+                }}
+                className={`flex items-center gap-1.5 h-9 md:h-10 px-2.5 md:px-4 shrink-0 transition-all duration-300 ${copied
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-600 shadow-inner'
+                  : 'border-green-500 text-green-600 hover:bg-green-50'
+                  }`}
+              >
+                {copied ? <CheckCircle className="h-4 w-4 animate-in zoom-in" /> : <Link className="h-4 w-4" />}
+                <span className="text-xs md:text-sm font-semibold hidden sm:inline">
+                  {copied ? 'Copied!' : 'Copy Link'}
+                </span>
+                <span className="text-xs md:text-sm font-semibold sm:hidden">
+                  {copied ? 'Copied' : 'Copy'}
+                </span>
+              </Button>
+            </div>
           )}
 
           {videoUrl && (
-              <button
-                onClick={() => {
-                  const currentCastId = castId || idFromQuery || "profile";
-                  trackEvent('play_intro', currentCastId);
-                  const params = new URLSearchParams(location.search);
-                  params.set('mode', 'video');
-                  navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-                  setPanelMode('video');
-                  setIsPanelOpen(true);
-                }}
-                className="inline-flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[2px_2px_4.1px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
-                style={{
-                  fontFamily: 'Poppins, sans-serif',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  letterSpacing: '-0.006px',
-                  color: '#FFF',
-                  textAlign: 'center'
-                }}
-              >
-                <img src="/Frame 215.svg" alt="Play" className="w-3.5 h-3.5 md:w-5 md:h-5 shrink-0" />
-                <span className="hidden min-[400px]:inline">Play Intro</span>
-                <span className="min-[400px]:hidden text-[11px]">Intro</span>
-              </button>
+            <button
+              onClick={() => {
+                const currentCastId = castId || idFromQuery || "profile";
+                trackEvent('play_intro', currentCastId);
+
+                // Play the intro video in place on this same page
+                const params = new URLSearchParams(location.search);
+                params.set('mode', 'video');
+                navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+                setPanelMode('video');
+                setIsPanelOpen(true);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[2px_2px_4.1px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
+              style={{
+                fontFamily: 'Poppins, sans-serif',
+                fontSize: '12px',
+                fontWeight: 600,
+                letterSpacing: '-0.006px',
+                color: '#FFF',
+                textAlign: 'center'
+              }}
+            >
+              <img src="/Frame 215.svg" alt="Play" className="w-3.5 h-3.5 md:w-5 md:h-5 shrink-0" />
+              <span className="hidden min-[400px]:inline">Play Intro</span>
+              <span className="min-[400px]:hidden text-[11px]">Intro</span>
+            </button>
+          )}
+
+          {tier === 'career_identity' && (
+            <button
+              onClick={() => {
+                const currentCastId = castId || idFromQuery || "profile";
+                navigate(`/career-identity/${currentCastId}`);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 text-white border-2 border-amber-200 hover:brightness-110 shadow-[2px_2px_4.1px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap text-xs md:text-sm font-semibold"
+            >
+              <Sparkles className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0 text-white" />
+              <span className="hidden min-[450px]:inline">Career Identity</span>
+              <span className="min-[450px]:hidden text-[11px]">CI</span>
+            </button>
           )}
 
           {!!portfolioUrl && (
-              <button
-                onClick={() => {
-                  const currentCastId = castId || idFromQuery || "profile";
-                  const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
-                  const emailParamForChat = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
-                  const resumeUrlParamForChat = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
-                  const portfolioParamForChat = portfolioUrl ? `&portfolio=${encodeURIComponent(portfolioUrl)}` : '';
-                  
-                  // Redirect to the dedicated Portfolio + Chat page
-                  navigate(`/chat?resumeId=${currentCastId}${emailParamForChat}${resumeUrlParamForChat}${portfolioParamForChat}&mode=chat`);
-                  
-                  trackEvent('lets_talk', currentCastId);
-                }}
-                className="flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[-1px_1px_4px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
-                style={{
-                  fontFamily: 'Poppins, sans-serif',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  letterSpacing: '-0.006px',
-                  color: '#FFF',
-                  textAlign: 'center'
-                }}
-              >
-                <img src="/Vector.svg" alt="Chat" className="w-3.5 h-3 md:w-[18px] md:h-[16px] shrink-0" />
-                <span className="hidden min-[400px]:inline">Let's Talk</span>
-                <span className="min-[400px]:hidden text-[11px]">Talk</span>
-              </button>
+            <button
+              onClick={() => {
+                const currentCastId = castId || idFromQuery || "profile";
+                trackEvent('lets_talk', currentCastId);
+
+                const emailsToTry = [resumeOwnerEmail, resumeOwnerAppEmail].filter(Boolean) as string[];
+                const emailParamForChat = emailsToTry[0] ? `&email=${encodeURIComponent(emailsToTry[0])}` : '';
+                const resumeUrlParamForChat = resumeUrl ? `&resumeUrl=${encodeURIComponent(resumeUrl)}` : '';
+                const portfolioParamForChat = `&portfolio=${encodeURIComponent(portfolioUrl)}`;
+
+                // Redirect to the dedicated Portfolio + Chat page
+                navigate(`/chat?resumeId=${currentCastId}${emailParamForChat}${resumeUrlParamForChat}${portfolioParamForChat}&mode=chat`);
+              }}
+              className="flex items-center justify-center gap-1.5 md:gap-[8px] h-9 md:h-10 px-2.5 md:px-4 rounded-lg bg-[#0A66C2] text-white border-2 border-[#CEDFF9] hover:brightness-110 shadow-[-1px_1px_4px_0_rgba(0,0,0,0.25)] transition-all shrink-0 whitespace-nowrap"
+              style={{
+                fontFamily: 'Poppins, sans-serif',
+                fontSize: '12px',
+                fontWeight: 600,
+                letterSpacing: '-0.006px',
+                color: '#FFF',
+                textAlign: 'center'
+              }}
+            >
+              <img src="/Vector.svg" alt="Chat" className="w-3.5 h-3 md:w-[18px] md:h-[16px] shrink-0" />
+              <span className="hidden min-[400px]:inline">Let's Talk</span>
+              <span className="min-[400px]:hidden text-[11px]">Talk</span>
+            </button>
           )}
 
           <div className="flex items-center gap-3 ml-auto">
@@ -1474,7 +1542,7 @@ const FinalResult: React.FC = () => {
 
 
       {
-        isPanelOpen && (
+        isPanelOpen && (panelMode !== 'video' || videoUrl) && (
           <ResumeChatPanel
             isOpen={isPanelOpen}
             onClose={closePanel}

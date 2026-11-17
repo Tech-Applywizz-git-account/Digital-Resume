@@ -1,4 +1,3 @@
-
 [functions.resume-chat]
 enabled = true
 verify_jwt = true
@@ -14,3 +13,8 @@ entrypoint = "./functions/track-resume-click/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/resume-chat/*.html" ]
+
+[functions.career-identity-profile]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/career-identity-profile/index.ts"

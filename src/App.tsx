@@ -1,9 +1,12 @@
-import React from "react";
-import { Routes, Route } from "react-router-dom";
+import BusinessOverview from './features/admin/BusinessOverview';
+import React, { useEffect } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { detectAndForceClearClarityData, installClarityRouteGuard } from "./utils/clarity";
 
 import Landing from "./pages/landing";
 import Auth from "./pages/Auth";
+import SignInRoute from "./components/SignInRoute";
 import Dashboard from "./pages/Dashboard";
 import Step1 from "./pages/Step1";
 import Step2 from "./pages/Step2";
@@ -18,48 +21,106 @@ import Contact from "./pages/Contact";
 import HrEmail from "./pages/hr_email";
 import HrEmailDetails from "./pages/HrEmailDetails";
 import SignupPage from "./pages/SignupPage";
+import EmailCorrection from "./pages/EmailCorrection";
 
 import DigitalResumeDashboard from "./pages/DigitalResumeDashboard";
 import DigitalResumeLogin from "./pages/DigitalResumeLogin";
 import ChatPage from "./pages/ChatPage";
 import ResumeAnalytics from "./pages/ResumeAnalytics";
 
+// Tier 2 — Career Identity (premium profile) foundation
+import CareerIdentityDashboard from "./features/career-identity/pages/CareerIdentityDashboard";
+import CareerIdentityPage from "./features/career-identity/pages/CareerIdentityPage";
+import CareerIdentityAdminRequestDetail from "./features/career-identity/admin/CareerIdentityAdminRequestDetail";
+
 const RootRoute = () => {
   const query = new URLSearchParams(window.location.search);
-  const id = query.get('id') || query.get('resumeId');
-  const fromPdf = query.get('from') === 'pdf' || query.get('source') === 'pdf';
+
+  const id = query.get("id") || query.get("resumeId");
+  const fromPdf =
+    query.get("from") === "pdf" ||
+    query.get("source") === "pdf";
 
   if (id || fromPdf) {
     return <FinalResult />;
   }
+
   return <Landing />;
 };
 
 function App() {
+  const location = useLocation();
+
+  useEffect(() => {
+    installClarityRouteGuard();
+  }, []);
+
+  useEffect(() => {
+    if (!location.pathname.startsWith('/career-identity/')) {
+      detectAndForceClearClarityData();
+    }
+  }, [location.pathname]);
+
   return (
     <AuthProvider>
       <Routes>
         <Route path="/" element={<RootRoute />} />
-        <Route path="/auth" element={<Auth />} />
+        <Route path="/auth" element={<SignInRoute><Auth /></SignInRoute>} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route
+          path="/email-correction"
+          element={<EmailCorrection />}
+        />
+
+        <Route path="/admin/overview" element={<BusinessOverview />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/digital-resume-dashboard" element={<DigitalResumeDashboard />} />
-        <Route path="/DigitalResumeLogin" element={<DigitalResumeLogin />} />
+        <Route
+          path="/digital-resume-dashboard"
+          element={<DigitalResumeDashboard />}
+        />
+        <Route
+          path="/career-identity-dashboard"
+          element={<CareerIdentityDashboard />}
+        />
+        <Route
+          path="/DigitalResumeLogin"
+          element={<SignInRoute><DigitalResumeLogin /></SignInRoute>}
+        />
+
         <Route path="/step1" element={<Step1 />} />
         <Route path="/step2" element={<Step2 />} />
         <Route path="/record" element={<Record />} />
         <Route path="/record/:id" element={<Record />} />
+
+        <Route
+          path="/final-result/:castId?"
+          element={<FinalResult />}
+        />
+        <Route
+          path="/career-identity/:castId"
+          element={<CareerIdentityPage />}
+        />
+        <Route
+          path="/career-identity-admin/request/:userId"
+          element={<CareerIdentityAdminRequestDetail />}
+        />
+
         <Route path="/network" element={<Network />} />
-        <Route path="/final-result/:castId?" element={<FinalResult />} />
         <Route path="/resources" element={<Resources />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/password" element={<Password />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/hr-email" element={<HrEmail />} />
-        <Route path="/hr-email-details" element={<HrEmailDetails />} />
+        <Route
+          path="/hr-email-details"
+          element={<HrEmailDetails />}
+        />
         <Route path="/chat" element={<ChatPage />} />
-        <Route path="/analytics/:castId" element={<ResumeAnalytics />} />
+        <Route
+          path="/analytics/:castId"
+          element={<ResumeAnalytics />}
+        />
       </Routes>
     </AuthProvider>
   );
